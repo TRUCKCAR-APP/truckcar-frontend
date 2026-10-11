@@ -1,0 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+
+:root {
+    --bg-dark: #090d16;
+    --bg-card: #111827;
+    --bg-card-hover: #1f2937;
+    --border-color: #374151;
+    --truck-emerald: #10b981;
+    --truck-amber: #f59e0b;
+    --truck-red: #ef4444;
+    --truck-blue: #3b82f6;
+}
+
+* {
+    box-sizing: border-box;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background-color: #030712;
+    color: #f3f4f6;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    min-height: 100vh;
+}
+
+.mono-font {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #111827;
+}
+::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #4b5563;
+}
+
+.phone-frame {
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    max-width: 440px;
+    max-height: 100%;
+    height: 100%;
+    border-radius: 28px;
+    border: 3px solid #1e293b;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.phone-frame.landscape-mode {
+    max-width: 860px;
+    max-height: 480px;
+    height: 100%;
+    border-radius: 28px;
+}
+
+.coordinator-frame {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 16px !important;
+    border: 1px solid #1e293b !important;
+}
+
+.glow-emerald {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
+}
+.glow-amber {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
+}
+.glow-red {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.35);
+}
+
+.leaflet-container {
+    background-color: #0f172a !important;
+    font-family: inherit;
+}
+.leaflet-popup-content-wrapper {
+    background: #1e293b !important;
+    color: #f8fafc !important;
+    border-radius: 12px !important;
+    border: 1px solid #334155;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+}
+.leaflet-popup-tip {
+    background: #1e293b !important;
+}
+
+/* Campos de formulario (login y selectores de la torre de control) */
+.login-input {
+    background: #020617;
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+    color: #e2e8f0;
+    outline: none;
+}
+.login-input:focus {
+    border-color: #10b981;
+}
