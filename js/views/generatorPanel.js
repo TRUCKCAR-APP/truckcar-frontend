@@ -401,6 +401,8 @@ window.generatorCtrl = (function () {
         },
 
         async refresh(silent) {
+            // Un refresco programado (p. ej. tras publicar) puede dispararse después de cerrar la sesión.
+            if (!window.store.state.isAuthenticated) return;
             await window.TruckDarService.refreshShipments();
             window.store.setState({ dataStatus: { ...window.store.state.dataStatus, lastSync: new Date().toISOString() } });
             if (!silent) window.ui.toast('Envíos actualizados.', 'info');

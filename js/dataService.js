@@ -80,7 +80,8 @@
 
     function recordError(section, error) {
         // 403: la vista no corresponde al rol; app.js redirige a la vista propia (evento truckdar:forbidden).
-        if (error && error.status === 403) return;
+        // 401: sesión vencida; app.js vuelve al login (evento truckdar:unauthorized). Ninguno es un fallo de datos.
+        if (error && (error.status === 403 || error.status === 401)) return;
         console.error('[TruckDar] Error cargando ' + section, error);
         const errors = { ...window.store.state.dataStatus.errors, [section]: error.message || String(error) };
         setStatus({ errors });
