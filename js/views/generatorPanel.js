@@ -222,8 +222,11 @@ window.GeneratorPanel = (function () {
                     ${badge(load)}
                 </div>
                 <div id="generator-map-container" class="h-44 rounded-xl overflow-hidden border border-slate-800 shrink-0" aria-label="Mapa del envío"></div>
-                ${truck && truck.coords && (load.status === 'ASSIGNED' || load.status === 'IN_TRANSIT')
-                    ? `<p class="text-[10px] text-emerald-300"><i class="fas fa-location-crosshairs"></i> ${esc(truck.plate)} · ${truck.speed} km/h · posición ${esc(truck.lastCheckin)}</p>` : ''}
+                ${load.status === 'ASSIGNED' || load.status === 'IN_TRANSIT' ? `
+                    <div class="flex items-center justify-between gap-2 text-[10px]">
+                        <p id="shipment-truck-line" class="text-emerald-300 truncate">${truckLine(truck)}</p>
+                        <span data-telemetry-status class="shrink-0 flex items-center gap-1 text-slate-400"></span>
+                    </div>` : ''}
                 <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                     <div><span class="text-slate-500 block">Trayecto</span><b class="text-white">${esc(load.origin.city)} → ${esc(load.destination.city)}</b></div>
                     <div><span class="text-slate-500 block">Peso / camión</span><b class="text-white">${esc(load.netWeight)} t · ${esc(load.requiredTruckType)}</b></div>
@@ -251,6 +254,19 @@ window.GeneratorPanel = (function () {
                 </div>
             </div>
         `;
+    }
+
+    /** Estado del camión del envío; se actualiza por DOM con cada posición en vivo (sin re-render). */
+    function truckLine(truck) {
+        const esc = window.ui.escape;
+        if (!truck || !truck.coords) return '<i class="fas fa-satellite-dish"></i> Esperando la posición del camión…';
+        const heading = typeof truck.heading === 'number' ? ' · rumbo ' + Math.round(truck.heading) + '°' : '';
+        return `<i class="fas fa-location-crosshairs"></i> ${esc(truck.plate)} · ${truck.speed} km/h${heading} · posición ${esc(truck.lastCheckin)}`;
+    }
+
+    function updateTruckLine(truck) {
+        const el = document.getElementById('shipment-truck-line');
+        if (el) el.innerHTML = truckLine(truck);
     }
 
     function selectedLoad(state) {
@@ -308,7 +324,7 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    return { render, selectedLoad, truckFor, CITIES };
+    return { render, selectedLoad, truckFor, updateTruckLine, CITIES };
 })();
 
 window.generatorCtrl = (function () {

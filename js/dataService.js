@@ -78,6 +78,17 @@
         window.store.setState({ dataStatus: { ...window.store.state.dataStatus, ...partial } });
     }
 
+    /** El conductor transmite su posición mientras su carga activa está IN_TRANSIT (también al recargar la app). */
+    function syncDriverTelemetry() {
+        const load = data.activeLoadOrder;
+        const driver = data.currentDriver;
+        if (load && load.status === 'IN_TRANSIT' && driver && driver.id) {
+            window.DriverTelemetry.start(load, driver.id);
+        } else if (window.DriverTelemetry.isRunning) {
+            window.DriverTelemetry.stop();
+        }
+    }
+
     function recordError(section, error) {
         // 403: la vista no corresponde al rol; app.js redirige a la vista propia (evento truckdar:forbidden).
         // 401: sesión vencida; app.js vuelve al login (evento truckdar:unauthorized). Ninguno es un fallo de datos.
@@ -149,6 +160,7 @@
             hoursActive: state.drivingHoursToday != null ? state.drivingHoursToday + 'h' : '—',
             lastCheckin: timeAgo(state.lastUpdate),
             currentLoadId: state.currentLoadId,
+            heading: state.currentHeading,
             coords: coordsOrNull(state.currentLatitude, state.currentLongitude)
         };
     }
@@ -325,6 +337,7 @@
                     data.activeLoadOrder.totalDistance = previous.totalDistance;
                     data.activeLoadOrder.estimatedDuration = previous.estimatedDuration;
                 }
+                syncDriverTelemetry();
                 clearError('loads');
             } catch (error) {
                 recordError('loads', error);
@@ -388,7 +401,11 @@
         /** "Mis envíos": cargas propias y luego la posición de sus camiones. */
         async refreshShipments() {
             await this.loadPublishedLoads();
-            await this.loadShipmentTrucks();
+            // Con la telemetría en vivo solo se consulta por HTTP la posición de camiones que aún no han transmitido.
+            const trucks = data.shipmentTrucks || {};
+            const missing = (data.publishedLoads || []).some(l => (l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT')
+                && l.assignedDriverId && !trucks[l.assignedDriverId]);
+            if (!window.TruckDarTelemetry.isOnline || missing) await this.loadShipmentTrucks();
         },
 
         /** POST /loads: la empresa generadora la fija el backend con el usuario autenticado. */
@@ -494,7 +511,10 @@
         },
 
         async refreshCoordinator() {
-            await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads(), this.loadPublishedLoads()]);
+            // Con la telemetría en vivo las posiciones llegan por WebSocket: no se vuelve a pedir la flota por HTTP.
+            const livePositions = window.TruckDarTelemetry.isOnline && (data.fleetVehicles || []).length > 0;
+            await Promise.all([livePositions ? null : this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(),
+                this.loadDeliveredLoads(), this.loadPublishedLoads()]);
             setStatus({ lastSync: new Date().toISOString() });
         },
 
@@ -521,6 +541,8 @@
             if (!load) throw new Error('No hay una carga asignada');
             const updated = await api.loads.startTrip(load.backendId);
             data.activeLoadOrder = { ...mapLoad(updated), totalDistance: load.totalDistance, estimatedDuration: load.estimatedDuration };
+            // IN_TRANSIT: empieza la transmisión de la posición en tiempo real.
+            syncDriverTelemetry();
             return data.activeLoadOrder;
         },
 
@@ -529,6 +551,7 @@
             const load = data.activeLoadOrder;
             if (!load) throw new Error('No hay una carga en tránsito');
             const updated = await api.loads.deliver(load.backendId, pod);
+            window.DriverTelemetry.stop();
             data.activeLoadOrder = null;
             data.routes = null;
             // Recibo de la última entrega para la pantalla del conductor (la firma y la foto ya están en memoria).

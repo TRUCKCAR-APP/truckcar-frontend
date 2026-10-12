@@ -189,7 +189,7 @@ window.CoordinatorPanel = {
                         <div class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden shadow-2xl">
                             <div id="coordinator-map-container" class="w-full h-full"></div>
 
-                            <div class="absolute top-4 left-4 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-2xl p-3 shadow-2xl space-y-2 max-w-xs">
+                            <div class="absolute top-4 left-14 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-2xl p-3 shadow-2xl space-y-2 max-w-xs">
                                 <div class="flex items-center gap-2">
                                     <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
                                     <span class="font-bold text-xs text-white">Monitoreo GPS & Alertas</span>
@@ -197,6 +197,7 @@ window.CoordinatorPanel = {
                                 <div class="text-[11px] text-slate-300">
                                     ${fleet.length} vehículo(s) con posición · ${alerts.length} alerta(s) activa(s)
                                 </div>
+                                <div data-telemetry-status class="flex items-center gap-1.5 text-[10px] text-slate-400" title="Posiciones de la flota por WebSocket (/topic/fleet-locations)"></div>
                                 <div class="flex gap-2 pt-1">
                                     <button onclick="window.mapCtrl.fitAllRoute()" class="px-2.5 py-1 bg-slate-800 text-slate-300 rounded-lg text-[10px] hover:bg-slate-700 transition">
                                         Ver todo

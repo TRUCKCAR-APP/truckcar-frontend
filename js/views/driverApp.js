@@ -335,6 +335,9 @@ window.DriverApp = {
                         </button>
                     </div>
                 ` : inTransit ? `
+                    <div id="driver-telemetry-badge" class="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-[11px] text-slate-200" aria-live="polite">
+                        <span class="inline-block w-2 h-2 rounded-full bg-slate-500"></span> Preparando telemetría…
+                    </div>
                     <div class="grid grid-cols-2 gap-3 pt-1">
                         <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="py-3.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition">
                             <i class="fas fa-location-arrow"></i> Continuar navegación
@@ -564,6 +567,7 @@ window.DriverApp = {
                 </div>
 
                 <div class="flex-1 relative">
+                    <div id="driver-telemetry-badge" class="absolute top-2 left-2 right-2 z-[500] flex flex-wrap items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl text-[10px] text-slate-200 shadow-lg" aria-live="polite"></div>
                     <div id="live-nav-map-container" class="w-full h-full"></div>
 
                     <div class="absolute bottom-4 left-4 z-[400] speed-gauge rounded-2xl p-2.5 shadow-2xl border border-slate-700 text-center min-w-[75px]">

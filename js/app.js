@@ -108,6 +108,9 @@ window.app = {
     endSession() {
         clearInterval(this.pollTimer);
         clearInterval(this.shipmentsTimer);
+        window.DriverTelemetry.stop();
+        window.LiveTracking.stopAll();
+        window.TruckDarTelemetry.disconnect();
         window.TruckDarService.reset();
         window.TruckDarApi.session.clear();
         window.generatorCtrl.reset();
@@ -198,22 +201,77 @@ window.app = {
 
         this.updateHeader(state);
         if (!state.isAuthenticated) {
+            this.syncLiveTracking(state);
             mount.innerHTML = window.LoginView.render(state);
             return;
         }
 
+        // El mapa de la torre y el de "Mis envíos" sobreviven al re-render: su contenedor se vuelve a insertar en
+        // lugar del nuevo, así la telemetría mueve los marcadores sin que el mapa se destruya en cada actualización.
+        const liveMap = window.mapCtrl.map ? window.mapCtrl.map.getContainer() : null;
+        const keepMap = liveMap && this.KEEP_ALIVE_MAPS.includes(liveMap.id) ? liveMap : null;
+
         if (state.activeRole === 'generator') {
             mount.innerHTML = window.GeneratorPanel.render(state);
-            this.handleGeneratorMapMount(state);
         } else if (state.activeRole === 'driver') {
             mount.innerHTML = window.DriverApp.render(state);
-            this.handleDriverMapMount(state);
         } else if (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments') {
             mount.innerHTML = window.GeneratorPanel.render(state);
-            this.handleGeneratorMapMount(state);
         } else if (state.activeRole === 'coordinator') {
             mount.innerHTML = window.CoordinatorPanel.render(state);
-            this.handleCoordinatorMapMount(state);
+        }
+
+        const placeholder = keepMap && document.getElementById(keepMap.id);
+        if (placeholder && placeholder !== keepMap) {
+            placeholder.replaceWith(keepMap);
+            window.mapCtrl.map.invalidateSize();
+        }
+
+        if (state.activeRole === 'driver') this.handleDriverMapMount(state);
+        else if (document.getElementById('generator-map-container')) this.handleGeneratorMapMount(state);
+        else if (document.getElementById('coordinator-map-container')) this.handleCoordinatorMapMount(state);
+
+        this.syncLiveTracking(state);
+        window.TruckDarTelemetry.renderStatusBadges();
+        window.DriverTelemetry.renderBadge();
+    },
+
+    KEEP_ALIVE_MAPS: ['coordinator-map-container', 'generator-map-container'],
+
+    /**
+     * Suscripciones de telemetría según la vista: la torre sigue toda la flota y "Mis envíos" cada carga aceptada o
+     * en ruta. Las posiciones mueven los marcadores directamente, sin setState ni peticiones HTTP.
+     */
+    syncLiveTracking(state) {
+        const live = window.LiveTracking;
+        if (!state.isAuthenticated) {
+            live.stopAll();
+            return;
+        }
+        const onTower = state.activeRole === 'coordinator' && state.coordinatorTab !== 'shipments';
+        const onShipments = state.activeRole === 'generator'
+            || (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments');
+
+        if (onTower) {
+            live.followFleet((truck) => {
+                if (window.mapCtrl.isMountedOn('coordinator-map-container')) window.mapCtrl.moveFleetMarker(truck);
+            });
+        } else {
+            live.unfollowFleet();
+        }
+
+        if (onShipments) {
+            const followed = (window.TruckDarData.publishedLoads || [])
+                .filter(l => l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT')
+                .map(l => l.backendId);
+            live.followTrips(followed, (truck, msg) => {
+                const selected = window.GeneratorPanel.selectedLoad(window.store.state);
+                if (!selected || selected.backendId !== msg.loadId) return;
+                if (window.mapCtrl.isMountedOn('generator-map-container')) window.mapCtrl.moveShipmentTruck(truck);
+                window.GeneratorPanel.updateTruckLine(truck);
+            });
+        } else {
+            live.unfollowTrips();
         }
     },
 
@@ -250,9 +308,16 @@ window.app = {
     handleGeneratorMapMount(state) {
         this.scheduleMapMount(() => {
             if (!document.getElementById('generator-map-container')) return;
-            const load = window.GeneratorPanel.selectedLoad(state);
-            window.mapCtrl.initMap('generator-map-container', [4.6097, -74.0817], 6);
-            window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load));
+            const load = window.GeneratorPanel.selectedLoad(window.store.state);
+            const key = load ? load.backendId : null;
+            if (window.mapCtrl.isMountedOn('generator-map-container')) {
+                // Mismo mapa: se redibuja el envío y solo se reencuadra si cambió la carga seleccionada.
+                window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load), { fit: window.mapCtrl.shipmentKey !== key });
+            } else {
+                window.mapCtrl.initMap('generator-map-container', [4.6097, -74.0817], 6);
+                window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load));
+            }
+            window.mapCtrl.shipmentKey = key;
         });
     },
 
@@ -281,6 +346,12 @@ window.app = {
     handleCoordinatorMapMount(state) {
         this.scheduleMapMount(() => {
             if (!document.getElementById('coordinator-map-container')) return;
+            if (window.mapCtrl.isMountedOn('coordinator-map-container')) {
+                // Mapa reutilizado: se actualizan capas sin reencuadrar (el usuario conserva su zoom).
+                window.mapCtrl.renderAlerts();
+                window.mapCtrl.renderCoordinatorFleetMarkers();
+                return;
+            }
             window.mapCtrl.initMap('coordinator-map-container', [4.4389, -75.2322], 7);
             window.mapCtrl.drawCoordinatorFleet();
         });
