@@ -55,7 +55,7 @@
         </div>
 
         <div class="flex items-center gap-2 sm:gap-3">
-            <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
+            <div id="role-switcher" class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
                 <button id="role-btn-driver" onclick="window.app.setRole('driver')" class="px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-emerald-600 text-white shadow">
                     <i class="fas fa-mobile-screen"></i>
                     <span class="hidden md:inline">Conductor (Móvil)</span>
@@ -71,7 +71,7 @@
                 <span class="hidden sm:inline">Rotar Celular</span>
             </button>
 
-            <button onclick="window.app.nextSimulationStep()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow" title="Avanzar posición GPS">
+            <button id="gps-step-btn" onclick="window.app.nextSimulationStep()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow" title="Avanzar posición GPS">
                 <i class="fas fa-forward-step"></i>
                 <span class="hidden sm:inline">Avanzar GPS</span>
             </button>

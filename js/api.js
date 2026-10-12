@@ -18,6 +18,7 @@
         }
 
         get isUnauthorized() { return this.status === 401; }
+        get isForbidden() { return this.status === 403; }
         get isNotFound() { return this.status === 404; }
         get isNetworkError() { return this.status === 0; }
     }
@@ -174,6 +175,9 @@
             if (error.isUnauthorized && auth) {
                 session.clear();
                 window.dispatchEvent(new CustomEvent('truckdar:unauthorized', { detail: error }));
+            } else if (error.isForbidden && auth) {
+                // El rol del token no permite esta ruta (p. ej. un GENERADOR en la torre de control): la app redirige.
+                window.dispatchEvent(new CustomEvent('truckdar:forbidden', { detail: error }));
             }
             throw error;
         }

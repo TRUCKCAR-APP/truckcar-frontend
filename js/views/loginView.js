@@ -33,6 +33,7 @@ window.LoginView = {
                         <select name="role" required class="login-input w-full">
                             <option value="CONDUCTOR">Conductor</option>
                             <option value="COORDINADOR">Coordinador (Torre de Control)</option>
+                            <option value="GENERADOR">Generador de carga (empresa)</option>
                         </select>
                     ` : ''}
 

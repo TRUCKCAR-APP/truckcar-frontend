@@ -79,6 +79,8 @@
     }
 
     function recordError(section, error) {
+        // 403: la vista no corresponde al rol; app.js redirige a la vista propia (evento truckdar:forbidden).
+        if (error && error.status === 403) return;
         console.error('[TruckDar] Error cargando ' + section, error);
         const errors = { ...window.store.state.dataStatus.errors, [section]: error.message || String(error) };
         setStatus({ errors });
@@ -366,6 +368,28 @@
             }
         },
 
+        /** Posición actual de los conductores de los envíos aceptados o en ruta (fleets-drivers, por conductor). */
+        async loadShipmentTrucks() {
+            const drivers = [...new Set((data.publishedLoads || [])
+                .filter(l => (l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT') && l.assignedDriverId)
+                .map(l => l.assignedDriverId))];
+            const trucks = {};
+            await Promise.all(drivers.map(async (driverId) => {
+                try {
+                    trucks[driverId] = mapFleetVehicle(await api.fleet.getDriver(driverId));
+                } catch (error) {
+                    // Sin estado en fleets-drivers: el envío se muestra sin posición del camión.
+                }
+            }));
+            data.shipmentTrucks = trucks;
+        },
+
+        /** "Mis envíos": cargas propias y luego la posición de sus camiones. */
+        async refreshShipments() {
+            await this.loadPublishedLoads();
+            await this.loadShipmentTrucks();
+        },
+
         /** POST /loads: la empresa generadora la fija el backend con el usuario autenticado. */
         async publishLoad(request) {
             const created = await api.loads.publish(request);
@@ -455,7 +479,10 @@
                 recordError('user', error);
             }
             const role = window.store.state.activeRole;
-            if (role === 'coordinator') {
+            if (role === 'generator') {
+                // Generador: solo sus envíos y la posición de los conductores asignados a ellos (no la flota completa).
+                await this.refreshShipments();
+            } else if (role === 'coordinator') {
                 await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads(), this.loadPublishedLoads()]);
             } else {
                 await this.loadDriverProfile();
@@ -510,7 +537,10 @@
 
         async cancelLoad(loadId, reason) {
             const updated = await api.loads.cancel(loadId, reason);
-            await this.loadCoordinatorLoad();
+            // La bolsa de cargas de la torre solo se recarga en la torre (un GENERADOR no tiene acceso a ella).
+            if (window.store.state.activeRole === 'coordinator') {
+                await this.loadCoordinatorLoad();
+            }
             return mapLoad(updated);
         },
 
@@ -553,6 +583,7 @@
             data.fleetVehicles = [];
             data.deliveredLoads = [];
             data.publishedLoads = [];
+            data.shipmentTrucks = {};
             data.lastDelivery = null;
         }
     };

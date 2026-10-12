@@ -261,7 +261,8 @@ window.GeneratorPanel = (function () {
     /** Camión a seguir en el mapa: solo mientras la carga está aceptada o en ruta. */
     function truckFor(load) {
         if (!load || !load.assignedDriverId || !['ASSIGNED', 'IN_TRANSIT'].includes(load.status)) return null;
-        return (window.TruckDarData.fleetVehicles || []).find(t => t.driverId === load.assignedDriverId) || null;
+        const tracked = (window.TruckDarData.shipmentTrucks || {})[load.assignedDriverId];
+        return tracked || (window.TruckDarData.fleetVehicles || []).find(t => t.driverId === load.assignedDriverId) || null;
     }
 
     function render(state) {
@@ -283,7 +284,7 @@ window.GeneratorPanel = (function () {
                             <p class="text-xs text-slate-400 truncate">Actualización automática · última ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
                         </div>
                     </div>
-                    ${window.CoordinatorPanel.renderTabs(state)}
+                    ${state.sessionRole === 'GENERADOR' ? '' : window.CoordinatorPanel.renderTabs(state)}
                     <div class="flex items-center gap-3">
                         <div class="px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                             <span class="text-[10px] uppercase text-slate-400 font-bold block">En curso</span>
@@ -312,6 +313,7 @@ window.GeneratorPanel = (function () {
 
 window.generatorCtrl = (function () {
     let draft = null;
+    let companyEdited = false;
 
     function defaultDraft() {
         const user = window.store.state.currentUser;
@@ -330,6 +332,10 @@ window.generatorCtrl = (function () {
         /** Borrador del formulario: sobrevive a los re-render del refresco automático. */
         draft() {
             if (!draft) draft = defaultDraft();
+            // El perfil puede llegar después del primer render (p. ej. justo tras registrarse).
+            if (!draft.generatorCompanyName && !companyEdited) {
+                draft.generatorCompanyName = defaultDraft().generatorCompanyName;
+            }
             return draft;
         },
 
@@ -337,6 +343,7 @@ window.generatorCtrl = (function () {
             const target = event.target;
             if (target && target.name && this.draft().hasOwnProperty(target.name)) {
                 draft[target.name] = target.value;
+                if (target.name === 'generatorCompanyName') companyEdited = true;
             }
         },
 
@@ -394,7 +401,7 @@ window.generatorCtrl = (function () {
         },
 
         async refresh(silent) {
-            await Promise.all([window.TruckDarService.loadPublishedLoads(), window.TruckDarService.loadFleet()]);
+            await window.TruckDarService.refreshShipments();
             window.store.setState({ dataStatus: { ...window.store.state.dataStatus, lastSync: new Date().toISOString() } });
             if (!silent) window.ui.toast('Envíos actualizados.', 'info');
         },
@@ -425,6 +432,7 @@ window.generatorCtrl = (function () {
 
         reset() {
             draft = null;
+            companyEdited = false;
         }
     };
 })();

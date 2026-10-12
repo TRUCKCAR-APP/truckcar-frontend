@@ -62,6 +62,20 @@ window.app = {
             }
         });
 
+        // 403: la cuenta no tiene permiso para esa vista. Se vuelve a la vista propia del rol, sin franja de error.
+        window.addEventListener('truckdar:forbidden', () => {
+            const state = window.store.state;
+            if (!state.isAuthenticated) return;
+            const home = this.roleToView(state.sessionRole);
+            if (state.activeRole !== home) {
+                window.store.setState({ activeRole: home });
+                window.ui.toast(home === 'generator'
+                    ? 'Su cuenta de generador de carga solo tiene acceso a "Mis envíos".'
+                    : 'Su cuenta no tiene acceso a esa vista.', 'info');
+                window.TruckDarService.loadAll();
+            }
+        });
+
         const session = window.TruckDarApi.session;
         if (session.isActive()) {
             this.startSession(session.get());
@@ -72,8 +86,11 @@ window.app = {
     },
 
     // ------------------------------------------------------------------ sesión
+    /** CONDUCTOR -> app del conductor; GENERADOR -> solo "Mis envíos"; COORDINADOR/ADMIN -> torre de control. */
     roleToView(role) {
-        return role === 'CONDUCTOR' ? 'driver' : 'coordinator';
+        if (role === 'CONDUCTOR') return 'driver';
+        if (role === 'GENERADOR') return 'generator';
+        return 'coordinator';
     },
 
     async startSession(session) {
@@ -162,8 +179,9 @@ window.app = {
             const state = window.store.state;
             const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
             const podOpen = document.getElementById('pod-viewer-modal');
-            if (!state.isAuthenticated || state.activeRole !== 'coordinator' || state.coordinatorTab !== 'shipments'
-                || typing || podOpen) return;
+            const onShipments = state.activeRole === 'generator'
+                || (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments');
+            if (!state.isAuthenticated || !onShipments || typing || podOpen) return;
             await window.generatorCtrl.refresh(true);
         }, 10000);
     },
@@ -178,12 +196,16 @@ window.app = {
         const mount = document.getElementById('app-mount');
         if (!mount) return;
 
+        this.updateHeader(state);
         if (!state.isAuthenticated) {
             mount.innerHTML = window.LoginView.render(state);
             return;
         }
 
-        if (state.activeRole === 'driver') {
+        if (state.activeRole === 'generator') {
+            mount.innerHTML = window.GeneratorPanel.render(state);
+            this.handleGeneratorMapMount(state);
+        } else if (state.activeRole === 'driver') {
             mount.innerHTML = window.DriverApp.render(state);
             this.handleDriverMapMount(state);
         } else if (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments') {
@@ -193,6 +215,31 @@ window.app = {
             mount.innerHTML = window.CoordinatorPanel.render(state);
             this.handleCoordinatorMapMount(state);
         }
+    },
+
+    /**
+     * Barra superior según el rol de la sesión: el selector conductor/torre solo para COORDINADOR y ADMIN; las
+     * herramientas de simulación del conductor (rotar, avanzar GPS) no aplican a un generador.
+     */
+    updateHeader(state) {
+        const role = state.isAuthenticated ? state.sessionRole : null;
+        const show = (id, visible) => {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('hidden', !visible);
+        };
+        const controlTower = role === 'COORDINADOR' || role === 'ADMIN';
+        show('role-switcher', controlTower);
+        show('rotate-device-btn', role !== 'GENERADOR');
+        show('gps-step-btn', role !== 'GENERADOR');
+        const active = 'bg-emerald-600 text-white shadow';
+        const idle = 'text-slate-400 hover:text-slate-200';
+        [['role-btn-driver', 'driver'], ['role-btn-coordinator', 'coordinator']].forEach(([id, view]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const selected = state.activeRole === view;
+            active.split(' ').forEach(c => el.classList.toggle(c, selected));
+            idle.split(' ').forEach(c => el.classList.toggle(c, !selected));
+        });
     },
 
     setCoordinatorTab(tab) {
@@ -242,6 +289,11 @@ window.app = {
     async setRole(role) {
         const sessionRole = window.store.state.sessionRole;
         if (!window.store.state.isAuthenticated) return;
+        if (sessionRole === 'GENERADOR') {
+            // Un generador solo tiene "Mis envíos": no entra a la torre ni a la app del conductor.
+            if (window.store.state.activeRole !== 'generator') window.store.setState({ activeRole: 'generator' });
+            return;
+        }
         if (role === 'coordinator' && sessionRole === 'CONDUCTOR') {
             window.ui.toast('La torre de control requiere una cuenta de coordinador.', 'warning');
             return;
