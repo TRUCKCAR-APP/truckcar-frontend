@@ -225,6 +225,23 @@ window.DriverApp = {
     renderAssignedLoadScreen(state) {
         const esc = window.ui.escape;
         const load = window.TruckDarData.activeLoadOrder;
+        const lastDelivery = window.TruckDarData.lastDelivery;
+        if (!load && lastDelivery) {
+            // Recibo de la entrega recién registrada (firma y foto ya en memoria; no se vuelven a descargar).
+            const pod = { ...lastDelivery.pod, loadId: lastDelivery.load.backendId,
+                          driverName: lastDelivery.load.assignedDriverName, vehiclePlate: lastDelivery.load.assignedVehiclePlate,
+                          tripStartedAt: lastDelivery.load.tripStartedAt };
+            return `
+                <div class="h-full overflow-y-auto p-4 space-y-3">
+                    <div class="text-center space-y-1">
+                        <h3 class="font-extrabold text-white text-sm">Viaje finalizado</h3>
+                        <p class="text-xs text-slate-400">La carga quedó en DELIVERED. Cuando el motor le proponga otra aparecerá aquí.</p>
+                    </div>
+                    ${window.PodUI.receiptHtml(pod, lastDelivery.load)}
+                    <button onclick="window.app.refreshAssignment()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold"><i class="fas fa-rotate"></i> Buscar nueva carga</button>
+                </div>
+            `;
+        }
         if (!load) {
             return this.renderEmptyState('fa-clipboard-check', 'Sin carga asignada',
                 'Cuando el motor de asignación le proponga una carga aparecerá aquí para aceptarla o rechazarla.',

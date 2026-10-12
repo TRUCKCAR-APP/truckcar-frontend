@@ -246,9 +246,13 @@
             /** Cargas del conductor autenticado (propuestas, aceptadas y en tránsito). */
             mine: () => http.get('/loads/mine'),
             startTrip: (loadId) => http.patch('/loads/' + enc(loadId) + '/trip/start'),
-            /** pod: { receiverName, receiverDocument, notes } */
+            /** pod: { receiverName, receiverDocument, notes, signatureDataUrl, photoUrl } */
             deliver: (loadId, pod) => http.patch('/loads/' + enc(loadId) + '/trip/deliver', pod),
-            cancel: (loadId, reason) => http.patch('/loads/' + enc(loadId) + '/cancel', { reason })
+            cancel: (loadId, reason) => http.patch('/loads/' + enc(loadId) + '/cancel', { reason }),
+            /** Torre de control (COORDINADOR/ADMIN): cargas de todos los generadores por status. */
+            list: (statuses) => http.get('/loads', { query: { status: statuses && statuses.length ? statuses.join(',') : undefined } }),
+            /** POD completo con firma y foto: conductor de la carga o torre de control. */
+            proofOfDelivery: (loadId) => http.get('/loads/' + enc(loadId) + '/proof-of-delivery')
         },
 
         /** AI-powered-fleet-allocation: motor de scoring de conductores */

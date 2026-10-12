@@ -197,6 +197,11 @@
             tripStartedAt: load.tripStartedAt,
             deliveredAt: load.deliveredAt,
             podReceiverName: load.podReceiverName,
+            podReceiverDocument: load.podReceiverDocument,
+            podNotes: load.podNotes,
+            podHasSignature: !!load.podHasSignature,
+            podHasPhoto: !!load.podHasPhoto,
+            deliveredAtLabel: formatDateTime(load.deliveredAt),
             cancellationReason: load.cancellationReason,
             // Se completan con el plan de ruta cuando está disponible.
             estimatedDuration: '—',
@@ -333,6 +338,22 @@
             await this.loadEvaluation();
         },
 
+        /** Historial de entregas de la torre de control (las firmas y fotos se piden al abrir cada POD). */
+        async loadDeliveredLoads() {
+            try {
+                const delivered = (await api.loads.list(['DELIVERED'])) || [];
+                data.deliveredLoads = delivered.slice(0, 30).map(mapLoad);
+                clearError('deliveries');
+            } catch (error) {
+                recordError('deliveries', error);
+            }
+        },
+
+        /** POD completo (receptor, documento, notas, firma y foto) de una carga entregada. */
+        getProofOfDelivery(loadId) {
+            return api.loads.proofOfDelivery(loadId);
+        },
+
         async loadEvaluation() {
             const load = data.activeLoadOrder;
             if (!load) {
@@ -411,7 +432,7 @@
             }
             const role = window.store.state.activeRole;
             if (role === 'coordinator') {
-                await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad()]);
+                await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads()]);
             } else {
                 await this.loadDriverProfile();
                 await Promise.all([this.loadDriverAssignment(), this.loadAlerts()]);
@@ -421,7 +442,7 @@
         },
 
         async refreshCoordinator() {
-            await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad()]);
+            await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads()]);
             setStatus({ lastSync: new Date().toISOString() });
         },
 
@@ -458,7 +479,9 @@
             const updated = await api.loads.deliver(load.backendId, pod);
             data.activeLoadOrder = null;
             data.routes = null;
-            return mapLoad(updated);
+            // Recibo de la última entrega para la pantalla del conductor (la firma y la foto ya están en memoria).
+            data.lastDelivery = { load: mapLoad(updated), pod: { ...pod, deliveredAt: updated.deliveredAt } };
+            return data.lastDelivery.load;
         },
 
         async cancelLoad(loadId, reason) {
@@ -504,6 +527,8 @@
             data.routes = null;
             data.communityAlerts = [];
             data.fleetVehicles = [];
+            data.deliveredLoads = [];
+            data.lastDelivery = null;
         }
     };
 

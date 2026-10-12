@@ -322,25 +322,13 @@ window.app = {
             window.ui.toast('No hay un viaje en tránsito para finalizar.', 'warning');
             return;
         }
-        const receiverName = prompt('Entrega en ' + load.destination.name + '\nNombre de quien recibe la carga (obligatorio):');
-        if (receiverName === null) return;
-        if (!receiverName.trim()) {
-            window.ui.toast('La prueba de entrega requiere el nombre de quien recibe.', 'warning');
-            return;
-        }
-        const receiverDocument = prompt('Documento de quien recibe (opcional):') || null;
-        const notes = prompt('Observaciones de la entrega (opcional):', 'Sin novedades') || null;
-
-        window.store.setState({ busyAction: 'deliver' });
-        try {
-            await window.TruckDarService.deliverLoad({ receiverName: receiverName.trim(), receiverDocument, notes });
-            window.voiceEngine.speak('Entrega registrada. Viaje finalizado.');
-            window.ui.toast('Entrega registrada (DELIVERED) con prueba de entrega.', 'success');
-            window.store.setState({ busyAction: null, driverScreen: 'assigned_load', navStepIndex: 0 });
-        } catch (error) {
-            window.store.setState({ busyAction: null });
-            window.ui.toast('No se pudo registrar la entrega: ' + window.ui.errorMessage(error), 'error');
-        }
+        // Formulario de POD (receptor, firma en lienzo y foto). Si el backend rechaza la entrega, el formulario
+        // sigue abierto con el error para no perder la firma.
+        const delivered = await window.PodUI.openDeliveryForm(load, (pod) => window.TruckDarService.deliverLoad(pod));
+        if (!delivered) return;
+        window.voiceEngine.speak('Entrega registrada. Viaje finalizado.');
+        window.ui.toast('Entrega registrada (DELIVERED) con firma y prueba de entrega.', 'success');
+        window.store.setState({ busyAction: null, driverScreen: 'assigned_load', navStepIndex: 0 });
     },
 
     toggleVoice() {

@@ -7,6 +7,7 @@ window.CoordinatorPanel = {
         const evaluation = data.dispatchEvaluation || { candidates: [] };
         const load = data.activeLoadOrder;
         const loads = data.availableLoads || [];
+        const deliveries = data.deliveredLoads || [];
         const user = state.currentUser;
 
         const operating = fleet.filter(t => t.status === 'EN_TRANSITO' || t.status === 'DISPONIBLE').length;
@@ -209,7 +210,29 @@ window.CoordinatorPanel = {
                             </div>
                         </div>
 
-                        <div class="h-48 grid grid-cols-2 gap-4">
+                        <div class="h-48 grid grid-cols-3 gap-4">
+                            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
+                                        <i class="fas fa-file-signature text-emerald-400"></i> Entregas Recientes
+                                    </h3>
+                                    <span class="text-[10px] text-emerald-400 font-mono">${deliveries.length} con POD</span>
+                                </div>
+                                <div class="flex-1 overflow-y-auto space-y-1.5 text-xs">
+                                    ${deliveries.length ? deliveries.map(d => `
+                                        <div class="p-2 bg-slate-800/50 border border-slate-700/50 rounded-xl flex items-center justify-between gap-2">
+                                            <div class="min-w-0">
+                                                <div class="font-bold text-white truncate">${esc(d.id)} · ${esc(d.destination.city)}</div>
+                                                <div class="text-[10px] text-slate-400 truncate">Recibió ${esc(d.podReceiverName || '—')} · ${esc(d.deliveredAtLabel)}</div>
+                                            </div>
+                                            <button onclick="window.coordinatorCtrl.showProofOfDelivery(${d.backendId})" class="shrink-0 px-2 py-1 bg-emerald-600/80 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold" title="Ver prueba de entrega">
+                                                <i class="fas ${d.podHasSignature ? 'fa-signature' : 'fa-receipt'}"></i> POD
+                                            </button>
+                                        </div>
+                                    `).join('') : '<div class="text-slate-400 text-center p-3">Aún no hay entregas registradas.</div>'}
+                                </div>
+                            </div>
+
                             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
@@ -337,6 +360,12 @@ window.coordinatorCtrl = {
             </div>
         `;
         modal.classList.remove('hidden');
+    },
+
+    /** Recibo firmado (receptor, documento, notas, firma y foto) de una carga DELIVERED. */
+    showProofOfDelivery(loadId) {
+        const load = (window.TruckDarData.deliveredLoads || []).find(l => l.backendId === loadId);
+        window.PodUI.showProofOfDelivery(loadId, load);
     },
 
     closeAiInspectionModal() {
