@@ -240,6 +240,8 @@
             getById: (loadId) => http.get('/loads/' + enc(loadId)),
             listAvailable: (truckType) => http.get('/loads/available', { query: { truckType } }),
             listByCompany: (companyId) => http.get('/loads/company/' + enc(companyId)),
+            /** Envíos del generador autenticado (generatorCompanyId = su id de usuario). */
+            published: () => http.get('/loads/published'),
             publish: (load) => http.post('/loads', load),
             accept: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/accept'),
             reject: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/reject'),

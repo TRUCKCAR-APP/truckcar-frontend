@@ -132,7 +132,8 @@
         if (state.restRequiredAlert) {
             status = 'DESCANSO';
         } else if (status === 'ACTIVO') {
-            status = (state.currentSpeedKmH || 0) > 0 ? 'EN_TRANSITO' : 'DISPONIBLE';
+            // Con un viaje IN_TRANSIT (fleets-drivers) el camión está en ruta aunque reporte velocidad 0.
+            status = (state.currentSpeedKmH || 0) > 0 || state.currentLoadStatus === 'IN_TRANSIT' ? 'EN_TRANSITO' : 'DISPONIBLE';
         }
         return {
             id: state.driverId,
@@ -144,6 +145,7 @@
             speed: Math.round(state.currentSpeedKmH || 0),
             hoursActive: state.drivingHoursToday != null ? state.drivingHoursToday + 'h' : '—',
             lastCheckin: timeAgo(state.lastUpdate),
+            currentLoadId: state.currentLoadId,
             coords: coordsOrNull(state.currentLatitude, state.currentLongitude)
         };
     }
@@ -172,6 +174,7 @@
             id: 'CARGA-' + load.id,
             backendId: load.id,
             customer: load.generatorCompanyName,
+            generatorCompanyId: load.generatorCompanyId,
             origin: {
                 name: [load.originCity, load.originDepartment].filter(Boolean).join(', '),
                 city: load.originCity,
@@ -194,6 +197,8 @@
             assignedDriverName: load.assignedDriverName,
             assignedVehiclePlate: load.assignedVehiclePlate,
             correlationId: load.correlationId,
+            publishedAt: load.publishedAt,
+            assignedAt: load.assignedAt,
             tripStartedAt: load.tripStartedAt,
             deliveredAt: load.deliveredAt,
             podReceiverName: load.podReceiverName,
@@ -203,6 +208,7 @@
             podHasPhoto: !!load.podHasPhoto,
             deliveredAtLabel: formatDateTime(load.deliveredAt),
             cancellationReason: load.cancellationReason,
+            cancelledAt: load.cancelledAt,
             // Se completan con el plan de ruta cuando está disponible.
             estimatedDuration: '—',
             totalDistance: '—',
@@ -349,6 +355,24 @@
             }
         },
 
+        /** Panel del generador: sus envíos (todas las cargas que publicó, en cualquier status). */
+        async loadPublishedLoads() {
+            try {
+                const published = (await api.loads.published()) || [];
+                data.publishedLoads = published.map(mapLoad);
+                clearError('shipments');
+            } catch (error) {
+                recordError('shipments', error);
+            }
+        },
+
+        /** POST /loads: la empresa generadora la fija el backend con el usuario autenticado. */
+        async publishLoad(request) {
+            const created = await api.loads.publish(request);
+            await this.loadPublishedLoads();
+            return mapLoad(created);
+        },
+
         /** POD completo (receptor, documento, notas, firma y foto) de una carga entregada. */
         getProofOfDelivery(loadId) {
             return api.loads.proofOfDelivery(loadId);
@@ -432,7 +456,7 @@
             }
             const role = window.store.state.activeRole;
             if (role === 'coordinator') {
-                await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads()]);
+                await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads(), this.loadPublishedLoads()]);
             } else {
                 await this.loadDriverProfile();
                 await Promise.all([this.loadDriverAssignment(), this.loadAlerts()]);
@@ -442,7 +466,7 @@
         },
 
         async refreshCoordinator() {
-            await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads()]);
+            await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads(), this.loadPublishedLoads()]);
             setStatus({ lastSync: new Date().toISOString() });
         },
 
@@ -528,6 +552,7 @@
             data.communityAlerts = [];
             data.fleetVehicles = [];
             data.deliveredLoads = [];
+            data.publishedLoads = [];
             data.lastDelivery = null;
         }
     };

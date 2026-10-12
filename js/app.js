@@ -90,15 +90,21 @@ window.app = {
 
     endSession() {
         clearInterval(this.pollTimer);
+        clearInterval(this.shipmentsTimer);
         window.TruckDarService.reset();
         window.TruckDarApi.session.clear();
+        window.generatorCtrl.reset();
         window.store.setState({
             isAuthenticated: false,
             currentUser: null,
             sessionRole: null,
             busyAction: null,
             dataStatus: { loading: false, errors: {}, lastSync: null },
-            driverScreen: 'assigned_load'
+            driverScreen: 'assigned_load',
+            coordinatorTab: 'fleet',
+            selectedShipmentId: null,
+            shipmentFilter: 'ALL',
+            generatorFormError: null
         });
     },
 
@@ -150,6 +156,16 @@ window.app = {
             if (!state.isAuthenticated || state.activeRole !== 'coordinator' || typing) return;
             await window.TruckDarService.refreshCoordinator();
         }, window.TruckDarConfig.pollingIntervalMs);
+        // "Mis envíos" se refresca más seguido (solo cargas propias y flota) para seguir los cambios de estado.
+        clearInterval(this.shipmentsTimer);
+        this.shipmentsTimer = setInterval(async () => {
+            const state = window.store.state;
+            const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+            const podOpen = document.getElementById('pod-viewer-modal');
+            if (!state.isAuthenticated || state.activeRole !== 'coordinator' || state.coordinatorTab !== 'shipments'
+                || typing || podOpen) return;
+            await window.generatorCtrl.refresh(true);
+        }, 10000);
     },
 
     async reloadData() {
@@ -170,10 +186,27 @@ window.app = {
         if (state.activeRole === 'driver') {
             mount.innerHTML = window.DriverApp.render(state);
             this.handleDriverMapMount(state);
+        } else if (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments') {
+            mount.innerHTML = window.GeneratorPanel.render(state);
+            this.handleGeneratorMapMount(state);
         } else if (state.activeRole === 'coordinator') {
             mount.innerHTML = window.CoordinatorPanel.render(state);
             this.handleCoordinatorMapMount(state);
         }
+    },
+
+    setCoordinatorTab(tab) {
+        window.store.setState({ coordinatorTab: tab });
+        if (tab === 'shipments') window.generatorCtrl.refresh(true);
+    },
+
+    handleGeneratorMapMount(state) {
+        this.scheduleMapMount(() => {
+            if (!document.getElementById('generator-map-container')) return;
+            const load = window.GeneratorPanel.selectedLoad(state);
+            window.mapCtrl.initMap('generator-map-container', [4.6097, -74.0817], 6);
+            window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load));
+        });
     },
 
     /** Agrupa montajes de mapa: varios renders seguidos (sincronización) crean el mapa una sola vez. */

@@ -32,6 +32,8 @@ window.CoordinatorPanel = {
                         </div>
                     </div>
 
+                    ${this.renderTabs(state)}
+
                     <div class="flex items-center gap-6">
                         <div class="flex items-center gap-3">
                             <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
@@ -301,6 +303,21 @@ window.CoordinatorPanel = {
                 </div>
             </div>
         `;
+    },
+
+    /** Pestañas del rol COORDINADOR: torre de control (toda la flota) y panel del generador (sus envíos). */
+    renderTabs(state) {
+        const tab = state.coordinatorTab === 'shipments' ? 'shipments' : 'fleet';
+        const item = (key, icon, text) => `
+            <button onclick="window.app.setCoordinatorTab('${key}')" role="tab" aria-selected="${tab === key}"
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${tab === key ? 'bg-emerald-600 text-white shadow' : 'text-slate-300 hover:bg-slate-800'}">
+                <i class="fas ${icon}"></i> ${text}
+            </button>`;
+        return `
+            <nav class="flex items-center gap-1 p-1 bg-slate-950/60 border border-slate-800 rounded-xl" role="tablist" aria-label="Vistas del coordinador">
+                ${item('fleet', 'fa-tower-broadcast', 'Torre de control')}
+                ${item('shipments', 'fa-boxes-stacked', 'Mis envíos')}
+            </nav>`;
     },
 
     initials(user) {

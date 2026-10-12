@@ -26,6 +26,7 @@ class MapController {
             this.map = null;
             this.truckMarker = null;
             this.optimalRouteLayer = null;
+            this.shipmentLayer = null;
         }
 
         const container = document.getElementById(containerId);
@@ -288,6 +289,52 @@ class MapController {
             this.map.setView(points[0], 11, { animate: false });
         } else if (points.length > 1) {
             this.map.fitBounds(L.latLngBounds(points), { padding: [40, 40], animate: false });
+        }
+    }
+
+    /** Panel del generador: origen, destino y, si la carga está asignada o en ruta, la posición del camión. */
+    drawShipment(load, truck) {
+        if (!this.map) return;
+        if (this.shipmentLayer) {
+            try { this.map.removeLayer(this.shipmentLayer); } catch (e) { /* capa ya removida */ }
+            this.shipmentLayer = null;
+        }
+        if (!load) return;
+        const esc = window.ui.escape;
+        const label = (html, color) => L.divIcon({
+            html: `<div class="${color} text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1 whitespace-nowrap">${html}</div>`,
+            className: 'custom-wp-icon', iconSize: [96, 20], iconAnchor: [48, 10]
+        });
+        const layers = [];
+        const points = [];
+        const origin = load.origin && load.origin.coords;
+        const destination = load.destination && load.destination.coords;
+        if (origin) {
+            layers.push(L.marker(origin, { icon: label('<i class="fas fa-box"></i> ' + esc(load.origin.city), 'bg-emerald-600') }));
+            points.push(origin);
+        }
+        if (destination) {
+            layers.push(L.marker(destination, { icon: label('<i class="fas fa-flag-checkered"></i> ' + esc(load.destination.city), 'bg-blue-600') }));
+            points.push(destination);
+        }
+        if (origin && destination) {
+            layers.push(L.polyline([origin, destination], { color: '#6366f1', weight: 3, opacity: 0.8, dashArray: '6 8' }));
+        }
+        if (truck && truck.coords) {
+            layers.push(L.marker(truck.coords, {
+                zIndexOffset: 1000,
+                icon: L.divIcon({
+                    html: '<div class="w-9 h-9 bg-slate-900 border-2 border-emerald-400 rounded-full shadow-xl flex items-center justify-center text-emerald-400 text-sm"><i class="fas fa-truck-moving"></i></div>',
+                    className: 'truck-pin', iconSize: [36, 36], iconAnchor: [18, 18]
+                })
+            }).bindPopup('<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(truck.status) + ' · ' + truck.speed + ' km/h · ' + esc(truck.lastCheckin)));
+            points.push(truck.coords);
+        }
+        this.shipmentLayer = L.layerGroup(layers).addTo(this.map);
+        if (points.length === 1) {
+            this.map.setView(points[0], 10, { animate: false });
+        } else if (points.length > 1) {
+            this.map.fitBounds(L.latLngBounds(points), { padding: [36, 36], animate: false });
         }
     }
 
