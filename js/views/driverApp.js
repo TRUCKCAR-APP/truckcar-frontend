@@ -230,8 +230,12 @@ window.DriverApp = {
                 'Cuando el motor de asignación le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
                 '<button onclick="window.app.refreshAssignment()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold"><i class="fas fa-rotate"></i> Consultar de nuevo</button>');
         }
-        const pending = load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED';
+        const pending = load.status === 'AVAILABLE'
+            && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED');
+        const inTransit = load.status === 'IN_TRANSIT';
         const busy = state.busyAction;
+        const badge = pending ? load.assignmentStatus : load.status;
+        const title = pending ? 'Nueva Carga Propuesta' : inTransit ? 'Viaje en Curso' : 'Carga Aceptada';
 
         return `
             <div class="h-full overflow-y-auto p-4 space-y-4">
@@ -239,11 +243,11 @@ window.DriverApp = {
                     <div>
                         <div class="flex items-center gap-2">
                             <span class="px-2 py-0.5 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-bold uppercase font-mono">
-                                ${esc(load.assignmentStatus || 'SIN ESTADO')}
+                                ${esc(badge || 'SIN ESTADO')}
                             </span>
                             <span class="text-xs text-slate-400">Orden #${esc(load.id)}</span>
                         </div>
-                        <h2 class="text-lg font-extrabold text-white mt-1">${pending ? 'Nueva Carga Propuesta' : 'Carga Aceptada'}</h2>
+                        <h2 class="text-lg font-extrabold text-white mt-1">${title}</h2>
                         <p class="text-[11px] text-slate-400">${esc(load.customer || '')}</p>
                     </div>
                 </div>
@@ -313,10 +317,24 @@ window.DriverApp = {
                             <i class="fas ${busy === 'accept' ? 'fa-spinner fa-spin' : 'fa-check-circle'}"></i> Aceptar & Ver Ruta
                         </button>
                     </div>
+                ` : inTransit ? `
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="py-3.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition">
+                            <i class="fas fa-location-arrow"></i> Continuar navegación
+                        </button>
+                        <button onclick="window.app.finishTrip()" ${busy ? 'disabled' : ''} class="py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 transition">
+                            <i class="fas ${busy === 'deliver' ? 'fa-spinner fa-spin' : 'fa-clipboard-check'}"></i> Registrar entrega
+                        </button>
+                    </div>
                 ` : `
-                    <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 transition">
-                        <i class="fas fa-route"></i> Ver ruta planeada
-                    </button>
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition">
+                            <i class="fas fa-route"></i> Ver ruta planeada
+                        </button>
+                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 transition">
+                            <i class="fas ${busy === 'start-trip' ? 'fa-spinner fa-spin' : 'fa-truck-moving'}"></i> Iniciar viaje
+                        </button>
+                    </div>
                 `}
             </div>
         `;
@@ -420,7 +438,7 @@ window.DriverApp = {
                     ` : ''}
 
                     <button onclick="window.app.startNavigation()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/40 transition transform active:scale-98">
-                        <i class="fas fa-play"></i> Iniciar Navegación (simulada)
+                        <i class="fas fa-play"></i> ${window.TruckDarData.activeLoadOrder && window.TruckDarData.activeLoadOrder.status === 'IN_TRANSIT' ? 'Continuar navegación' : 'Iniciar viaje y navegación'}
                     </button>
                 </div>
             </div>
@@ -556,7 +574,7 @@ window.DriverApp = {
                             <i class="fas fa-step-forward"></i> Simular Avance
                         </button>
                         <button onclick="window.app.finishTrip()" class="px-3 py-2 bg-rose-600/30 hover:bg-rose-600 text-rose-300 hover:text-white rounded-xl text-xs font-bold transition">
-                            Finalizar
+                            Registrar entrega
                         </button>
                     </div>
                 </div>

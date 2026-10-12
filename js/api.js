@@ -242,7 +242,13 @@
             listByCompany: (companyId) => http.get('/loads/company/' + enc(companyId)),
             publish: (load) => http.post('/loads', load),
             accept: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/accept'),
-            reject: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/reject')
+            reject: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/reject'),
+            /** Cargas del conductor autenticado (propuestas, aceptadas y en tránsito). */
+            mine: () => http.get('/loads/mine'),
+            startTrip: (loadId) => http.patch('/loads/' + enc(loadId) + '/trip/start'),
+            /** pod: { receiverName, receiverDocument, notes } */
+            deliver: (loadId, pod) => http.patch('/loads/' + enc(loadId) + '/trip/deliver', pod),
+            cancel: (loadId, reason) => http.patch('/loads/' + enc(loadId) + '/cancel', { reason })
         },
 
         /** AI-powered-fleet-allocation: motor de scoring de conductores */

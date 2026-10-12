@@ -97,6 +97,12 @@ window.CoordinatorPanel = {
                                     </div>
                                 </div>
 
+                                ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
+                                    <button onclick="window.coordinatorCtrl.cancelLoad(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-60 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition">
+                                        <i class="fas ${state.busyAction === 'cancel' ? 'fa-spinner fa-spin' : 'fa-ban'}"></i> Cancelar carga
+                                    </button>
+                                ` : ''}
+
                                 ${!load.assignmentStatus || load.assignmentStatus === 'UNASSIGNED_NO_DRIVERS' ? `
                                     <button onclick="window.coordinatorCtrl.requestMatching(${load.backendId})" ${state.busyAction === 'matching' ? 'disabled' : ''} class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition">
                                         <i class="fas ${state.busyAction === 'matching' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}"></i> Ejecutar matching con IA
@@ -347,6 +353,25 @@ window.coordinatorCtrl = {
         window.store.setState({ selectedLoadId: Number(loadId) });
         await window.TruckDarService.loadCoordinatorLoad();
         window.store.setState({});
+    },
+
+    /** AVAILABLE | ASSIGNED -> CANCELLED (solo COORDINADOR o ADMIN; el backend lo valida con el rol del token). */
+    async cancelLoad(loadId) {
+        const reason = prompt('Motivo de la cancelación de la carga #' + loadId + ' (obligatorio):');
+        if (reason === null) return;
+        if (!reason.trim()) {
+            window.ui.toast('Indique el motivo de la cancelación.', 'warning');
+            return;
+        }
+        window.store.setState({ busyAction: 'cancel' });
+        try {
+            await window.TruckDarService.cancelLoad(loadId, reason.trim());
+            window.ui.toast('Carga #' + loadId + ' cancelada.', 'success');
+        } catch (error) {
+            window.ui.toast('No se pudo cancelar la carga: ' + window.ui.errorMessage(error), 'error');
+        } finally {
+            window.store.setState({ busyAction: null });
+        }
     },
 
     async requestMatching(loadId) {

@@ -274,8 +274,25 @@ window.app = {
         window.store.setState({});
     },
 
-    startNavigation() {
-        window.store.setState({ driverScreen: 'navigation', navStepIndex: 0, simulatedSpeed: 48 });
+    /** Inicia el viaje real (ASSIGNED -> IN_TRANSIT) y abre la navegación; si ya está en tránsito, la reanuda. */
+    async startNavigation() {
+        const load = window.TruckDarData.activeLoadOrder;
+        if (!load || (load.status !== 'ASSIGNED' && load.status !== 'IN_TRANSIT')) {
+            window.ui.toast('Acepte una carga antes de iniciar el viaje.', 'warning');
+            return;
+        }
+        if (load.status === 'ASSIGNED') {
+            window.store.setState({ busyAction: 'start-trip' });
+            try {
+                await window.TruckDarService.startTrip();
+                window.ui.toast('Viaje iniciado: la carga está en tránsito.', 'success');
+            } catch (error) {
+                window.store.setState({ busyAction: null });
+                window.ui.toast('No se pudo iniciar el viaje: ' + window.ui.errorMessage(error), 'error');
+                return;
+            }
+        }
+        window.store.setState({ busyAction: null, driverScreen: 'navigation', navStepIndex: 0, simulatedSpeed: 48 });
         const step0 = window.TruckDarData.liveNavigationSteps[0];
         window.voiceEngine.speak(step0.voiceAudioText, true);
     },
@@ -298,13 +315,31 @@ window.app = {
         }
     },
 
-    finishTrip() {
+    /** Registra la entrega con su prueba (IN_TRANSIT -> DELIVERED). */
+    async finishTrip() {
         const load = window.TruckDarData.activeLoadOrder;
-        const destination = load ? load.destination.name : 'el destino';
-        if (confirm('¿Desea finalizar la ruta y confirmar la entrega en ' + destination + '?')) {
-            window.voiceEngine.speak('Destino alcanzado. Ruta finalizada sin incidentes.');
-            window.ui.toast('Ruta finalizada. (El cierre de viaje aún no tiene endpoint en el backend.)', 'info');
-            window.store.setState({ driverScreen: 'profile', navStepIndex: 0 });
+        if (!load || load.status !== 'IN_TRANSIT') {
+            window.ui.toast('No hay un viaje en tránsito para finalizar.', 'warning');
+            return;
+        }
+        const receiverName = prompt('Entrega en ' + load.destination.name + '\nNombre de quien recibe la carga (obligatorio):');
+        if (receiverName === null) return;
+        if (!receiverName.trim()) {
+            window.ui.toast('La prueba de entrega requiere el nombre de quien recibe.', 'warning');
+            return;
+        }
+        const receiverDocument = prompt('Documento de quien recibe (opcional):') || null;
+        const notes = prompt('Observaciones de la entrega (opcional):', 'Sin novedades') || null;
+
+        window.store.setState({ busyAction: 'deliver' });
+        try {
+            await window.TruckDarService.deliverLoad({ receiverName: receiverName.trim(), receiverDocument, notes });
+            window.voiceEngine.speak('Entrega registrada. Viaje finalizado.');
+            window.ui.toast('Entrega registrada (DELIVERED) con prueba de entrega.', 'success');
+            window.store.setState({ busyAction: null, driverScreen: 'assigned_load', navStepIndex: 0 });
+        } catch (error) {
+            window.store.setState({ busyAction: null });
+            window.ui.toast('No se pudo registrar la entrega: ' + window.ui.errorMessage(error), 'error');
         }
     },
 

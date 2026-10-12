@@ -194,6 +194,10 @@
             assignedDriverName: load.assignedDriverName,
             assignedVehiclePlate: load.assignedVehiclePlate,
             correlationId: load.correlationId,
+            tripStartedAt: load.tripStartedAt,
+            deliveredAt: load.deliveredAt,
+            podReceiverName: load.podReceiverName,
+            cancellationReason: load.cancellationReason,
             // Se completan con el plan de ruta cuando está disponible.
             estimatedDuration: '—',
             totalDistance: '—',
@@ -295,15 +299,17 @@
             const driver = data.currentDriver;
             if (!driver || !driver.id) return;
             try {
-                const available = await api.loads.listAvailable();
-                const mine = (available || []).find(load =>
-                    load.assignedDriverId === driver.id
-                    && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED'));
-                const current = data.activeLoadOrder;
-                if (mine) {
-                    data.activeLoadOrder = mapLoad(mine);
-                } else if (!current || current.assignedDriverId !== driver.id || current.assignmentStatus !== 'ACCEPTED') {
-                    data.activeLoadOrder = null;
+                // GET /loads/mine: propuestas vigentes, aceptadas y en tránsito del conductor autenticado.
+                // Prioridad: el viaje en curso, luego el aceptado, luego la propuesta pendiente.
+                const mine = (await api.loads.mine()) || [];
+                const rank = load => load.status === 'IN_TRANSIT' ? 0 : load.status === 'ASSIGNED' ? 1 : 2;
+                const current = mine.slice().sort((a, b) => rank(a) - rank(b))[0];
+                const previous = data.activeLoadOrder;
+                data.activeLoadOrder = current ? mapLoad(current) : null;
+                if (data.activeLoadOrder && previous && previous.backendId === data.activeLoadOrder.backendId) {
+                    // Conserva distancia y duración ya calculadas por Route-AI para la misma carga.
+                    data.activeLoadOrder.totalDistance = previous.totalDistance;
+                    data.activeLoadOrder.estimatedDuration = previous.estimatedDuration;
                 }
                 clearError('loads');
             } catch (error) {
@@ -434,6 +440,31 @@
             await api.loads.reject(load.backendId);
             data.activeLoadOrder = null;
             data.routes = null;
+        },
+
+        /** ASSIGNED -> IN_TRANSIT. */
+        async startTrip() {
+            const load = data.activeLoadOrder;
+            if (!load) throw new Error('No hay una carga asignada');
+            const updated = await api.loads.startTrip(load.backendId);
+            data.activeLoadOrder = { ...mapLoad(updated), totalDistance: load.totalDistance, estimatedDuration: load.estimatedDuration };
+            return data.activeLoadOrder;
+        },
+
+        /** IN_TRANSIT -> DELIVERED con la prueba de entrega. */
+        async deliverLoad(pod) {
+            const load = data.activeLoadOrder;
+            if (!load) throw new Error('No hay una carga en tránsito');
+            const updated = await api.loads.deliver(load.backendId, pod);
+            data.activeLoadOrder = null;
+            data.routes = null;
+            return mapLoad(updated);
+        },
+
+        async cancelLoad(loadId, reason) {
+            const updated = await api.loads.cancel(loadId, reason);
+            await this.loadCoordinatorLoad();
+            return mapLoad(updated);
         },
 
         async requestMatching(loadId) {
