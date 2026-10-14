@@ -270,20 +270,20 @@ window.GeneratorPanel = (function () {
     }
 
     function selectedLoad(state) {
-        const loads = window.TruckDarData.publishedLoads || [];
+        const loads = window.TruckCarData.publishedLoads || [];
         return loads.find(l => l.backendId === state.selectedShipmentId) || null;
     }
 
     /** Camión a seguir en el mapa: solo mientras la carga está aceptada o en ruta. */
     function truckFor(load) {
         if (!load || !load.assignedDriverId || !['ASSIGNED', 'IN_TRANSIT'].includes(load.status)) return null;
-        const tracked = (window.TruckDarData.shipmentTrucks || {})[load.assignedDriverId];
-        return tracked || (window.TruckDarData.fleetVehicles || []).find(t => t.driverId === load.assignedDriverId) || null;
+        const tracked = (window.TruckCarData.shipmentTrucks || {})[load.assignedDriverId];
+        return tracked || (window.TruckCarData.fleetVehicles || []).find(t => t.driverId === load.assignedDriverId) || null;
     }
 
     function render(state) {
         const esc = window.ui.escape;
-        const loads = window.TruckDarData.publishedLoads || [];
+        const loads = window.TruckCarData.publishedLoads || [];
         const load = selectedLoad(state);
         const user = state.currentUser;
         const active = loads.filter(l => ['ASSIGNED', 'IN_TRANSIT'].includes(l.status)).length;
@@ -334,7 +334,7 @@ window.generatorCtrl = (function () {
     function defaultDraft() {
         const user = window.store.state.currentUser;
         let company = '';
-        try { company = localStorage.getItem('truckdar.generatorCompanyName') || ''; } catch (e) { /* sin almacenamiento */ }
+        try { company = localStorage.getItem('truckcar.generatorCompanyName') || ''; } catch (e) { /* sin almacenamiento */ }
         return {
             generatorCompanyName: company || (user ? (user.firstName + ' ' + user.lastName).trim() : ''),
             cargoDescription: '', weightTons: '', volumeM3: '', requiredTruckType: 'TRACTOMULA_3S3',
@@ -383,7 +383,7 @@ window.generatorCtrl = (function () {
             const companyName = d.generatorCompanyName.trim() || (user ? user.firstName + ' ' + user.lastName : 'Generador');
             window.store.setState({ busyAction: 'publish', generatorFormError: null });
             try {
-                const created = await window.TruckDarService.publishLoad({
+                const created = await window.TruckCarService.publishLoad({
                     // El backend reemplaza este valor por el id del usuario autenticado (X-Auth-User).
                     generatorCompanyId: user ? user.id : undefined,
                     generatorCompanyName: companyName,
@@ -397,7 +397,7 @@ window.generatorCtrl = (function () {
                     destinationLatitude: destination.latitude, destinationLongitude: destination.longitude,
                     offeredBudget: budget
                 });
-                try { localStorage.setItem('truckdar.generatorCompanyName', companyName); } catch (e) { /* sin almacenamiento */ }
+                try { localStorage.setItem('truckcar.generatorCompanyName', companyName); } catch (e) { /* sin almacenamiento */ }
                 draft = { ...defaultDraft(), requiredTruckType: d.requiredTruckType, originCity: d.originCity, destinationCity: d.destinationCity };
                 window.store.setState({ busyAction: null, selectedShipmentId: created.backendId, shipmentFilter: 'ALL' });
                 window.ui.toast(created.id + ' publicada. El motor de asignación ya busca conductor.', 'success');
@@ -419,13 +419,13 @@ window.generatorCtrl = (function () {
         async refresh(silent) {
             // Un refresco programado (p. ej. tras publicar) puede dispararse después de cerrar la sesión.
             if (!window.store.state.isAuthenticated) return;
-            await window.TruckDarService.refreshShipments();
+            await window.TruckCarService.refreshShipments();
             window.store.setState({ dataStatus: { ...window.store.state.dataStatus, lastSync: new Date().toISOString() } });
             if (!silent) window.ui.toast('Envíos actualizados.', 'info');
         },
 
         showProofOfDelivery(loadId) {
-            const load = (window.TruckDarData.publishedLoads || []).find(l => l.backendId === loadId);
+            const load = (window.TruckCarData.publishedLoads || []).find(l => l.backendId === loadId);
             window.PodUI.showProofOfDelivery(loadId, load);
         },
 
@@ -438,8 +438,8 @@ window.generatorCtrl = (function () {
             }
             window.store.setState({ busyAction: 'cancel' });
             try {
-                await window.TruckDarService.cancelLoad(loadId, reason.trim());
-                await window.TruckDarService.loadPublishedLoads();
+                await window.TruckCarService.cancelLoad(loadId, reason.trim());
+                await window.TruckCarService.loadPublishedLoads();
                 window.ui.toast('Envío CARGA-' + loadId + ' cancelado.', 'success');
             } catch (err) {
                 window.ui.toast('No se pudo cancelar: ' + window.ui.errorMessage(err), 'error');

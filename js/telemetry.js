@@ -1,7 +1,7 @@
 /**
  * Telemetría GPS en tiempo real (STOMP 1.2 sobre WebSocket) a través del api-gateway: ws://<gateway>/ws-telemetry.
  *
- * - TruckDarTelemetry: cliente STOMP mínimo (sin dependencias) con reconexión, heartbeats y re-suscripción.
+ * - TruckCarTelemetry: cliente STOMP mínimo (sin dependencias) con reconexión, heartbeats y re-suscripción.
  * - DriverTelemetry: el conductor transmite su posición cada 3 s mientras la carga está IN_TRANSIT, con el GPS del
  *   dispositivo o, si no hay señal (o en pruebas locales), con una simulación fluida sobre la ruta OSRM.
  * - LiveTracking: la torre de control (/topic/fleet-locations) y "Mis envíos" (/topic/trip/{loadId}) mueven los
@@ -11,8 +11,8 @@
  * valida y lo retira antes de reenviar el handshake a fleets-drivers.
  */
 (function () {
-    const config = window.TruckDarConfig;
-    const api = window.TruckDarApi;
+    const config = window.TruckCarConfig;
+    const api = window.TruckCarApi;
     const WS_URL = config.gatewayUrl.replace(/^http/i, 'ws') + '/ws-telemetry';
     const HEARTBEAT_MS = 10000;
     const MAX_RETRY_MS = 15000;
@@ -65,7 +65,7 @@
         setStatus(status === 'reconnecting' ? 'reconnecting' : 'connecting');
         const socket = new WebSocket(WS_URL + '?access_token=' + encodeURIComponent(token));
         ws = socket;
-        socket.onopen = () => frame('CONNECT', { 'accept-version': '1.2', host: 'truckdar', 'heart-beat': HEARTBEAT_MS + ',' + HEARTBEAT_MS });
+        socket.onopen = () => frame('CONNECT', { 'accept-version': '1.2', host: 'truckcar', 'heart-beat': HEARTBEAT_MS + ',' + HEARTBEAT_MS });
         socket.onmessage = (event) => handleData(String(event.data));
         socket.onclose = () => {
             if (ws !== socket) return;
@@ -133,7 +133,7 @@
         }
     }
 
-    const TruckDarTelemetry = {
+    const TruckCarTelemetry = {
         get status() { return status; },
         get isOnline() { return status === 'online'; },
 
@@ -155,7 +155,7 @@
             return () => {
                 if (!subscriptions.delete(id)) return;
                 frame('UNSUBSCRIBE', { id });
-                if (!wanted()) TruckDarTelemetry.disconnect(false);
+                if (!wanted()) TruckCarTelemetry.disconnect(false);
             };
         },
 
@@ -171,7 +171,7 @@
 
         releasePublisher() {
             publishers = Math.max(0, publishers - 1);
-            if (!wanted()) TruckDarTelemetry.disconnect(false);
+            if (!wanted()) TruckCarTelemetry.disconnect(false);
         },
 
         /** Cierra la conexión; con clearAll también olvida suscripciones y emisores (cierre de sesión). */
@@ -225,7 +225,7 @@
     // =================================================================== emisor del conductor
     const SIMULATION_KM_PER_TICK = 1.2;    // avance visual por envío (≈ recorrido acelerado para demos)
     const GPS_FRESH_MS = 10000;
-    const MODE_KEY = 'truckdar.telemetryMode';
+    const MODE_KEY = 'truckcar.telemetryMode';
 
     const driver = {
         loadId: null, driverId: null, timer: null, watchId: null, lastGps: null, previousGps: null,
@@ -241,7 +241,7 @@
     }
 
     async function buildPath(load) {
-        const routes = window.TruckDarData.routes;
+        const routes = window.TruckCarData.routes;
         const waypoints = routes && routes.optimal && routes.optimal.waypoints && routes.optimal.waypoints.length >= 2
             ? routes.optimal.waypoints.map(w => w.coords)
             : [load.origin && load.origin.coords, load.destination && load.destination.coords].filter(Boolean);
@@ -289,7 +289,7 @@
         const point = currentPoint();
         if (!point) return;
         driver.lastPoint = point;
-        const sent = TruckDarTelemetry.send('/app/telemetry', {
+        const sent = TruckCarTelemetry.send('/app/telemetry', {
             driverId: driver.driverId,
             latitude: Math.round(point.coords[0] * 1e6) / 1e6,
             longitude: Math.round(point.coords[1] * 1e6) / 1e6,
@@ -352,7 +352,7 @@
             driver.driverId = driverId;
             driver.travelledKm = 0;
             driver.timer = setInterval(tick, 3000);
-            TruckDarTelemetry.acquirePublisher();
+            TruckCarTelemetry.acquirePublisher();
             startGps();
             const path = await buildPath(load);
             if (driver.loadId !== load.backendId) return;    // se detuvo mientras se calculaba la ruta
@@ -367,7 +367,7 @@
         stop() {
             if (driver.timer) {
                 clearInterval(driver.timer);
-                TruckDarTelemetry.releasePublisher();
+                TruckCarTelemetry.releasePublisher();
             }
             stopGps();
             Object.assign(driver, { loadId: null, timer: null, path: null, cumulative: null, lastSent: null, lastPoint: null });
@@ -391,7 +391,7 @@
     const tripSubscriptions = new Map();   // loadId -> unsubscribe
 
     function applyFleetLocation(msg) {
-        const data = window.TruckDarData;
+        const data = window.TruckCarData;
         const coords = [msg.latitude, msg.longitude];
         const fleet = data.fleetVehicles || (data.fleetVehicles = []);
         let truck = fleet.find(t => t.driverId === msg.driverId);
@@ -415,7 +415,7 @@
         /** Torre de control: posiciones de toda la flota. */
         followFleet(onUpdate) {
             if (fleetUnsubscribe) return;
-            fleetUnsubscribe = TruckDarTelemetry.subscribe('/topic/fleet-locations', (msg) => {
+            fleetUnsubscribe = TruckCarTelemetry.subscribe('/topic/fleet-locations', (msg) => {
                 const truck = applyFleetLocation(msg);
                 if (onUpdate) onUpdate(truck, msg);
             }, () => { fleetUnsubscribe = null; });
@@ -437,8 +437,8 @@
             });
             wantedIds.forEach(loadId => {
                 if (tripSubscriptions.has(loadId)) return;
-                tripSubscriptions.set(loadId, TruckDarTelemetry.subscribe('/topic/trip/' + loadId, (msg) => {
-                    const data = window.TruckDarData;
+                tripSubscriptions.set(loadId, TruckCarTelemetry.subscribe('/topic/trip/' + loadId, (msg) => {
+                    const data = window.TruckCarData;
                     const trucks = data.shipmentTrucks || (data.shipmentTrucks = {});
                     const truck = Object.assign(trucks[msg.driverId] || { driverId: msg.driverId, id: msg.driverId }, {
                         driverName: msg.driverName || msg.driverId,
@@ -465,7 +465,7 @@
         }
     };
 
-    window.TruckDarTelemetry = TruckDarTelemetry;
+    window.TruckCarTelemetry = TruckCarTelemetry;
     window.DriverTelemetry = DriverTelemetry;
     window.LiveTracking = LiveTracking;
 })();

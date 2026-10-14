@@ -2,7 +2,7 @@ window.LoginView = {
     render(state) {
         const isRegister = state.authMode === 'register';
         const busy = state.busyAction === 'auth';
-        const config = window.TruckDarConfig;
+        const config = window.TruckCarConfig;
 
         return `
             <div class="h-full w-full flex items-center justify-center bg-slate-950 p-4 overflow-y-auto">

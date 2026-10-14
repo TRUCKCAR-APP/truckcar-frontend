@@ -72,7 +72,7 @@ class MapController {
     }
 
     currentRoute() {
-        const routes = window.TruckDarData.routes;
+        const routes = window.TruckCarData.routes;
         return routes && routes.optimal && routes.optimal.waypoints && routes.optimal.waypoints.length >= 2
             ? routes.optimal
             : null;
@@ -87,7 +87,7 @@ class MapController {
 
     drawLiveNavigation(stepIndex = 0) {
         if (!this.map) return;
-        const steps = window.TruckDarData.liveNavigationSteps;
+        const steps = window.TruckCarData.liveNavigationSteps;
         const currentStep = steps[stepIndex] || steps[0];
         const lat = currentStep.coords.lat;
         const lng = currentStep.coords.lng;
@@ -178,7 +178,7 @@ class MapController {
         if (!this.map || !this.alertMarkersLayer) return;
         this.alertMarkersLayer.clearLayers();
 
-        const alerts = window.TruckDarData.communityAlerts || [];
+        const alerts = window.TruckCarData.communityAlerts || [];
         alerts.filter(alert => alert.coords).forEach(alert => {
             let color = 'bg-amber-500';
             let icon = 'fa-triangle-exclamation';
@@ -210,7 +210,7 @@ class MapController {
      */
     renderCoordinatorFleetMarkers() {
         if (!this.map || !this.fleetMarkersLayer) return;
-        const fleet = (window.TruckDarData.fleetVehicles || []).filter(truck => truck.coords);
+        const fleet = (window.TruckCarData.fleetVehicles || []).filter(truck => truck.coords);
         const present = new Set(fleet.map(truck => truck.id));
         this.fleetMarkers.forEach((marker, id) => {
             if (!present.has(id)) {
@@ -271,7 +271,7 @@ class MapController {
 
     /** Interpola la posición del marcador (ease-in-out) durante ~2,5 s, menos que el intervalo de envío (3 s). */
     animateMarker(marker, target, durationMs = 2500) {
-        if (marker._truckdarAnimation) cancelAnimationFrame(marker._truckdarAnimation);
+        if (marker._truckcarAnimation) cancelAnimationFrame(marker._truckcarAnimation);
         const from = marker.getLatLng();
         const to = L.latLng(target);
         if (from.distanceTo(to) > 50000) {      // salto grande (p. ej. primer dato real): sin animación
@@ -283,9 +283,9 @@ class MapController {
             const t = Math.min(1, (now - start) / durationMs);
             const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
             marker.setLatLng([from.lat + (to.lat - from.lat) * eased, from.lng + (to.lng - from.lng) * eased]);
-            marker._truckdarAnimation = t < 1 ? requestAnimationFrame(step) : null;
+            marker._truckcarAnimation = t < 1 ? requestAnimationFrame(step) : null;
         };
-        marker._truckdarAnimation = requestAnimationFrame(step);
+        marker._truckcarAnimation = requestAnimationFrame(step);
     }
 
     createTruckMarker(coords = this.currentCoords) {
@@ -342,8 +342,8 @@ class MapController {
         if (optimal) {
             points = this.cachedOptimalRoadGeometry || optimal.waypoints.map(w => w.coords);
         } else {
-            const fleet = (window.TruckDarData.fleetVehicles || []).map(t => t.coords);
-            const alerts = (window.TruckDarData.communityAlerts || []).map(a => a.coords);
+            const fleet = (window.TruckCarData.fleetVehicles || []).map(t => t.coords);
+            const alerts = (window.TruckCarData.communityAlerts || []).map(a => a.coords);
             points = fleet.concat(alerts).filter(Boolean);
         }
         if (points.length === 1) {

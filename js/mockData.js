@@ -9,7 +9,7 @@
  *   - liveNavigationSteps: guía turn-by-turn simulada (botón "Avanzar GPS").
  *   - offlineSyncData: regiones de mapa y cola offline del dispositivo.
  */
-window.TruckDarData = {
+window.TruckCarData = {
     currentDriver: null,
     activeLoadOrder: null,
     availableLoads: [],

@@ -1,4 +1,4 @@
-class TruckDarStore {
+class TruckCarStore {
     constructor() {
         this.state = {
             // Sesión y sincronización con el backend (api-gateway)
@@ -59,4 +59,4 @@ class TruckDarStore {
     }
 }
 
-window.store = new TruckDarStore();
+window.store = new TruckCarStore();

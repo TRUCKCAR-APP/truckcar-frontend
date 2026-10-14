@@ -55,7 +55,7 @@ window.app = {
     init() {
         window.store.subscribe((state) => this.renderCurrentView(state));
 
-        window.addEventListener('truckdar:unauthorized', () => {
+        window.addEventListener('truckcar:unauthorized', () => {
             if (window.store.state.isAuthenticated) {
                 window.ui.toast('La sesión expiró. Inicie sesión nuevamente.', 'warning');
                 this.endSession();
@@ -63,7 +63,7 @@ window.app = {
         });
 
         // 403: la cuenta no tiene permiso para esa vista. Se vuelve a la vista propia del rol, sin franja de error.
-        window.addEventListener('truckdar:forbidden', () => {
+        window.addEventListener('truckcar:forbidden', () => {
             const state = window.store.state;
             if (!state.isAuthenticated) return;
             const home = this.roleToView(state.sessionRole);
@@ -72,11 +72,11 @@ window.app = {
                 window.ui.toast(home === 'generator'
                     ? 'Su cuenta de generador de carga solo tiene acceso a "Mis envíos".'
                     : 'Su cuenta no tiene acceso a esa vista.', 'info');
-                window.TruckDarService.loadAll();
+                window.TruckCarService.loadAll();
             }
         });
 
-        const session = window.TruckDarApi.session;
+        const session = window.TruckCarApi.session;
         if (session.isActive()) {
             this.startSession(session.get());
         } else {
@@ -101,7 +101,7 @@ window.app = {
             busyAction: null,
             activeRole: this.roleToView(session.role)
         });
-        await window.TruckDarService.loadAll();
+        await window.TruckCarService.loadAll();
         this.schedulePolling();
     },
 
@@ -110,9 +110,9 @@ window.app = {
         clearInterval(this.shipmentsTimer);
         window.DriverTelemetry.stop();
         window.LiveTracking.stopAll();
-        window.TruckDarTelemetry.disconnect();
-        window.TruckDarService.reset();
-        window.TruckDarApi.session.clear();
+        window.TruckCarTelemetry.disconnect();
+        window.TruckCarService.reset();
+        window.TruckCarApi.session.clear();
         window.generatorCtrl.reset();
         window.store.setState({
             isAuthenticated: false,
@@ -133,7 +133,7 @@ window.app = {
         const form = new FormData(event.target);
         window.store.setState({ busyAction: 'auth', authError: null });
         try {
-            const session = await window.TruckDarApi.auth.login(form.get('email').trim(), form.get('password'));
+            const session = await window.TruckCarApi.auth.login(form.get('email').trim(), form.get('password'));
             await this.startSession(session);
         } catch (error) {
             window.store.setState({ busyAction: null, authError: window.ui.errorMessage(error) });
@@ -145,7 +145,7 @@ window.app = {
         const form = new FormData(event.target);
         window.store.setState({ busyAction: 'auth', authError: null });
         try {
-            const session = await window.TruckDarApi.auth.register({
+            const session = await window.TruckCarApi.auth.register({
                 email: form.get('email').trim(),
                 password: form.get('password'),
                 firstName: form.get('firstName').trim(),
@@ -161,7 +161,7 @@ window.app = {
 
     async logout() {
         try {
-            await window.TruckDarApi.auth.logout();
+            await window.TruckCarApi.auth.logout();
         } catch (error) {
             // El token puede haber expirado; la sesión local se cierra igual.
         }
@@ -174,8 +174,8 @@ window.app = {
             const state = window.store.state;
             const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
             if (!state.isAuthenticated || state.activeRole !== 'coordinator' || typing) return;
-            await window.TruckDarService.refreshCoordinator();
-        }, window.TruckDarConfig.pollingIntervalMs);
+            await window.TruckCarService.refreshCoordinator();
+        }, window.TruckCarConfig.pollingIntervalMs);
         // "Mis envíos" se refresca más seguido (solo cargas propias y flota) para seguir los cambios de estado.
         clearInterval(this.shipmentsTimer);
         this.shipmentsTimer = setInterval(async () => {
@@ -191,7 +191,7 @@ window.app = {
 
     async reloadData() {
         window.store.setState({ dataStatus: { ...window.store.state.dataStatus, errors: {} } });
-        await window.TruckDarService.loadAll();
+        await window.TruckCarService.loadAll();
     },
 
     // ------------------------------------------------------------------ render
@@ -232,7 +232,7 @@ window.app = {
         else if (document.getElementById('coordinator-map-container')) this.handleCoordinatorMapMount(state);
 
         this.syncLiveTracking(state);
-        window.TruckDarTelemetry.renderStatusBadges();
+        window.TruckCarTelemetry.renderStatusBadges();
         window.DriverTelemetry.renderBadge();
     },
 
@@ -261,7 +261,7 @@ window.app = {
         }
 
         if (onShipments) {
-            const followed = (window.TruckDarData.publishedLoads || [])
+            const followed = (window.TruckCarData.publishedLoads || [])
                 .filter(l => l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT')
                 .map(l => l.backendId);
             live.followTrips(followed, (truck, msg) => {
@@ -335,7 +335,7 @@ window.app = {
                 window.mapCtrl.drawOverviewRoutes();
             } else if (state.driverScreen === 'navigation') {
                 if (!document.getElementById('live-nav-map-container')) return;
-                const steps = window.TruckDarData.liveNavigationSteps;
+                const steps = window.TruckCarData.liveNavigationSteps;
                 const step = steps[state.navStepIndex] || steps[0];
                 window.mapCtrl.initMap('live-nav-map-container', [step.coords.lat, step.coords.lng], 13);
                 window.mapCtrl.drawLiveNavigation(state.navStepIndex);
@@ -371,7 +371,7 @@ window.app = {
         }
         if (role === window.store.state.activeRole) return;
         window.store.setState({ activeRole: role });
-        await window.TruckDarService.loadAll();
+        await window.TruckCarService.loadAll();
     },
 
     toggleRotation() {
@@ -398,10 +398,10 @@ window.app = {
     async handleAcceptTrip() {
         window.store.setState({ busyAction: 'accept' });
         try {
-            await window.TruckDarService.acceptAssignment();
+            await window.TruckCarService.acceptAssignment();
             window.voiceEngine.speak('Carga aceptada. Calculando ruta segura para su vehículo.');
             window.ui.toast('Carga aceptada en Load-Allocation.', 'success');
-            await window.TruckDarService.loadRoutePlan();
+            await window.TruckCarService.loadRoutePlan();
             window.store.setState({ busyAction: null, driverScreen: 'route_overview' });
         } catch (error) {
             window.store.setState({ busyAction: null });
@@ -414,7 +414,7 @@ window.app = {
         if (!reason) return;
         window.store.setState({ busyAction: 'reject' });
         try {
-            await window.TruckDarService.rejectAssignment();
+            await window.TruckCarService.rejectAssignment();
             window.voiceEngine.speak('Viaje rechazado. El sistema reasignará la carga.');
             window.ui.toast('Rechazo registrado. El motor de asignación buscará otro conductor.', 'success');
             window.store.setState({ busyAction: null, driverScreen: 'profile' });
@@ -425,14 +425,14 @@ window.app = {
     },
 
     async refreshAssignment() {
-        await window.TruckDarService.loadDriverAssignment();
-        await window.TruckDarService.loadRoutePlan();
+        await window.TruckCarService.loadDriverAssignment();
+        await window.TruckCarService.loadRoutePlan();
         window.store.setState({});
     },
 
     /** Inicia el viaje real (ASSIGNED -> IN_TRANSIT) y abre la navegación; si ya está en tránsito, la reanuda. */
     async startNavigation() {
-        const load = window.TruckDarData.activeLoadOrder;
+        const load = window.TruckCarData.activeLoadOrder;
         if (!load || (load.status !== 'ASSIGNED' && load.status !== 'IN_TRANSIT')) {
             window.ui.toast('Acepte una carga antes de iniciar el viaje.', 'warning');
             return;
@@ -440,7 +440,7 @@ window.app = {
         if (load.status === 'ASSIGNED') {
             window.store.setState({ busyAction: 'start-trip' });
             try {
-                await window.TruckDarService.startTrip();
+                await window.TruckCarService.startTrip();
                 window.ui.toast('Viaje iniciado: la carga está en tránsito.', 'success');
             } catch (error) {
                 window.store.setState({ busyAction: null });
@@ -449,16 +449,16 @@ window.app = {
             }
         }
         window.store.setState({ busyAction: null, driverScreen: 'navigation', navStepIndex: 0, simulatedSpeed: 48 });
-        const step0 = window.TruckDarData.liveNavigationSteps[0];
+        const step0 = window.TruckCarData.liveNavigationSteps[0];
         window.voiceEngine.speak(step0.voiceAudioText, true);
     },
 
     nextSimulationStep() {
         const currentIndex = window.store.state.navStepIndex;
-        const totalSteps = window.TruckDarData.liveNavigationSteps.length;
+        const totalSteps = window.TruckCarData.liveNavigationSteps.length;
         const nextIndex = (currentIndex + 1) % totalSteps;
 
-        const nextStep = window.TruckDarData.liveNavigationSteps[nextIndex];
+        const nextStep = window.TruckCarData.liveNavigationSteps[nextIndex];
         window.store.setState({
             navStepIndex: nextIndex,
             simulatedSpeed: nextStep.speedLimit - 5
@@ -473,14 +473,14 @@ window.app = {
 
     /** Registra la entrega con su prueba (IN_TRANSIT -> DELIVERED). */
     async finishTrip() {
-        const load = window.TruckDarData.activeLoadOrder;
+        const load = window.TruckCarData.activeLoadOrder;
         if (!load || load.status !== 'IN_TRANSIT') {
             window.ui.toast('No hay un viaje en tránsito para finalizar.', 'warning');
             return;
         }
         // Formulario de POD (receptor, firma en lienzo y foto). Si el backend rechaza la entrega, el formulario
         // sigue abierto con el error para no perder la firma.
-        const delivered = await window.PodUI.openDeliveryForm(load, (pod) => window.TruckDarService.deliverLoad(pod));
+        const delivered = await window.PodUI.openDeliveryForm(load, (pod) => window.TruckCarService.deliverLoad(pod));
         if (!delivered) return;
         window.voiceEngine.speak('Entrega registrada. Viaje finalizado.');
         window.ui.toast('Entrega registrada (DELIVERED) con firma y prueba de entrega.', 'success');
@@ -510,11 +510,11 @@ window.app = {
     /** Posición actual para reportes: GPS simulado de navegación, luego posición registrada del vehículo. */
     currentPosition() {
         const state = window.store.state;
-        const steps = window.TruckDarData.liveNavigationSteps;
+        const steps = window.TruckCarData.liveNavigationSteps;
         if (state.driverScreen === 'navigation' && steps[state.navStepIndex]) {
             return [steps[state.navStepIndex].coords.lat, steps[state.navStepIndex].coords.lng];
         }
-        const driver = window.TruckDarData.currentDriver;
+        const driver = window.TruckCarData.currentDriver;
         if (driver && driver.coords) return driver.coords;
         if (window.mapCtrl && window.mapCtrl.currentCoords) return window.mapCtrl.currentCoords;
         return null;
@@ -537,7 +537,7 @@ window.app = {
         if (comment === null) return;
 
         try {
-            await window.TruckDarService.reportAlert(presetType, comment, coords);
+            await window.TruckCarService.reportAlert(presetType, comment, coords);
             window.voiceEngine.speak('Gracias compañero. Alerta de ' + title + ' compartida con la red de transporte.');
             window.ui.toast('Alerta publicada en Community-Alerts.', 'success');
             window.store.setState({});
@@ -548,7 +548,7 @@ window.app = {
 
     async upvoteAlert(id) {
         try {
-            await window.TruckDarService.confirmAlert(id);
+            await window.TruckCarService.confirmAlert(id);
             window.ui.toast('Confirmación registrada.', 'success');
             window.store.setState({});
         } catch (error) {

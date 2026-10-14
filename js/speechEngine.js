@@ -45,7 +45,7 @@ class VoiceGuidanceEngine {
     }
 
     test() {
-        this.speak('Sistema TruckDar activo. Guía de voz para transporte de carga pesada configurada con éxito.', true);
+        this.speak('Sistema TruckCar activo. Guía de voz para transporte de carga pesada configurada con éxito.', true);
     }
 }
 

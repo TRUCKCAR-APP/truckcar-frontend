@@ -1,11 +1,11 @@
 /**
- * Capa de datos: consume window.TruckDarApi y adapta las respuestas del backend al modelo
- * que usan las vistas (window.TruckDarData). Las secciones sin backend equivalente
+ * Capa de datos: consume window.TruckCarApi y adapta las respuestas del backend al modelo
+ * que usan las vistas (window.TruckCarData). Las secciones sin backend equivalente
  * (pasos de navegación turn-by-turn y regiones offline) siguen siendo simulación local.
  */
 (function () {
-    const api = window.TruckDarApi;
-    const data = window.TruckDarData;
+    const api = window.TruckCarApi;
+    const data = window.TruckCarData;
 
     const ALERT_TYPE_TO_UI = {
         BASCULA: 'scale',
@@ -90,10 +90,10 @@
     }
 
     function recordError(section, error) {
-        // 403: la vista no corresponde al rol; app.js redirige a la vista propia (evento truckdar:forbidden).
-        // 401: sesión vencida; app.js vuelve al login (evento truckdar:unauthorized). Ninguno es un fallo de datos.
+        // 403: la vista no corresponde al rol; app.js redirige a la vista propia (evento truckcar:forbidden).
+        // 401: sesión vencida; app.js vuelve al login (evento truckcar:unauthorized). Ninguno es un fallo de datos.
         if (error && (error.status === 403 || error.status === 401)) return;
-        console.error('[TruckDar] Error cargando ' + section, error);
+        console.error('[TruckCar] Error cargando ' + section, error);
         const errors = { ...window.store.state.dataStatus.errors, [section]: error.message || String(error) };
         setStatus({ errors });
     }
@@ -176,7 +176,7 @@
             title: alert.title,
             description: alert.description || (alert.roadCorridor ? 'Corredor ' + alert.roadCorridor : ''),
             timeAgo: timeAgo(alert.reportedAt),
-            author: alert.driverName || alert.driverId || 'Red TruckDar',
+            author: alert.driverName || alert.driverId || 'Red TruckCar',
             upvotes: confirmations,
             coords: coordsOrNull(alert.latitude, alert.longitude),
             corridor: alert.roadCorridor,
@@ -405,7 +405,7 @@
             const trucks = data.shipmentTrucks || {};
             const missing = (data.publishedLoads || []).some(l => (l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT')
                 && l.assignedDriverId && !trucks[l.assignedDriverId]);
-            if (!window.TruckDarTelemetry.isOnline || missing) await this.loadShipmentTrucks();
+            if (!window.TruckCarTelemetry.isOnline || missing) await this.loadShipmentTrucks();
         },
 
         /** POST /loads: la empresa generadora la fija el backend con el usuario autenticado. */
@@ -512,7 +512,7 @@
 
         async refreshCoordinator() {
             // Con la telemetría en vivo las posiciones llegan por WebSocket: no se vuelve a pedir la flota por HTTP.
-            const livePositions = window.TruckDarTelemetry.isOnline && (data.fleetVehicles || []).length > 0;
+            const livePositions = window.TruckCarTelemetry.isOnline && (data.fleetVehicles || []).length > 0;
             await Promise.all([livePositions ? null : this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(),
                 this.loadDeliveredLoads(), this.loadPublishedLoads()]);
             setStatus({ lastSync: new Date().toISOString() });
@@ -612,5 +612,5 @@
         }
     };
 
-    window.TruckDarService = service;
+    window.TruckCarService = service;
 })();

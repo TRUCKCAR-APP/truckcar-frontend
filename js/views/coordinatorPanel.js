@@ -1,7 +1,7 @@
 window.CoordinatorPanel = {
     render(state) {
         const esc = window.ui.escape;
-        const data = window.TruckDarData;
+        const data = window.TruckCarData;
         const fleet = data.fleetVehicles || [];
         const alerts = data.communityAlerts || [];
         const evaluation = data.dispatchEvaluation || { candidates: [] };
@@ -360,7 +360,7 @@ window.coordinatorCtrl = {
     showAiInspectionModal(driverId) {
         const modal = document.getElementById('ai-inspection-modal');
         const body = document.getElementById('ai-inspection-body');
-        const evaluation = window.TruckDarData.dispatchEvaluation || { candidates: [] };
+        const evaluation = window.TruckCarData.dispatchEvaluation || { candidates: [] };
         const candidate = evaluation.candidates.find(c => c.driverId === driverId);
         if (!modal || !body || !candidate) return;
         const esc = window.ui.escape;
@@ -382,7 +382,7 @@ window.coordinatorCtrl = {
 
     /** Recibo firmado (receptor, documento, notas, firma y foto) de una carga DELIVERED. */
     showProofOfDelivery(loadId) {
-        const load = (window.TruckDarData.deliveredLoads || []).find(l => l.backendId === loadId);
+        const load = (window.TruckCarData.deliveredLoads || []).find(l => l.backendId === loadId);
         window.PodUI.showProofOfDelivery(loadId, load);
     },
 
@@ -392,13 +392,13 @@ window.coordinatorCtrl = {
     },
 
     async refreshFleet() {
-        await window.TruckDarService.refreshCoordinator();
+        await window.TruckCarService.refreshCoordinator();
         window.ui.toast('Flota, alertas y cargas actualizadas.', 'success');
     },
 
     async selectLoad(loadId) {
         window.store.setState({ selectedLoadId: Number(loadId) });
-        await window.TruckDarService.loadCoordinatorLoad();
+        await window.TruckCarService.loadCoordinatorLoad();
         window.store.setState({});
     },
 
@@ -412,7 +412,7 @@ window.coordinatorCtrl = {
         }
         window.store.setState({ busyAction: 'cancel' });
         try {
-            await window.TruckDarService.cancelLoad(loadId, reason.trim());
+            await window.TruckCarService.cancelLoad(loadId, reason.trim());
             window.ui.toast('Carga #' + loadId + ' cancelada.', 'success');
         } catch (error) {
             window.ui.toast('No se pudo cancelar la carga: ' + window.ui.errorMessage(error), 'error');
@@ -424,7 +424,7 @@ window.coordinatorCtrl = {
     async requestMatching(loadId) {
         window.store.setState({ busyAction: 'matching' });
         try {
-            const result = await window.TruckDarService.requestMatching(loadId);
+            const result = await window.TruckCarService.requestMatching(loadId);
             const message = result && result.selectedDriverName
                 ? 'Matching ejecutado: propuesta para ' + result.selectedDriverName + ' (' + Math.round(result.matchingScore) + '/100).'
                 : 'Matching ejecutado: ' + ((result && result.reasonDetails) || (result && result.status) || 'sin candidatos');
@@ -437,12 +437,12 @@ window.coordinatorCtrl = {
     },
 
     focusTruck(truckId) {
-        const truck = (window.TruckDarData.fleetVehicles || []).find(t => t.id === truckId);
+        const truck = (window.TruckCarData.fleetVehicles || []).find(t => t.id === truckId);
         if (truck) window.mapCtrl.focusOn(truck.coords, 12);
     },
 
     selectTruck(truckId) {
-        const truck = (window.TruckDarData.fleetVehicles || []).find(t => t.id === truckId);
+        const truck = (window.TruckCarData.fleetVehicles || []).find(t => t.id === truckId);
         if (!truck) return;
         window.mapCtrl.focusOn(truck.coords, 12);
         window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + truck.status + ' · ' + truck.speed + ' km/h · conducción ' + truck.hoursActive, 'info');

@@ -1,11 +1,11 @@
 /**
- * Cliente HTTP de TruckDar: todas las llamadas pasan por el api-gateway.
+ * Cliente HTTP de TruckCar: todas las llamadas pasan por el api-gateway.
  * - fetch + async/await, timeout con AbortController.
  * - Cabeceras estándar, JWT (Authorization: Bearer) y X-Correlation-Id por petición.
  * - Errores normalizados en ApiError { status, message, details, correlationId }.
  */
 (function () {
-    const config = window.TruckDarConfig;
+    const config = window.TruckCarConfig;
 
     class ApiError extends Error {
         constructor(message, { status = 0, details = null, correlationId = null, path = '' } = {}) {
@@ -46,7 +46,7 @@
             try {
                 localStorage.setItem(config.storageKeys.session, JSON.stringify(value));
             } catch (e) {
-                console.warn('[TruckDar] No se pudo persistir la sesión', e);
+                console.warn('[TruckCar] No se pudo persistir la sesión', e);
             }
             return value;
         },
@@ -174,10 +174,10 @@
             });
             if (error.isUnauthorized && auth) {
                 session.clear();
-                window.dispatchEvent(new CustomEvent('truckdar:unauthorized', { detail: error }));
+                window.dispatchEvent(new CustomEvent('truckcar:unauthorized', { detail: error }));
             } else if (error.isForbidden && auth) {
                 // El rol del token no permite esta ruta (p. ej. un GENERADOR en la torre de control): la app redirige.
-                window.dispatchEvent(new CustomEvent('truckdar:forbidden', { detail: error }));
+                window.dispatchEvent(new CustomEvent('truckcar:forbidden', { detail: error }));
             }
             throw error;
         }
@@ -199,7 +199,7 @@
     const enc = encodeURIComponent;
 
     // ---------------------------------------------------------------- endpoints
-    window.TruckDarApi = {
+    window.TruckCarApi = {
         ApiError,
         session,
         decodeJwt,

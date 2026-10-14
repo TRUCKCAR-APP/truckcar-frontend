@@ -344,7 +344,7 @@ window.PodUI = (function () {
 
         const body = overlay.querySelector('#pod-viewer-body');
         try {
-            const pod = await window.TruckDarService.getProofOfDelivery(loadId);
+            const pod = await window.TruckCarService.getProofOfDelivery(loadId);
             if (!document.body.contains(overlay)) return;
             body.outerHTML = receiptHtml(pod, load);
         } catch (error) {

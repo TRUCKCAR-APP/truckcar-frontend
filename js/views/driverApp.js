@@ -23,7 +23,7 @@ window.DriverApp = {
                 <div class="h-8 px-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between text-[11px] text-slate-400 z-50 shrink-0">
                     <div class="flex items-center gap-2">
                         <span class="font-mono font-bold text-slate-200">${new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
-                        <span class="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 font-bold rounded text-[9px]">TRUCKDAR GPS</span>
+                        <span class="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 font-bold rounded text-[9px]">TRUCKCAR GPS</span>
                     </div>
                     <div class="flex items-center gap-3">
                         ${state.isOffline ?
@@ -76,22 +76,22 @@ window.DriverApp = {
     },
 
     hasPendingLoad() {
-        const load = window.TruckDarData.activeLoadOrder;
+        const load = window.TruckCarData.activeLoadOrder;
         return Boolean(load && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED'));
     },
 
     destinationLabel() {
-        const load = window.TruckDarData.activeLoadOrder;
+        const load = window.TruckCarData.activeLoadOrder;
         return load ? load.destination.city || load.destination.name : 'Sin destino';
     },
 
     routeEta() {
-        const routes = window.TruckDarData.routes;
+        const routes = window.TruckCarData.routes;
         return routes && routes.optimal ? routes.optimal.eta : '—';
     },
 
     routeDistance() {
-        const routes = window.TruckDarData.routes;
+        const routes = window.TruckCarData.routes;
         return routes && routes.optimal ? routes.optimal.distance : '—';
     },
 
@@ -110,7 +110,7 @@ window.DriverApp = {
 
     renderProfileScreen(state) {
         const esc = window.ui.escape;
-        const driver = window.TruckDarData.currentDriver;
+        const driver = window.TruckCarData.currentDriver;
         if (!driver) {
             return state.dataStatus.loading
                 ? this.renderEmptyState('fa-spinner fa-spin', 'Cargando perfil', 'Consultando User-Identity y fleets-drivers...')
@@ -224,8 +224,8 @@ window.DriverApp = {
 
     renderAssignedLoadScreen(state) {
         const esc = window.ui.escape;
-        const load = window.TruckDarData.activeLoadOrder;
-        const lastDelivery = window.TruckDarData.lastDelivery;
+        const load = window.TruckCarData.activeLoadOrder;
+        const lastDelivery = window.TruckCarData.lastDelivery;
         if (!load && lastDelivery) {
             // Recibo de la entrega recién registrada (firma y foto ya en memoria; no se vuelven a descargar).
             const pod = { ...lastDelivery.pod, loadId: lastDelivery.load.backendId,
@@ -362,16 +362,16 @@ window.DriverApp = {
 
     renderRouteOverviewScreen(state) {
         const esc = window.ui.escape;
-        const routes = window.TruckDarData.routes;
+        const routes = window.TruckCarData.routes;
         const errors = state.dataStatus.errors || {};
         if (!routes || !routes.optimal) {
-            const reason = !window.TruckDarData.activeLoadOrder
+            const reason = !window.TruckCarData.activeLoadOrder
                 ? 'Necesita una carga asignada para planear la ruta.'
-                : !(window.TruckDarData.currentDriver && window.TruckDarData.currentDriver.vehicle)
+                : !(window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle)
                     ? 'Registre su vehículo en fleets-drivers para que Route-AI calcule una ruta compatible.'
                     : (errors.routes ? 'Route-AI respondió con error: ' + esc(errors.routes) : 'Calculando ruta con Route-AI...');
             return this.renderEmptyState('fa-route', 'Ruta no disponible', reason,
-                window.TruckDarData.activeLoadOrder ? '<button onclick="window.TruckDarService.loadRoutePlan({ force: true }).then(() => window.store.setState({}))" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold">Planear ruta</button>' : '');
+                window.TruckCarData.activeLoadOrder ? '<button onclick="window.TruckCarService.loadRoutePlan({ force: true }).then(() => window.store.setState({}))" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold">Planear ruta</button>' : '');
         }
         const opt = routes.optimal;
         const rej = routes.rejectedAlternate;
@@ -458,7 +458,7 @@ window.DriverApp = {
                     ` : ''}
 
                     <button onclick="window.app.startNavigation()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/40 transition transform active:scale-98">
-                        <i class="fas fa-play"></i> ${window.TruckDarData.activeLoadOrder && window.TruckDarData.activeLoadOrder.status === 'IN_TRANSIT' ? 'Continuar navegación' : 'Iniciar viaje y navegación'}
+                        <i class="fas fa-play"></i> ${window.TruckCarData.activeLoadOrder && window.TruckCarData.activeLoadOrder.status === 'IN_TRANSIT' ? 'Continuar navegación' : 'Iniciar viaje y navegación'}
                     </button>
                 </div>
             </div>
@@ -466,7 +466,7 @@ window.DriverApp = {
     },
 
     renderNavigationScreen(state, isLandscape) {
-        const step = window.TruckDarData.liveNavigationSteps[state.navStepIndex] || window.TruckDarData.liveNavigationSteps[0];
+        const step = window.TruckCarData.liveNavigationSteps[state.navStepIndex] || window.TruckCarData.liveNavigationSteps[0];
         
         if (isLandscape) {
             return `
@@ -587,7 +587,7 @@ window.DriverApp = {
 
                 <div class="p-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-2 z-20">
                     <div class="text-xs font-mono text-slate-300">
-                        <span class="text-slate-400 text-[10px] block font-sans">Paso ${state.navStepIndex + 1} de ${window.TruckDarData.liveNavigationSteps.length}</span>
+                        <span class="text-slate-400 text-[10px] block font-sans">Paso ${state.navStepIndex + 1} de ${window.TruckCarData.liveNavigationSteps.length}</span>
                         <b>${window.ui.escape(window.DriverApp.destinationLabel())}: ${window.ui.escape(window.DriverApp.routeDistance())}</b>
                     </div>
                     <div class="flex items-center gap-2">
@@ -605,7 +605,7 @@ window.DriverApp = {
 
     renderAlertsScreen(state) {
         const esc = window.ui.escape;
-        const allAlerts = window.TruckDarData.communityAlerts || [];
+        const allAlerts = window.TruckCarData.communityAlerts || [];
         const filter = state.alertFilter || 'all';
         const alerts = filter === 'all' ? allAlerts : allAlerts.filter(a => a.type === filter);
         const filters = [
@@ -675,7 +675,7 @@ window.DriverApp = {
     },
 
     renderOfflineScreen(state) {
-        const off = window.TruckDarData.offlineSyncData;
+        const off = window.TruckCarData.offlineSyncData;
         return `
             <div class="h-full overflow-y-auto p-4 space-y-4">
                 <div class="flex items-center justify-between">
