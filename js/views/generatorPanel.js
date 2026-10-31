@@ -70,64 +70,104 @@ window.GeneratorPanel = (function () {
         return window.PodUI.formatDate(value);
     }
 
-    function cityOptions(selected) {
-        return CITIES.map(c => `<option value="${c.city}" ${c.city === selected ? 'selected' : ''}>${c.city} · ${c.department}</option>`).join('');
+    const FORM_STEPS = [
+        { title: 'Carga', icon: 'fa-box', fields: ['generatorCompanyName', 'cargoDescription', 'weightTons', 'volumeM3', 'requiredTruckType'] },
+        { title: 'Ruta', icon: 'fa-route', fields: ['originCity', 'destinationCity'] },
+        { title: 'Precio', icon: 'fa-coins', fields: ['offeredBudget'] }
+    ];
+
+    /** Ciudad del catálogo por nombre, sin importar mayúsculas ni tildes (lo que se escribe en el autocompletado). */
+    function findCity(name) {
+        const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+        return CITIES.find(c => norm(c.city) === norm(name)) || null;
+    }
+
+    /** Errores por campo (validación en vivo y al avanzar de paso). */
+    function validate(d) {
+        const errors = {};
+        if (!String(d.cargoDescription || '').trim()) errors.cargoDescription = 'Describa la carga.';
+        const weight = Number(d.weightTons);
+        if (!(weight > 0)) errors.weightTons = 'Debe ser mayor a 0 t.';
+        else if (weight > 60) errors.weightTons = 'Máximo 60 t por vehículo.';
+        if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) >= 0)) errors.volumeM3 = 'Volumen inválido.';
+        if (!findCity(d.originCity)) errors.originCity = 'Elija una ciudad de la lista.';
+        if (!findCity(d.destinationCity)) errors.destinationCity = 'Elija una ciudad de la lista.';
+        else if (findCity(d.originCity) === findCity(d.destinationCity)) errors.destinationCity = 'Debe ser distinto del origen.';
+        if (!(Number(d.offeredBudget) >= 1000)) errors.offeredBudget = 'Mínimo 1.000 COP.';
+        return errors;
+    }
+
+    function field(name, label, control, { required = false, touched, errors }) {
+        const error = touched.has(name) ? errors[name] : '';
+        return `<label class="text-[11px] space-y-1 block">
+            <span class="font-bold text-slate-300">${label}${required ? ' <span class="text-rose-400">*</span>' : ''}</span>
+            ${control.replace('<input ', `<input aria-invalid="${Boolean(error)}" `).replace('<select ', `<select aria-invalid="${Boolean(error)}" `)}
+            <span class="field-hint block" data-hint="${name}" aria-live="polite">${error ? window.ui.escape(error) : ''}</span>
+        </label>`;
     }
 
     function renderForm(state) {
         const esc = window.ui.escape;
-        const d = window.generatorCtrl.draft();
+        const ctrl = window.generatorCtrl;
+        const d = ctrl.draft();
+        const step = ctrl.step();
+        const touched = ctrl.touched();
+        const errors = validate(d);
         const busy = state.busyAction === 'publish';
+        const opts = { touched, errors };
+        const money = Number(d.offeredBudget) > 0 ? Number(d.offeredBudget).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }) : '—';
+        const origin = findCity(d.originCity);
+        const destination = findCity(d.destinationCity);
+        const stepper = FORM_STEPS.map((s, i) => `
+            <button type="button" onclick="window.generatorCtrl.goToStep(${i})" class="flex items-center gap-1.5 ${i === step ? 'text-white' : 'text-slate-400'}" ${i === step ? 'aria-current="step"' : ''}>
+                <span class="stepper-dot ${i < step ? 'is-done' : i === step ? 'is-current' : ''}">${i < step ? '<i class="fas fa-check text-[10px]"></i>' : i + 1}</span>
+                <span class="text-[11px] font-bold hidden xl:inline">${s.title}</span>
+            </button>${i < FORM_STEPS.length - 1 ? `<div class="stepper-line"><span style="transform: scaleX(${i < step ? 1 : 0})"></span></div>` : ''}`).join('');
+
+        const steps = [
+            `${field('generatorCompanyName', 'Empresa generadora', `<input name="generatorCompanyName" value="${esc(d.generatorCompanyName)}" maxlength="120" autocomplete="organization" class="login-input w-full text-xs" placeholder="Nombre de la empresa">`, opts)}
+             ${field('cargoDescription', 'Descripción de la carga', `<input name="cargoDescription" value="${esc(d.cargoDescription)}" maxlength="255" class="login-input w-full text-xs" placeholder="Ej. Cemento ensacado, 600 bultos" enterkeyhint="next">`, { ...opts, required: true })}
+             <div class="grid grid-cols-2 gap-2">
+                ${field('weightTons', 'Peso (t)', `<input name="weightTons" type="number" inputmode="decimal" min="0.1" step="0.1" value="${esc(d.weightTons)}" class="login-input w-full text-xs" placeholder="30">`, { ...opts, required: true })}
+                ${field('volumeM3', 'Volumen (m³)', `<input name="volumeM3" type="number" inputmode="decimal" min="0" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">`, opts)}
+             </div>
+             ${field('requiredTruckType', 'Tipo de camión requerido', `<select name="requiredTruckType" class="login-input w-full text-xs">${TRUCK_TYPES.map(([value, text]) => `<option value="${value}" ${value === d.requiredTruckType ? 'selected' : ''}>${text}</option>`).join('')}</select>`, { ...opts, required: true })}`,
+            `<datalist id="truckcar-cities">${CITIES.map(c => `<option value="${c.city}">${c.department}</option>`).join('')}</datalist>
+             ${field('originCity', 'Origen', `<input name="originCity" list="truckcar-cities" value="${esc(d.originCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
+             ${field('destinationCity', 'Destino', `<input name="destinationCity" list="truckcar-cities" value="${esc(d.destinationCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
+             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot text-brand-400"></i> ${origin && destination && origin !== destination
+                ? esc(origin.city + ', ' + origin.department + ' → ' + destination.city + ', ' + destination.department)
+                : 'Las coordenadas del trayecto salen del catálogo de ciudades.'}</p>`,
+            `${field('offeredBudget', 'Presupuesto ofrecido (COP)', `<input name="offeredBudget" type="number" inputmode="numeric" min="1000" step="1000" value="${esc(d.offeredBudget)}" class="login-input w-full text-xs" placeholder="5000000" enterkeyhint="done">`, { ...opts, required: true })}
+             <div class="card p-3 space-y-1.5 text-[11px]">
+                <div class="font-bold text-slate-200 mb-1">Resumen</div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Carga</span><b class="text-right truncate">${esc(d.cargoDescription || '—')}</b></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Peso</span><b>${esc(d.weightTons || '—')} t</b></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Trayecto</span><b class="text-right">${esc((origin ? origin.city : '—') + ' → ' + (destination ? destination.city : '—'))}</b></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Presupuesto</span><b class="text-emerald-300 font-mono">${esc(money)}</b></div>
+             </div>`
+        ];
+        const last = step === FORM_STEPS.length - 1;
         return `
-            <form onsubmit="event.preventDefault(); window.generatorCtrl.publish()" oninput="window.generatorCtrl.updateDraft(event)" onchange="window.generatorCtrl.updateDraft(event)"
-                  class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xl overflow-y-auto" novalidate>
+            <form onsubmit="event.preventDefault(); window.generatorCtrl.${last ? 'publish()' : 'nextStep()'}" oninput="window.generatorCtrl.updateDraft(event)" onchange="window.generatorCtrl.updateDraft(event)" onfocusout="window.generatorCtrl.touch(event)"
+                  class="card p-4 flex flex-col gap-3 overflow-y-auto" novalidate>
                 <div class="flex items-center gap-2 border-b border-slate-800 pb-2.5">
-                    <i class="fas fa-square-plus text-emerald-400"></i>
+                    <i class="fas fa-square-plus text-brand-400"></i>
                     <h2 class="font-extrabold text-sm text-white">Publicar nueva carga</h2>
+                    <span class="ml-auto text-[10px] text-slate-400 font-mono">Paso ${step + 1}/${FORM_STEPS.length}</span>
                 </div>
-                <label class="text-[11px] space-y-1">
-                    <span class="font-bold text-slate-300">Empresa generadora</span>
-                    <input name="generatorCompanyName" value="${esc(d.generatorCompanyName)}" maxlength="120" class="login-input w-full text-xs" placeholder="Nombre de la empresa">
-                </label>
-                <label class="text-[11px] space-y-1">
-                    <span class="font-bold text-slate-300">Descripción de la carga <span class="text-rose-400">*</span></span>
-                    <input name="cargoDescription" value="${esc(d.cargoDescription)}" maxlength="255" class="login-input w-full text-xs" placeholder="Ej. Cemento ensacado, 600 bultos">
-                </label>
-                <div class="grid grid-cols-2 gap-2">
-                    <label class="text-[11px] space-y-1">
-                        <span class="font-bold text-slate-300">Peso (t) <span class="text-rose-400">*</span></span>
-                        <input name="weightTons" type="number" min="0.1" step="0.1" value="${esc(d.weightTons)}" class="login-input w-full text-xs" placeholder="30">
-                    </label>
-                    <label class="text-[11px] space-y-1">
-                        <span class="font-bold text-slate-300">Volumen (m³)</span>
-                        <input name="volumeM3" type="number" min="0" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">
-                    </label>
-                </div>
-                <label class="text-[11px] space-y-1">
-                    <span class="font-bold text-slate-300">Tipo de camión requerido <span class="text-rose-400">*</span></span>
-                    <select name="requiredTruckType" class="login-input w-full text-xs">
-                        ${TRUCK_TYPES.map(([value, text]) => `<option value="${value}" ${value === d.requiredTruckType ? 'selected' : ''}>${text}</option>`).join('')}
-                    </select>
-                </label>
-                <div class="grid grid-cols-2 gap-2">
-                    <label class="text-[11px] space-y-1">
-                        <span class="font-bold text-slate-300">Origen <span class="text-rose-400">*</span></span>
-                        <select name="originCity" class="login-input w-full text-xs">${cityOptions(d.originCity)}</select>
-                    </label>
-                    <label class="text-[11px] space-y-1">
-                        <span class="font-bold text-slate-300">Destino <span class="text-rose-400">*</span></span>
-                        <select name="destinationCity" class="login-input w-full text-xs">${cityOptions(d.destinationCity)}</select>
-                    </label>
-                </div>
-                <label class="text-[11px] space-y-1">
-                    <span class="font-bold text-slate-300">Presupuesto ofrecido (COP) <span class="text-rose-400">*</span></span>
-                    <input name="offeredBudget" type="number" min="1000" step="1000" value="${esc(d.offeredBudget)}" class="login-input w-full text-xs" placeholder="5000000">
-                </label>
+                <div class="stepper" aria-label="Pasos del formulario">${stepper}</div>
+                <div class="space-y-2" data-form-step="${step}">${steps[step]}</div>
                 ${state.generatorFormError ? `<p class="text-[11px] text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-2">${esc(state.generatorFormError)}</p>` : ''}
-                <button type="submit" ${busy ? 'disabled' : ''} class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition">
-                    <i class="fas ${busy ? 'fa-spinner fa-spin' : 'fa-paper-plane'}"></i> Publicar carga
-                </button>
-                <p class="text-[10px] text-slate-500 leading-snug">Al publicarla, el motor de asignación busca automáticamente un conductor disponible.</p>
+                <div class="flex gap-2 mt-auto pt-1">
+                    ${step > 0 ? '<button type="button" onclick="window.generatorCtrl.prevStep()" class="btn-secondary px-4"><i class="fas fa-arrow-left"></i></button>' : ''}
+                    <button type="submit" ${busy ? 'disabled' : ''} class="btn-cta !min-h-[46px] !text-[13px] flex-1">
+                        ${last
+                            ? `<i class="fas ${busy ? 'fa-circle-notch fa-spin' : 'fa-paper-plane'}"></i> Publicar carga`
+                            : 'Siguiente <i class="fas fa-arrow-right"></i>'}
+                    </button>
+                </div>
+                ${last ? '<p class="text-[10px] text-slate-500 leading-snug">Al publicarla, el motor de asignación busca automáticamente un conductor disponible.</p>' : ''}
             </form>
         `;
     }
@@ -142,7 +182,7 @@ window.GeneratorPanel = (function () {
         const visible = filter === 'ALL' ? loads : loads.filter(l => filterKey(l) === filter);
         const selectedId = state.selectedShipmentId;
         return `
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xl overflow-hidden">
+            <div class="card p-4 flex flex-col gap-3 overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-boxes-stacked text-indigo-400"></i>
@@ -212,7 +252,7 @@ window.GeneratorPanel = (function () {
         const cancelled = load.status === 'CANCELLED';
         const assigned = ['ASSIGNED', 'IN_TRANSIT', 'DELIVERED'].includes(load.status);
         return `
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xl overflow-y-auto">
+            <div class="card p-4 flex flex-col gap-3 overflow-y-auto">
                 <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0">
                         <div class="font-mono text-[11px] text-slate-400">${esc(load.id)}</div>
@@ -244,8 +284,12 @@ window.GeneratorPanel = (function () {
                 </ol>
                 <div class="flex flex-col gap-2 pt-1">
                     ${load.status === 'DELIVERED' ? `
-                        <button onclick="window.generatorCtrl.showProofOfDelivery(${load.backendId})" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold">
+                        <button onclick="window.generatorCtrl.showProofOfDelivery(${load.backendId})" class="w-full py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold">
                             <i class="fas fa-file-signature"></i> Ver prueba de entrega (POD)
+                        </button>` : ''}
+                    ${load.status !== 'CANCELLED' ? `
+                        <button onclick="window.generatorCtrl.shareTracking(${load.backendId})" class="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold">
+                            <i class="fas fa-link text-brand-400"></i> Generar enlace de seguimiento público
                         </button>` : ''}
                     ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
                         <button onclick="window.generatorCtrl.cancel(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-60 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold">
@@ -290,46 +334,48 @@ window.GeneratorPanel = (function () {
         const delivered = loads.filter(l => l.status === 'DELIVERED').length;
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
-                <header class="h-16 px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between z-30 shrink-0 gap-4">
+                <header class="min-h-16 px-4 lg:px-6 py-2 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between z-30 shrink-0 gap-x-4 gap-y-2">
                     <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-sky-500 flex items-center justify-center text-white shadow-lg">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-b from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-lg shadow-brand-900/50">
                             <i class="fas fa-industry text-lg"></i>
                         </div>
                         <div class="min-w-0">
-                            <h1 class="text-base font-extrabold text-white tracking-tight">PANEL DEL GENERADOR DE CARGA</h1>
-                            <p class="text-xs text-slate-400 truncate">Actualización automática · última ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
+                            <h1 class="text-[15px] lg:text-base font-extrabold text-white tracking-tight">Mis envíos</h1>
+                            <p class="text-xs text-slate-400 truncate flex items-center gap-2"><span data-network-status class="lg:hidden"></span> Última ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
                         </div>
                     </div>
                     ${state.sessionRole === 'GENERADOR' ? '' : window.CoordinatorPanel.renderTabs(state)}
                     <div class="flex items-center gap-3">
                         <div class="px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                             <span class="text-[10px] uppercase text-slate-400 font-bold block">En curso</span>
-                            <span class="text-sm font-black text-emerald-400 font-mono">${active}</span>
+                            <span class="text-sm font-black text-emerald-400 font-mono" data-count="${active}" data-count-key="gen-active">${active}</span>
                         </div>
                         <div class="px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                             <span class="text-[10px] uppercase text-slate-400 font-bold block">Entregadas</span>
-                            <span class="text-sm font-black text-teal-300 font-mono">${delivered}</span>
+                            <span class="text-sm font-black text-teal-300 font-mono" data-count="${delivered}" data-count-key="gen-delivered">${delivered}</span>
                         </div>
-                        <div class="text-xs font-bold text-slate-200 pl-3 border-l border-slate-800">${esc(user ? user.firstName + ' ' + user.lastName : 'Generador')}</div>
-                        <button onclick="window.app.logout()" class="text-slate-400 hover:text-rose-400 text-xs" title="Cerrar sesión"><i class="fas fa-right-from-bracket"></i></button>
+                        <div class="hidden md:block text-xs font-bold text-slate-200 pl-3 border-l border-slate-800">${esc(user ? user.firstName + ' ' + user.lastName : 'Generador')}</div>
+                        <button onclick="window.app.logout()" class="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-rose-400 text-xs" title="Cerrar sesión" aria-label="Cerrar sesión"><i class="fas fa-right-from-bracket"></i></button>
                     </div>
                 </header>
                 ${window.ui.syncBanner(state)}
-                <div class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden">
-                    <div class="col-span-3 flex flex-col overflow-hidden">${renderForm(state)}</div>
-                    <div class="col-span-5 flex flex-col overflow-hidden">${renderBoard(state, loads)}</div>
-                    <div class="col-span-4 flex flex-col overflow-hidden">${renderDetail(state, load, truckFor(load))}</div>
+                <div data-screen class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-3 lg:p-4 overflow-y-auto lg:overflow-hidden" style="padding-bottom: calc(1rem + var(--safe-bottom))">
+                    <div class="lg:col-span-3 flex flex-col lg:overflow-hidden">${renderForm(state)}</div>
+                    <div class="lg:col-span-5 flex flex-col lg:overflow-hidden min-h-[320px]">${renderBoard(state, loads)}</div>
+                    <div class="lg:col-span-4 flex flex-col lg:overflow-hidden">${renderDetail(state, load, truckFor(load))}</div>
                 </div>
             </div>
         `;
     }
 
-    return { render, selectedLoad, truckFor, updateTruckLine, CITIES };
+    return { render, selectedLoad, truckFor, updateTruckLine, CITIES, FORM_STEPS, findCity, validate };
 })();
 
 window.generatorCtrl = (function () {
     let draft = null;
     let companyEdited = false;
+    let step = 0;
+    let touched = new Set();
 
     function defaultDraft() {
         const user = window.store.state.currentUser;
@@ -342,7 +388,7 @@ window.generatorCtrl = (function () {
         };
     }
 
-    const city = (name) => window.GeneratorPanel.CITIES.find(c => c.city === name);
+    const city = (name) => window.GeneratorPanel.findCity(name);
 
     return {
         /** Borrador del formulario: sobrevive a los re-render del refresco automático. */
@@ -355,11 +401,97 @@ window.generatorCtrl = (function () {
             return draft;
         },
 
+        step() { return step; },
+        touched() { return touched; },
+
+        /**
+         * Guarda lo escrito sin re-renderizar (el foco y el teclado no se pierden) y valida en vivo el campo que el
+         * usuario ya tocó: el mensaje se escribe directamente en su pista.
+         */
         updateDraft(event) {
             const target = event.target;
             if (target && target.name && Object.hasOwn(this.draft(), target.name)) {
                 draft[target.name] = target.value;
                 if (target.name === 'generatorCompanyName') companyEdited = true;
+                if (event.type === 'change') touched.add(target.name);
+                this.showFieldErrors(target.form);
+            }
+        },
+
+        touch(event) {
+            const target = event.target;
+            if (!target || !target.name) return;
+            touched.add(target.name);
+            const city = (target.name === 'originCity' || target.name === 'destinationCity') && window.GeneratorPanel.findCity(target.value);
+            if (city && city.city !== target.value) {
+                target.value = city.city; // normaliza "bogota" -> "Bogotá"
+                draft[target.name] = city.city;
+            }
+            this.showFieldErrors(target.form);
+        },
+
+        showFieldErrors(form) {
+            if (!form) return;
+            const errors = window.GeneratorPanel.validate(this.draft());
+            form.querySelectorAll('[data-hint]').forEach((hint) => {
+                const name = hint.dataset.hint;
+                const message = touched.has(name) ? (errors[name] || '') : '';
+                hint.textContent = message;
+                const input = form.elements[name];
+                if (input) input.setAttribute('aria-invalid', String(Boolean(message)));
+            });
+        },
+
+        goToStep(index) {
+            if (index > step && !this.validateStep()) return;
+            step = Math.max(0, Math.min(2, index));
+            window.store.setState({ generatorFormError: null });
+            // Solo el cambio de paso se anima (no los re-render del refresco automático).
+            const panel = document.querySelector('[data-form-step]');
+            if (panel) panel.classList.add('screen-enter');
+        },
+        nextStep() { this.goToStep(step + 1); },
+        prevStep() { this.goToStep(step - 1); },
+
+        /** Avanza solo si los campos del paso actual son válidos; si no, los marca y enfoca el primero. */
+        validateStep() {
+            const errors = window.GeneratorPanel.validate(this.draft());
+            const fields = window.GeneratorPanel.FORM_STEPS[step].fields;
+            fields.forEach(name => touched.add(name));
+            const invalid = fields.find(name => errors[name]);
+            if (!invalid) return true;
+            const form = document.querySelector('[data-form-step]') && document.querySelector('[data-form-step]').closest('form');
+            this.showFieldErrors(form);
+            if (form && form.elements[invalid]) form.elements[invalid].focus();
+            window.Native.haptic('warning');
+            return false;
+        },
+
+        /**
+         * Enlace de seguimiento público (maquetado): el backend aún no firma ni sirve una vista pública del envío.
+         * Genera el formato previsto (?track=<id>&sig=<token>) y lo comparte o copia.
+         */
+        async shareTracking(loadId) {
+            const bytes = new Uint8Array(16);
+            window.crypto.getRandomValues(bytes);
+            const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            const url = window.location.origin + window.location.pathname + '?track=' + loadId + '&sig=' + token;
+            try {
+                if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
+                    await navigator.share({ title: 'Seguimiento CARGA-' + loadId, url });
+                } else {
+                    await navigator.clipboard.writeText(url);
+                }
+                window.ui.toast('Enlace de seguimiento copiado', 'success', {
+                    description: 'Vista previa: el backend aún no firma ni publica el seguimiento de envíos.'
+                });
+            } catch (error) {
+                if (error && error.name === 'AbortError') return;
+                window.Sheet.open({
+                    title: 'Enlace de seguimiento', subtitle: 'Cópielo manualmente.', icon: 'fa-link',
+                    body: '<input readonly class="login-input w-full text-sm font-mono" value="' + window.ui.escape(url) + '">',
+                    actions: [{ label: 'Listo', tone: 'secondary' }]
+                });
             }
         },
 
@@ -369,14 +501,12 @@ window.generatorCtrl = (function () {
             const destination = city(d.destinationCity);
             const weight = Number(d.weightTons);
             const budget = Number(d.offeredBudget);
-            const error =
-                !d.cargoDescription.trim() ? 'Describa la carga.' :
-                !(weight > 0) ? 'El peso debe ser mayor a 0 toneladas.' :
-                !origin || !destination ? 'Seleccione el origen y el destino.' :
-                origin === destination ? 'El origen y el destino deben ser distintos.' :
-                !(budget >= 1000) ? 'El presupuesto mínimo es 1.000 COP.' : null;
-            if (error) {
-                window.store.setState({ generatorFormError: error });
+            const errors = window.GeneratorPanel.validate(d);
+            const firstInvalid = window.GeneratorPanel.FORM_STEPS.findIndex(s => s.fields.some(name => errors[name]));
+            if (firstInvalid >= 0) {
+                Object.keys(errors).forEach(name => touched.add(name));
+                step = firstInvalid;
+                window.store.setState({ generatorFormError: 'Revise los campos marcados.' });
                 return;
             }
             const user = window.store.state.currentUser;
@@ -399,6 +529,9 @@ window.generatorCtrl = (function () {
                 });
                 try { localStorage.setItem('truckcar.generatorCompanyName', companyName); } catch (e) { /* sin almacenamiento */ }
                 draft = { ...defaultDraft(), requiredTruckType: d.requiredTruckType, originCity: d.originCity, destinationCity: d.destinationCity };
+                step = 0;
+                touched = new Set();
+                window.Native.haptic('success');
                 window.store.setState({ busyAction: null, selectedShipmentId: created.backendId, shipmentFilter: 'ALL' });
                 window.ui.toast(created.id + ' publicada. El motor de asignación ya busca conductor.', 'success');
                 // El matching es asíncrono: a los pocos segundos la carga suele pasar a PROPOSED/NOTIFIED.
@@ -442,7 +575,7 @@ window.generatorCtrl = (function () {
                 await window.TruckCarService.loadPublishedLoads();
                 window.ui.toast('Envío CARGA-' + loadId + ' cancelado.', 'success');
             } catch (err) {
-                window.ui.toast('No se pudo cancelar: ' + window.ui.errorMessage(err), 'error');
+                window.ui.failure('No se pudo cancelar', err, 'cancelar');
             } finally {
                 window.store.setState({ busyAction: null });
             }
@@ -451,6 +584,8 @@ window.generatorCtrl = (function () {
         reset() {
             draft = null;
             companyEdited = false;
+            step = 0;
+            touched = new Set();
         }
     };
 })();
