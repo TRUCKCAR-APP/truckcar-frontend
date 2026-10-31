@@ -357,7 +357,7 @@ window.generatorCtrl = (function () {
 
         updateDraft(event) {
             const target = event.target;
-            if (target && target.name && this.draft().hasOwnProperty(target.name)) {
+            if (target && target.name && Object.hasOwn(this.draft(), target.name)) {
                 draft[target.name] = target.value;
                 if (target.name === 'generatorCompanyName') companyEdited = true;
             }
