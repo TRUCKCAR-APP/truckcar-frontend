@@ -16,9 +16,9 @@ window.CoordinatorPanel = {
 
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
-                <header class="h-16 px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between z-30 shrink-0">
+                <header class="min-h-16 px-4 lg:px-6 py-2 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between z-30 shrink-0 gap-x-4 gap-y-2">
                     <div class="flex items-center gap-2.5">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-900/40">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-b from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-lg shadow-brand-900/50">
                             <i class="fas fa-tower-broadcast text-lg"></i>
                         </div>
                         <div>
@@ -28,25 +28,25 @@ window.CoordinatorPanel = {
                                     ${Object.keys(state.dataStatus.errors).length ? 'Con errores' : 'En Línea'}
                                 </span>
                             </h1>
-                            <p class="text-xs text-slate-400">Última sincronización: ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
+                            <p class="text-xs text-slate-400 flex items-center gap-2"><span data-network-status class="lg:hidden"></span> Última sincronización: ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
                         </div>
                     </div>
 
                     ${this.renderTabs(state)}
 
-                    <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-3 lg:gap-6 flex-wrap">
                         <div class="flex items-center gap-3">
                             <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                                 <span class="text-[10px] uppercase text-slate-400 font-bold block">Flota Activa</span>
-                                <span class="text-sm font-black text-emerald-400 font-mono">${operating} / ${fleet.length}</span>
+                                <span class="text-sm font-black text-emerald-400 font-mono"><span data-count="${operating}" data-count-key="kpi-operating">${operating}</span> / ${fleet.length}</span>
                             </div>
                             <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                                 <span class="text-[10px] uppercase text-slate-400 font-bold block">Alertas Ruta</span>
-                                <span class="text-sm font-black text-amber-400 font-mono">${alerts.length} Novedades</span>
+                                <span class="text-sm font-black text-amber-400 font-mono"><span data-count="${alerts.length}" data-count-key="kpi-alerts">${alerts.length}</span> Novedades</span>
                             </div>
                             <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                                 <span class="text-[10px] uppercase text-slate-400 font-bold block">Gálibo Reportado</span>
-                                <span class="text-sm font-black text-rose-400 font-mono">${clearanceAlerts} Alertas</span>
+                                <span class="text-sm font-black text-rose-400 font-mono"><span data-count="${clearanceAlerts}" data-count-key="kpi-clearance">${clearanceAlerts}</span> Alertas</span>
                             </div>
                         </div>
 
@@ -67,8 +67,8 @@ window.CoordinatorPanel = {
 
                 ${window.ui.syncBanner(state)}
 
-                <div class="flex-1 grid grid-cols-12 gap-4 p-4 overflow-hidden">
-                    <div class="col-span-4 flex flex-col gap-4 overflow-hidden">
+                <div data-screen class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-3 lg:p-4 overflow-y-auto lg:overflow-hidden" style="padding-bottom: calc(1rem + var(--safe-bottom))">
+                    <div class="lg:col-span-4 flex flex-col gap-4 lg:overflow-hidden order-2 lg:order-1">
                         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xl max-h-[60%] overflow-y-auto">
                             <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
                                 <div class="flex items-center gap-2">
@@ -124,6 +124,9 @@ window.CoordinatorPanel = {
                                                 </div>
                                                 <span class="text-sm font-black font-mono ${c.isCurrentAssignment ? 'text-emerald-400' : 'text-slate-300'}">${c.score != null ? c.score + '/100' : '—'}</span>
                                             </div>
+                                            ${c.score != null ? `<div class="h-1.5 mb-2 rounded-full bg-slate-700/60 overflow-hidden" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Number(c.score)}" aria-label="Puntaje del motor de asignación">
+                                                <div class="h-full rounded-full origin-left ${c.isCurrentAssignment ? 'bg-emerald-500' : 'bg-brand-500'}" style="transform: scaleX(${Math.max(0, Math.min(100, Number(c.score))) / 100}); transition: transform 600ms cubic-bezier(0.23, 1, 0.32, 1)"></div>
+                                            </div>` : ''}
                                             <div class="grid grid-cols-2 gap-1.5 text-[10px] text-slate-300 pt-1 border-t border-slate-700/40">
                                                 <div>Distancia vacío: <b class="font-mono text-emerald-400">${c.deadheadDistanceKm != null ? Math.round(c.deadheadDistanceKm) + ' km' : '—'}</b></div>
                                                 <div class="text-right text-slate-400">${esc(c.executedAt)}</div>
@@ -185,8 +188,8 @@ window.CoordinatorPanel = {
                         </div>
                     </div>
 
-                    <div class="col-span-8 flex flex-col gap-4 overflow-hidden">
-                        <div class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden shadow-2xl">
+                    <div class="lg:col-span-8 flex flex-col gap-4 lg:overflow-hidden order-1 lg:order-2">
+                        <div class="flex-1 min-h-[55vh] lg:min-h-0 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden shadow-2xl">
                             <div id="coordinator-map-container" class="w-full h-full"></div>
 
                             <div class="absolute top-4 left-14 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-2xl p-3 shadow-2xl space-y-2 max-w-xs">
@@ -213,7 +216,7 @@ window.CoordinatorPanel = {
                             </div>
                         </div>
 
-                        <div class="h-48 grid grid-cols-3 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-3 md:h-48 gap-4">
                             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
@@ -247,7 +250,17 @@ window.CoordinatorPanel = {
                                     ${notices.length ? notices.map(n => `
                                         <div class="p-2 ${n.style} rounded-xl flex items-start gap-2">
                                             <i class="fas ${n.icon} mt-0.5"></i>
-                                            <div><b class="text-white">${esc(n.title)}:</b> ${esc(n.text)}</div>
+                                            <div class="min-w-0 flex-1">
+                                                <div><b class="text-white">${esc(n.title)}:</b> ${esc(n.text)}</div>
+                                                ${n.alertId ? `<div class="flex gap-1.5 mt-1.5">
+                                                    <button onclick="window.app.upvoteAlert(${n.alertId})" class="px-2 py-1 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white text-[10px] font-bold" title="Confirmar la alerta en Community-Alerts (un voto por usuario)">
+                                                        <i class="fas fa-check"></i> Validar · ${n.upvotes}
+                                                    </button>
+                                                    <button onclick="window.coordinatorCtrl.dismissAlert(${n.alertId})" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold" title="Ocultar de esta vista (el backend no tiene descarte)">
+                                                        <i class="fas fa-eye-slash"></i> Descartar
+                                                    </button>
+                                                </div>` : ''}
+                                            </div>
                                         </div>
                                     `).join('') : '<div class="text-slate-400 text-center p-3">Sin novedades activas.</div>'}
                                 </div>
@@ -272,7 +285,7 @@ window.CoordinatorPanel = {
 
                                 <div class="mt-2 flex gap-2">
                                     <input id="coord-msg-input" type="text" placeholder="Escribir instrucción al conductor..." class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
-                                    <button onclick="window.coordinatorCtrl.sendDispatchMessage()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition">
+                                    <button onclick="window.coordinatorCtrl.sendDispatchMessage()" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition">
                                         <i class="fas fa-paper-plane"></i>
                                     </button>
                                 </div>
@@ -346,17 +359,48 @@ window.CoordinatorPanel = {
             title: 'Descanso requerido',
             text: t.driverName + ' (' + t.plate + ') lleva ' + t.hoursActive + ' de conducción.'
         }));
-        alerts.filter(a => a.verified || a.severity === 'CRITICA' || a.severity === 'ALTA').slice(0, 6).forEach(a => notices.push({
-            icon: a.type === 'bridge' ? 'fa-road-barrier text-rose-400' : 'fa-triangle-exclamation text-rose-400',
-            style: 'bg-rose-500/10 border border-rose-500/30 text-rose-300',
-            title: a.badge + (a.verified ? ' (validada)' : ''),
-            text: a.title + (a.corridor ? ' · ' + a.corridor : '') + ' · ' + a.timeAgo
-        }));
+        const dismissed = window.coordinatorCtrl.dismissedAlerts();
+        alerts.filter(a => (a.verified || a.severity === 'CRITICA' || a.severity === 'ALTA') && !dismissed.has(a.id))
+            .slice(0, 6).forEach(a => notices.push({
+                icon: a.type === 'bridge' ? 'fa-road-barrier text-rose-400' : 'fa-triangle-exclamation text-rose-400',
+                style: 'bg-rose-500/10 border border-rose-500/30 text-rose-300',
+                title: a.badge + (a.verified ? ' (validada)' : ''),
+                text: a.title + (a.corridor ? ' · ' + a.corridor : '') + ' · ' + a.timeAgo,
+                alertId: a.id && !a.pendingSync ? a.id : null,
+                upvotes: a.upvotes
+            }));
         return notices;
     }
 };
 
 window.coordinatorCtrl = {
+    /** Alertas descartadas por este coordinador: solo se ocultan de su vista (Community-Alerts no tiene descarte). */
+    dismissedAlerts() {
+        try {
+            return new Set(JSON.parse(sessionStorage.getItem('truckcar.dismissedAlerts') || '[]'));
+        } catch (e) {
+            return new Set();
+        }
+    },
+
+    dismissAlert(alertId) {
+        const dismissed = this.dismissedAlerts();
+        dismissed.add(alertId);
+        try { sessionStorage.setItem('truckcar.dismissedAlerts', JSON.stringify([...dismissed])); } catch (e) { /* sin almacenamiento */ }
+        window.store.setState({});
+        window.ui.toast('Alerta ocultada de su vista', 'info', {
+            description: 'Sigue activa para los conductores hasta que venza.',
+            action: { label: 'Deshacer', onClick: () => this.restoreAlert(alertId) }
+        });
+    },
+
+    restoreAlert(alertId) {
+        const dismissed = this.dismissedAlerts();
+        dismissed.delete(alertId);
+        try { sessionStorage.setItem('truckcar.dismissedAlerts', JSON.stringify([...dismissed])); } catch (e) { /* sin almacenamiento */ }
+        window.store.setState({});
+    },
+
     showAiInspectionModal(driverId) {
         const modal = document.getElementById('ai-inspection-modal');
         const body = document.getElementById('ai-inspection-body');
@@ -415,7 +459,7 @@ window.coordinatorCtrl = {
             await window.TruckCarService.cancelLoad(loadId, reason.trim());
             window.ui.toast('Carga #' + loadId + ' cancelada.', 'success');
         } catch (error) {
-            window.ui.toast('No se pudo cancelar la carga: ' + window.ui.errorMessage(error), 'error');
+            window.ui.failure('No se pudo cancelar la carga', error, 'cancelar la carga');
         } finally {
             window.store.setState({ busyAction: null });
         }
@@ -430,7 +474,7 @@ window.coordinatorCtrl = {
                 : 'Matching ejecutado: ' + ((result && result.reasonDetails) || (result && result.status) || 'sin candidatos');
             window.ui.toast(message, result && result.selectedDriverName ? 'success' : 'warning');
         } catch (error) {
-            window.ui.toast('No se pudo ejecutar el matching: ' + window.ui.errorMessage(error), 'error');
+            window.ui.failure('No se pudo ejecutar el matching', error, 'ejecutar el matching');
         } finally {
             window.store.setState({ busyAction: null });
         }
