@@ -237,6 +237,11 @@ window.DriverApp = {
                         <h3 class="font-extrabold text-white text-sm">Viaje finalizado</h3>
                         <p class="text-xs text-slate-400">La carga quedó en DELIVERED. Cuando el motor le proponga otra aparecerá aquí.</p>
                     </div>
+                    ${lastDelivery.pendingSync ? `
+                        <div class="p-2.5 bg-amber-500/10 border border-amber-500/40 rounded-xl text-[11px] text-amber-200 flex items-center gap-2">
+                            <i class="fas fa-cloud-arrow-up"></i>
+                            Entrega guardada en el teléfono sin señal: la firma, la foto y el registro se enviarán al reconectar.
+                        </div>` : ''}
                     ${window.PodUI.receiptHtml(pod, lastDelivery.load)}
                     <button onclick="window.app.refreshAssignment()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold"><i class="fas fa-rotate"></i> Buscar nueva carga</button>
                 </div>
@@ -675,7 +680,11 @@ window.DriverApp = {
     },
 
     renderOfflineScreen(state) {
+        const esc = window.ui.escape;
         const off = window.TruckCarData.offlineSyncData;
+        // Estado real de la cola durable (IndexedDB); se vuelve a pintar en cada cambio (app.js).
+        const queue = window.OfflineQueue ? window.OfflineQueue.status()
+            : { pending: 0, byKind: {}, rejected: [], lastSyncAt: null, lastError: null, nextRetryAt: null };
         return `
             <div class="h-full overflow-y-auto p-4 space-y-4">
                 <div class="flex items-center justify-between">
@@ -700,44 +709,59 @@ window.DriverApp = {
                     </button>
                 </div>
 
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
                     <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                        <span>Mapas Vectoriales Descargados</span>
-                        <span class="text-emerald-400 font-mono text-[11px]">134.9 MB Total</span>
+                        <span>Mapas y aplicación disponibles sin señal</span>
+                        <span class="text-emerald-400 font-mono text-[11px]">${off.cachedTiles == null ? '…' : off.cachedTiles + ' teselas'}</span>
                     </h3>
-                    <div class="space-y-2">
-                        ${off.cachedRegions.map(reg => `
-                            <div class="p-2.5 bg-slate-800/60 border border-slate-700/50 rounded-xl flex items-center justify-between">
-                                <div>
-                                    <div class="font-semibold text-xs text-white">${reg.name}</div>
-                                    <span class="text-[10px] text-slate-400 font-mono">${reg.size} • Actualizado: ${reg.updated}</span>
-                                </div>
-                                <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded font-mono">
-                                    <i class="fas fa-check"></i> ${reg.status}
-                                </span>
-                            </div>
-                        `).join('')}
-                    </div>
+                    <p class="text-[11px] text-slate-400">El Service Worker guarda la aplicación y las zonas del mapa que ya recorrió; se pueden consultar sin cobertura.</p>
                 </div>
 
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
                     <div class="flex items-center justify-between">
-                        <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Cola de Sincronización (${off.pendingQueue.length})</h3>
-                        <span class="text-[10px] text-amber-400 animate-pulse font-mono">Auto-sync al conectar</span>
+                        <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Cola de sincronización (${queue.pending})</h3>
+                        <span class="text-[10px] ${queue.pending ? 'text-amber-400 animate-pulse' : 'text-emerald-400'} font-mono">
+                            ${queue.pending ? 'Se envía al reconectar' : 'Todo sincronizado'}
+                        </span>
                     </div>
                     <div class="space-y-2">
-                        ${off.pendingQueue.map(q => `
+                        ${Object.keys(queue.byKind).length ? Object.entries(queue.byKind).map(([kind, count]) => `
                             <div class="p-2 bg-slate-800/40 border border-slate-700/30 rounded-xl flex items-center justify-between text-xs">
-                                <span class="text-slate-300">${q.type}</span>
-                                <span class="text-[10px] text-slate-400 font-mono">${q.time}</span>
+                                <span class="text-slate-300"><i class="fas ${KIND_ICONS[kind] || 'fa-circle'} text-slate-500 mr-1"></i> ${esc(KIND_LABELS[kind] || kind)}</span>
+                                <span class="text-[10px] text-slate-400 font-mono">${count}</span>
                             </div>
-                        `).join('')}
+                        `).join('') : '<p class="text-[11px] text-slate-500">No hay eventos pendientes.</p>'}
                     </div>
-                    <button onclick="alert('Cola de reportes sincronizada con éxito con la Central de Monitoreo.')" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition">
-                        <i class="fas fa-rotate"></i> Forzar Sincronización
+                    <div class="text-[10px] text-slate-500 font-mono space-y-0.5">
+                        <div>Última sincronización: ${queue.lastSyncAt ? esc(new Date(queue.lastSyncAt).toLocaleString('es-CO')) : '—'}</div>
+                        ${queue.nextRetryAt ? `<div>Próximo intento: ${esc(new Date(queue.nextRetryAt).toLocaleTimeString('es-CO'))}</div>` : ''}
+                        ${queue.lastError ? `<div class="text-amber-300">Último error: ${esc(queue.lastError)}</div>` : ''}
+                    </div>
+                    ${queue.rejected.length ? `
+                        <div class="p-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-[11px] text-rose-200 space-y-1">
+                            <div class="font-bold">Eventos rechazados por el servidor</div>
+                            ${queue.rejected.map(r => `<div>${esc(KIND_LABELS[r.kind] || r.kind)}: ${esc(r.reason)}</div>`).join('')}
+                        </div>` : ''}
+                    <button onclick="window.OfflineQueue.flush()" ${state.isOffline || !queue.pending ? 'disabled' : ''} class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition">
+                        <i class="fas fa-rotate"></i> Sincronizar ahora
                     </button>
                 </div>
             </div>
         `;
     }
+};
+
+const KIND_LABELS = {
+    'position': 'Posiciones GPS',
+    'trip.started': 'Inicio de viaje',
+    'trip.delivered': 'Entrega con firma y foto',
+    'alert.reported': 'Alertas reportadas',
+    'alert.confirmed': 'Confirmaciones de alertas'
+};
+const KIND_ICONS = {
+    'position': 'fa-location-dot',
+    'trip.started': 'fa-truck-moving',
+    'trip.delivered': 'fa-file-signature',
+    'alert.reported': 'fa-triangle-exclamation',
+    'alert.confirmed': 'fa-thumbs-up'
 };

@@ -6,6 +6,10 @@
     <title>TruckCar - Navegación para Transporte Pesado & Torre de Control</title>
     <!-- URL del api-gateway en despliegue. Vacío = automático (localhost:8000 en local, mismo origen en producción). -->
     <meta name="truckcar-api-base-url" content="">
+    <!-- PWA: instalable y operable sin señal (sw.js + cola durable js/offlineQueue.js). -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#020617">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -94,6 +98,8 @@
     <script src="js/api.js"></script>
     <script src="js/mockData.js"></script>
     <script src="js/state.js"></script>
+    <script src="js/offlineQueue.js"></script>
+    <script src="js/podEvidence.js"></script>
     <script src="js/dataService.js"></script>
     <script src="js/telemetry.js"></script>
     <script src="js/speechEngine.js"></script>

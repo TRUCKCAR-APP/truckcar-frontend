@@ -184,8 +184,24 @@
         };
     }
 
+    /**
+     * Ejecuta la acción en línea; sin señal (o si el servicio no responde) ejecuta offlineFn, que guarda el evento
+     * en la cola durable y devuelve el resultado optimista para la interfaz.
+     */
+    async function offlineCapable(onlineFn, offlineFn) {
+        if (window.OfflineQueue.isOffline()) return offlineFn();
+        try {
+            return await onlineFn();
+        } catch (error) {
+            if (window.OfflineQueue.isConnectivityError(error)) return offlineFn();
+            throw error;
+        }
+    }
+
     function mapLoad(load) {
         return {
+            raw: load,
+            pendingSync: !!load.pendingSync,
             id: 'CARGA-' + load.id,
             backendId: load.id,
             customer: load.generatorCompanyName,
@@ -539,23 +555,53 @@
         async startTrip() {
             const load = data.activeLoadOrder;
             if (!load) throw new Error('No hay una carga asignada');
-            const updated = await api.loads.startTrip(load.backendId);
+            const updated = await offlineCapable(
+                () => api.loads.startTrip(load.backendId),
+                async () => {
+                    // Sin señal: el inicio queda en la cola con la hora real y la app sigue en IN_TRANSIT.
+                    await window.OfflineQueue.enqueue('trip.started', { loadId: load.backendId }, { tripId: load.backendId });
+                    return { ...load.raw, status: 'IN_TRANSIT', tripStartedAt: new Date().toISOString(), pendingSync: true };
+                });
             data.activeLoadOrder = { ...mapLoad(updated), totalDistance: load.totalDistance, estimatedDuration: load.estimatedDuration };
             // IN_TRANSIT: empieza la transmisión de la posición en tiempo real.
             syncDriverTelemetry();
             return data.activeLoadOrder;
         },
 
-        /** IN_TRANSIT -> DELIVERED con la prueba de entrega. */
+        /**
+         * IN_TRANSIT -> DELIVERED con la prueba de entrega. pod = { receiverName, receiverDocument, notes,
+         * signatureBlob, photoBlob }: la firma y la foto se suben al almacenamiento (URL prefirmada) y la API recibe
+         * solo sus referencias. Sin señal, todo queda en la cola offline (Blobs incluidos) y se envía al reconectar.
+         */
         async deliverLoad(pod) {
             const load = data.activeLoadOrder;
             if (!load) throw new Error('No hay una carga en tránsito');
-            const updated = await api.loads.deliver(load.backendId, pod);
+            const { signatureBlob, photoBlob, ...fields } = pod;
+            const blobs = { signature: signatureBlob, photo: photoBlob };
+            const updated = await offlineCapable(
+                () => window.PodEvidence.deliver(load.backendId, fields, blobs),
+                async () => {
+                    await window.OfflineQueue.enqueue('trip.delivered', { loadId: load.backendId, ...fields },
+                        { tripId: load.backendId, media: blobs });
+                    return { ...load.raw, status: 'DELIVERED', deliveredAt: new Date().toISOString(),
+                        podReceiverName: fields.receiverName, podHasSignature: !!signatureBlob,
+                        podHasPhoto: !!photoBlob, pendingSync: true };
+                });
             window.DriverTelemetry.stop();
             data.activeLoadOrder = null;
             data.routes = null;
-            // Recibo de la última entrega para la pantalla del conductor (la firma y la foto ya están en memoria).
-            data.lastDelivery = { load: mapLoad(updated), pod: { ...pod, deliveredAt: updated.deliveredAt } };
+            // Recibo local de la última entrega: la firma y la foto se muestran desde los Blobs en memoria.
+            data.lastDelivery = {
+                load: mapLoad(updated),
+                pendingSync: !!updated.pendingSync,
+                pod: {
+                    ...fields,
+                    loadId: load.backendId,
+                    deliveredAt: updated.deliveredAt,
+                    signatureUrl: signatureBlob ? URL.createObjectURL(signatureBlob) : null,
+                    photoUrl: photoBlob ? URL.createObjectURL(photoBlob) : null
+                }
+            };
             return data.lastDelivery.load;
         },
 
@@ -577,9 +623,7 @@
         async reportAlert(uiType, comment, coords) {
             const driver = data.currentDriver || {};
             const alertType = UI_TO_ALERT_TYPE[uiType] || 'ACCIDENTE';
-            const created = await api.alerts.create({
-                clientAlertId: (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : String(Date.now()),
-                driverId: driver.id || (api.session.get() || {}).userId,
+            const alert = {
                 driverName: driver.name,
                 alertType,
                 severity: uiType === 'bridge' ? 'ALTA' : 'MEDIA',
@@ -587,14 +631,30 @@
                 description: comment,
                 latitude: coords[0],
                 longitude: coords[1]
-            });
-            await this.loadAlerts();
+            };
+            const tripId = data.activeLoadOrder ? data.activeLoadOrder.backendId : null;
+            const created = await offlineCapable(
+                () => api.alerts.create({
+                    ...alert,
+                    clientAlertId: (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : String(Date.now())
+                }),
+                async () => {
+                    // Sin señal: la alerta se reporta al reconectar con la hora y posición en que se vio.
+                    await window.OfflineQueue.enqueue('alert.reported', alert, { tripId });
+                    return { ...alert, id: null, confirmationsCount: 1, reportedAt: new Date().toISOString(), pendingSync: true };
+                });
+            if (!created.pendingSync) await this.loadAlerts();
             return mapAlert(created);
         },
 
         async confirmAlert(alertId) {
-            await api.alerts.confirm(alertId);
-            await this.loadAlerts();
+            const queued = await offlineCapable(
+                async () => { await api.alerts.confirm(alertId); return false; },
+                async () => {
+                    await window.OfflineQueue.enqueue('alert.confirmed', { alertId });
+                    return true;
+                });
+            if (!queued) await this.loadAlerts();
         },
 
         reset() {

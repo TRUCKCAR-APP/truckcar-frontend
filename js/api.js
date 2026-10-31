@@ -300,8 +300,11 @@
             /** Cargas del conductor autenticado (propuestas, aceptadas y en tránsito). */
             mine: () => http.get('/loads/mine'),
             startTrip: (loadId) => http.patch('/loads/' + enc(loadId) + '/trip/start'),
-            /** pod: { receiverName, receiverDocument, notes, signatureDataUrl, photoUrl } */
+            /** pod: { receiverName, receiverDocument, notes, signature?, photo? } (referencias, ver PodEvidence). */
             deliver: (loadId, pod) => http.patch('/loads/' + enc(loadId) + '/trip/deliver', pod),
+            /** files: [{ kind: SIGNATURE|PHOTO, contentType, sizeBytes, sha256 }] -> URLs prefirmadas de subida. */
+            podUploadUrls: (loadId, files) =>
+                http.post('/loads/' + enc(loadId) + '/proof-of-delivery/upload-urls', { files }),
             cancel: (loadId, reason) => http.patch('/loads/' + enc(loadId) + '/cancel', { reason }),
             /** Torre de control (COORDINADOR/ADMIN): cargas de todos los generadores por status. */
             list: (statuses) => http.get('/loads', { query: { status: statuses && statuses.length ? statuses.join(',') : undefined } }),

@@ -200,7 +200,7 @@ window.PodUI = (function () {
                             <button type="button" data-action="simulate-photo" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold"><i class="fas fa-wand-magic-sparkles"></i> Simular foto</button>
                             <button type="button" data-action="remove-photo" class="px-3 py-1.5 text-xs text-slate-400 hover:text-rose-300 hidden"><i class="fas fa-trash"></i> Quitar</button>
                         </div>
-                        <input name="photoUrl" type="url" maxlength="2048" autocomplete="off" class="login-input w-full text-xs" placeholder="…o pegue la URL https de la foto">
+                        <p class="text-[10px] text-slate-500">La firma y la foto se suben cifradas en tránsito al almacenamiento de evidencias. Sin señal se guardan en el teléfono y se envían al reconectar.</p>
                         <img id="pod-photo-preview" alt="Vista previa de la foto de entrega" class="hidden w-full max-h-48 object-cover rounded-xl border border-slate-700">
                     </div>
 
@@ -259,22 +259,19 @@ window.PodUI = (function () {
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
                 const receiverName = form.receiverName.value.trim();
-                const photoUrl = photoDataUrl || form.photoUrl.value.trim() || null;
                 if (!receiverName) return showError('Indique el nombre de quien recibe la carga.');
                 if (pad.isEmpty()) return showError('La entrega requiere la firma de quien recibe.');
-                if (photoUrl && !photoDataUrl && !/^https?:\/\/\S+$/.test(photoUrl)) {
-                    return showError('La URL de la foto debe empezar por http:// o https://');
-                }
                 showError('');
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando…';
                 try {
+                    // Imágenes binarias (Blob): se suben al almacenamiento con URL prefirmada, nunca en Base64.
                     await onSubmit({
                         receiverName,
                         receiverDocument: form.receiverDocument.value.trim() || null,
                         notes: form.notes.value.trim() || null,
-                        signatureDataUrl: pad.toDataUrl(),
-                        photoUrl
+                        signatureBlob: await window.PodEvidence.dataUrlToBlob(pad.toDataUrl()),
+                        photoBlob: photoDataUrl ? await window.PodEvidence.dataUrlToBlob(photoDataUrl) : null
                     });
                     finish(true);
                 } catch (error) {
@@ -288,7 +285,10 @@ window.PodUI = (function () {
     }
 
     // ------------------------------------------------------------------ recibo
-    /** Tarjeta del recibo firmado. pod usa los campos de GET /loads/{id}/proof-of-delivery. */
+    /**
+     * Tarjeta del recibo firmado. pod usa los campos de GET /loads/{id}/proof-of-delivery: signatureUrl y photoUrl
+     * son URLs prefirmadas de vida corta (o URLs locales de los Blobs si la entrega aún no se sincronizó).
+     */
     function receiptHtml(pod, load) {
         const route = load && load.origin ? esc(load.origin.city) + ' → ' + esc(load.destination.city) : '';
         return `
@@ -309,8 +309,8 @@ window.PodUI = (function () {
                     <div class="p-2.5 bg-slate-100 rounded-xl"><span class="block text-slate-500 mb-0.5">Observaciones</span>${esc(pod.notes || 'Sin observaciones')}</div>
                     <div>
                         <span class="block text-slate-500 mb-1">Firma</span>
-                        ${pod.signatureDataUrl
-                            ? `<img src="${esc(pod.signatureDataUrl)}" alt="Firma de ${esc(pod.receiverName || 'quien recibe')}" class="w-full max-h-36 object-contain border border-slate-200 rounded-xl bg-white">`
+                        ${pod.signatureUrl
+                            ? `<img src="${esc(pod.signatureUrl)}" alt="Firma de ${esc(pod.receiverName || 'quien recibe')}" class="w-full max-h-36 object-contain border border-slate-200 rounded-xl bg-white">`
                             : '<div class="p-3 border border-dashed border-slate-300 rounded-xl text-center text-slate-400">Sin firma registrada</div>'}
                     </div>
                     <div>

@@ -54,6 +54,7 @@ window.app = {
 
     init() {
         window.store.subscribe((state) => this.renderCurrentView(state));
+        this.initOffline();
 
         window.addEventListener('truckcar:unauthorized', () => {
             if (window.store.state.isAuthenticated) {
@@ -512,7 +513,41 @@ window.app = {
         } else {
             window.ui.toast('Simulación: conexión restablecida.', 'success');
             window.voiceEngine.speak('Conexión restablecida.');
+            // Igual que el evento online del navegador: se envía lo guardado sin señal.
+            window.OfflineQueue.flush();
         }
+    },
+
+    /**
+     * PWA offline: Service Worker (app y teselas en caché) y cola durable. La pantalla offline del conductor se
+     * repinta con cada cambio de la cola, y los rechazos del servidor se avisan al conductor.
+     */
+    initOffline() {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(error =>
+                console.warn('[TruckCar] No se pudo registrar el Service Worker', error));
+        }
+        const data = window.TruckCarData;
+        const refreshTileCount = () => {
+            if (!window.caches) return;
+            caches.open('truckcar-tiles-v1').then(cache => cache.keys()).then(keys => {
+                data.offlineSyncData.cachedTiles = keys.length;
+            }).catch(() => {});
+        };
+        refreshTileCount();
+        window.OfflineQueue.onChange(() => {
+            const state = window.store.state;
+            if (state.activeRole === 'driver' && state.driverScreen === 'offline') {
+                refreshTileCount();
+                this.renderCurrentView(state);
+            }
+        });
+        window.addEventListener('truckcar:sync-rejected', (event) => {
+            window.ui.toast('El servidor rechazó ' + event.detail.length + ' evento(s) sincronizado(s): '
+                + event.detail[0], 'warning');
+        });
+        window.addEventListener('online', () => window.ui.toast('Conexión restablecida: sincronizando…', 'success'));
+        window.addEventListener('offline', () => window.ui.toast('Sin conexión: las acciones se guardan en el teléfono.', 'warning'));
     },
 
     /** Posición actual para reportes: GPS simulado de navegación, luego posición registrada del vehículo. */

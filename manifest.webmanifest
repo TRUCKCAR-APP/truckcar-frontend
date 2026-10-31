@@ -1,0 +1,15 @@
+{
+  "name": "TruckCar — Navegación para transporte pesado",
+  "short_name": "TruckCar",
+  "description": "Navegación, entregas con prueba digital y alertas viales para conductores de carga, con funcionamiento sin señal.",
+  "lang": "es-CO",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

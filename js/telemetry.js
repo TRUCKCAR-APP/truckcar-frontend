@@ -305,7 +305,9 @@
         const point = currentPoint();
         if (!point) return;
         driver.lastPoint = point;
-        const sent = TruckCarTelemetry.send('/app/telemetry', {
+        // Con la red caída (o la simulación de pérdida de señal) no se intenta el envío en vivo.
+        const offline = window.OfflineQueue && window.OfflineQueue.isOffline();
+        const sent = !offline && TruckCarTelemetry.send('/app/telemetry', {
             driverId: driver.driverId,
             latitude: Math.round(point.coords[0] * 1e6) / 1e6,
             longitude: Math.round(point.coords[1] * 1e6) / 1e6,
@@ -313,8 +315,31 @@
             heading: point.heading == null ? null : Math.round(point.heading),
             loadId: driver.loadId
         });
-        if (sent) driver.lastSent = Date.now();
+        if (sent) {
+            driver.lastSent = Date.now();
+        } else {
+            queueOfflinePosition(point);
+        }
         renderDriverBadge();
+    }
+
+    /**
+     * Sin conexión en vivo la posición va a la cola durable (máx. 1 cada 15 s para acotar el almacenamiento): al
+     * reconectar se sincroniza el recorrido completo y el mapa recibe solo la última posición.
+     */
+    const OFFLINE_POSITION_INTERVAL_MS = 15000;
+    function queueOfflinePosition(point) {
+        if (!window.OfflineQueue || !driver.driverId) return;
+        const now = Date.now();
+        if (driver.lastQueued && now - driver.lastQueued < OFFLINE_POSITION_INTERVAL_MS) return;
+        driver.lastQueued = now;
+        window.OfflineQueue.enqueue('position', {
+            latitude: Math.round(point.coords[0] * 1e6) / 1e6,
+            longitude: Math.round(point.coords[1] * 1e6) / 1e6,
+            speedKmH: point.speed,
+            heading: point.heading == null ? null : Math.round(point.heading),
+            loadId: driver.loadId
+        }, { tripId: driver.loadId }).catch(() => { /* sin IndexedDB: la posición se pierde como antes */ });
     }
 
     function renderDriverBadge() {
