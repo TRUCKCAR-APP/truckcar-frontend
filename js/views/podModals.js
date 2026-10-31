@@ -15,24 +15,39 @@ window.PodUI = (function () {
         return isNaN(date) ? String(value) : date.toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
     }
 
+    /**
+     * Hoja inferior (diálogo centrado en pantallas anchas) con la animación de js/ui/sheet.js. Sin arrastre para
+     * cerrar: un gesto accidental no debe descartar una firma a medio hacer.
+     */
     function mountOverlay(id, innerHtml) {
-        closeOverlay(id);
+        closeOverlay(id, false);
         const overlay = document.createElement('div');
         overlay.id = id;
-        overlay.className = 'fixed inset-0 z-[2000] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6';
+        overlay.className = 'sheet-backdrop';
         overlay.innerHTML = innerHtml;
+        const panel = overlay.firstElementChild;
+        panel.classList.add('sheet');
+        panel.insertAdjacentHTML('afterbegin', '<div class="sheet-handle" aria-hidden="true"></div>');
         document.body.appendChild(overlay);
+        requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('is-open')));
         return overlay;
     }
 
-    function closeOverlay(id) {
+    function closeOverlay(id, animated = true) {
         const existing = document.getElementById(id);
-        if (existing) existing.remove();
+        if (!existing) return;
+        if (!animated) {
+            existing.remove();
+            return;
+        }
+        existing.id = '';
+        existing.classList.remove('is-open');
+        setTimeout(() => existing.remove(), 430);
     }
 
     // ------------------------------------------------------------------ firma
     /** Lienzo de firma con Pointer Events (mouse, lápiz y dedo). Fondo blanco para que se lea en el recibo. */
-    function createSignaturePad(canvas) {
+    function createSignaturePad(canvas, onStroke) {
         const ctx = canvas.getContext('2d');
         let drawing = false;
         let hasInk = false;
@@ -85,7 +100,11 @@ window.PodUI = (function () {
             ctx.stroke();
             last = current;
         });
-        const stop = () => { drawing = false; last = null; };
+        const stop = () => {
+            if (drawing && onStroke) onStroke();
+            drawing = false;
+            last = null;
+        };
         canvas.addEventListener('pointerup', stop);
         canvas.addEventListener('pointercancel', stop);
         canvas.addEventListener('pointerleave', stop);
@@ -157,13 +176,13 @@ window.PodUI = (function () {
     function openDeliveryForm(load, onSubmit) {
         return new Promise((resolve) => {
             const overlay = mountOverlay('pod-delivery-modal', `
-                <form id="pod-form" class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg max-h-full overflow-y-auto shadow-2xl p-5 space-y-4 text-slate-200" novalidate>
+                <form id="pod-form" class="overflow-y-auto px-5 pt-1 space-y-4 text-slate-200" novalidate>
                     <div class="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
                         <div>
-                            <h3 class="font-extrabold text-base text-white flex items-center gap-2"><i class="fas fa-file-signature text-emerald-400"></i> Registrar entrega</h3>
+                            <h3 class="font-extrabold text-[17px] text-white flex items-center gap-2 tracking-tight"><i class="fas fa-file-signature text-brand-400"></i> Registrar entrega</h3>
                             <p class="text-xs text-slate-400 mt-0.5">${esc(load.id)} · ${esc(load.destination && load.destination.name)}</p>
                         </div>
-                        <button type="button" data-action="cancel" class="text-slate-400 hover:text-white text-lg" aria-label="Cerrar"><i class="fas fa-times"></i></button>
+                        <button type="button" data-action="cancel" class="w-9 h-9 rounded-full bg-slate-800 text-slate-300 grid place-items-center" aria-label="Cerrar"><i class="fas fa-xmark"></i></button>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -186,8 +205,11 @@ window.PodUI = (function () {
                             <span class="font-bold text-slate-300">Firma del receptor <span class="text-rose-400">*</span></span>
                             <button type="button" data-action="clear-signature" class="text-slate-400 hover:text-amber-300"><i class="fas fa-eraser"></i> Borrar</button>
                         </div>
-                        <canvas id="pod-signature" class="w-full h-40 rounded-xl border-2 border-dashed border-slate-600 bg-white cursor-crosshair" style="touch-action: none"></canvas>
-                        <p class="text-[10px] text-slate-500">Firme con el dedo, lápiz o mouse dentro del recuadro.</p>
+                        <canvas id="pod-signature" class="w-full h-44 rounded-2xl border-2 border-dashed border-slate-500 bg-white cursor-crosshair" style="touch-action: none" aria-label="Lienzo de firma"></canvas>
+                        <div class="flex items-center justify-between gap-2">
+                            <p class="text-[10px] text-slate-500">Firme con el dedo, lápiz o mouse dentro del recuadro.</p>
+                            <span data-hash="signature" class="hidden chip !text-[10.5px] !py-0.5 font-mono text-emerald-300" title=""></span>
+                        </div>
                     </div>
 
                     <div class="space-y-2">
@@ -201,23 +223,45 @@ window.PodUI = (function () {
                             <button type="button" data-action="remove-photo" class="px-3 py-1.5 text-xs text-slate-400 hover:text-rose-300 hidden"><i class="fas fa-trash"></i> Quitar</button>
                         </div>
                         <p class="text-[10px] text-slate-500">La firma y la foto se suben cifradas en tránsito al almacenamiento de evidencias. Sin señal se guardan en el teléfono y se envían al reconectar.</p>
-                        <img id="pod-photo-preview" alt="Vista previa de la foto de entrega" class="hidden w-full max-h-48 object-cover rounded-xl border border-slate-700">
+                        <figure id="pod-photo-figure" class="hidden relative">
+                            <img id="pod-photo-preview" alt="Vista previa de la foto de entrega" class="w-full max-h-56 object-cover rounded-2xl border border-slate-700">
+                            <figcaption class="absolute left-2 bottom-2 right-2 flex justify-between items-end gap-2">
+                                <span data-hash="photo" class="chip !bg-slate-950/80 font-mono !text-[10.5px] text-emerald-300" title=""></span>
+                            </figcaption>
+                        </figure>
                     </div>
 
                     <p id="pod-error" class="hidden text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-2.5"></p>
 
-                    <div class="flex justify-end gap-2 pt-1">
-                        <button type="button" data-action="cancel" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold">Cancelar</button>
-                        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-xl text-xs font-bold">
+                    <div class="grid gap-2.5 pt-1 pb-1">
+                        <button type="submit" class="btn-cta is-success">
                             <i class="fas fa-check"></i> Confirmar entrega
                         </button>
+                        <button type="button" data-action="cancel" class="btn-secondary w-full">Cancelar</button>
                     </div>
                 </form>
             `);
 
             const form = overlay.querySelector('#pod-form');
-            const pad = createSignaturePad(overlay.querySelector('#pod-signature'));
             const preview = overlay.querySelector('#pod-photo-preview');
+            const figure = overlay.querySelector('#pod-photo-figure');
+            /** Huella SHA-256 (la misma que Load-Allocation verifica en el almacenamiento): 12 dígitos visibles. */
+            const showHash = async (kind, dataUrl) => {
+                const chip = overlay.querySelector('[data-hash="' + kind + '"]');
+                if (!dataUrl) {
+                    chip.classList.add('hidden');
+                    return;
+                }
+                const hash = await window.PodEvidence.sha256Hex(await window.PodEvidence.dataUrlToBlob(dataUrl));
+                chip.innerHTML = '<i class="fas fa-fingerprint"></i> SHA-256 ' + hash.slice(0, 12) + '…';
+                chip.title = 'SHA-256 ' + hash;
+                chip.classList.remove('hidden');
+            };
+            let hashTimer = null;
+            const pad = createSignaturePad(overlay.querySelector('#pod-signature'), () => {
+                clearTimeout(hashTimer);
+                hashTimer = setTimeout(() => showHash('signature', pad.toDataUrl()), 250);
+            });
             const removeBtn = overlay.querySelector('[data-action="remove-photo"]');
             const errorBox = overlay.querySelector('#pod-error');
             const submitBtn = form.querySelector('button[type="submit"]');
@@ -230,8 +274,9 @@ window.PodUI = (function () {
             const setPhoto = (dataUrl) => {
                 photoDataUrl = dataUrl;
                 preview.src = dataUrl || '';
-                preview.classList.toggle('hidden', !dataUrl);
+                figure.classList.toggle('hidden', !dataUrl);
                 removeBtn.classList.toggle('hidden', !dataUrl);
+                showHash('photo', dataUrl);
             };
             const finish = (result) => {
                 document.removeEventListener('keydown', onKey);
@@ -242,7 +287,10 @@ window.PodUI = (function () {
             document.addEventListener('keydown', onKey);
 
             overlay.querySelectorAll('[data-action="cancel"]').forEach(btn => btn.addEventListener('click', () => finish(false)));
-            overlay.querySelector('[data-action="clear-signature"]').addEventListener('click', () => pad.clear());
+            overlay.querySelector('[data-action="clear-signature"]').addEventListener('click', () => {
+                pad.clear();
+                showHash('signature', null);
+            });
             overlay.querySelector('[data-action="simulate-photo"]').addEventListener('click', () => setPhoto(simulatedPhoto(load)));
             removeBtn.addEventListener('click', () => { setPhoto(null); form.photoFile.value = ''; });
             form.photoFile.addEventListener('change', async () => {
@@ -263,7 +311,7 @@ window.PodUI = (function () {
                 if (pad.isEmpty()) return showError('La entrega requiere la firma de quien recibe.');
                 showError('');
                 submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando…';
+                submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Registrando…';
                 try {
                     // Imágenes binarias (Blob): se suben al almacenamiento con URL prefirmada, nunca en Base64.
                     await onSubmit({
@@ -327,13 +375,11 @@ window.PodUI = (function () {
     /** Visor del POD (torre de control y conductor): pide la prueba completa al backend. */
     async function showProofOfDelivery(loadId, load) {
         const overlay = mountOverlay('pod-viewer-modal', `
-            <div class="w-full max-w-md max-h-full overflow-y-auto space-y-3">
+            <div class="overflow-y-auto px-4 pt-1 space-y-3">
                 <div id="pod-viewer-body" class="bg-slate-900 border border-slate-700 rounded-2xl p-6 text-center text-slate-300 text-xs">
                     <i class="fas fa-spinner fa-spin text-lg mb-2 block"></i> Consultando la prueba de entrega…
                 </div>
-                <div class="flex justify-end">
-                    <button type="button" data-action="close" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold">Cerrar</button>
-                </div>
+                <button type="button" data-action="close" class="btn-secondary w-full">Cerrar</button>
             </div>
         `);
         const close = () => { document.removeEventListener('keydown', onKey); closeOverlay('pod-viewer-modal'); };

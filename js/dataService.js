@@ -22,8 +22,11 @@
         police: 'RETEN',
         rest: 'PARADOR_SEGURO',
         danger: 'ACCIDENTE',
+        landslide: 'DERRUMBE',
         workshop: 'OBRA_EN_VIA'
     };
+    /** Severidad inicial del reporte de un conductor: lo que bloquea o pone en riesgo la vía va como ALTA. */
+    const REPORT_SEVERITY = { danger: 'ALTA', landslide: 'ALTA', bridge: 'ALTA' };
     const ALERT_BADGES = {
         BASCULA: 'Báscula Activa',
         GALIBO_REDUCIDO: 'Gálibo Bajo',
@@ -180,7 +183,9 @@
             upvotes: confirmations,
             coords: coordsOrNull(alert.latitude, alert.longitude),
             corridor: alert.roadCorridor,
-            verified: confirmations >= ALERT_VALIDATION_THRESHOLD
+            verified: confirmations >= ALERT_VALIDATION_THRESHOLD,
+            // Reportada sin señal: vive en la cola offline hasta que el servidor la acepte.
+            pendingSync: Boolean(alert.pendingSync)
         };
     }
 
@@ -626,7 +631,7 @@
             const alert = {
                 driverName: driver.name,
                 alertType,
-                severity: uiType === 'bridge' ? 'ALTA' : 'MEDIA',
+                severity: REPORT_SEVERITY[uiType] || 'MEDIA',
                 title: ALERT_BADGES[alertType],
                 description: comment,
                 latitude: coords[0],

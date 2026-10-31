@@ -42,6 +42,7 @@ const SHELL = [
     'js/mapController.js',
     'js/views/loginView.js',
     'js/views/driverApp.js',
+    'js/views/driverActions.js',
     'js/views/coordinatorPanel.js',
     'js/views/podModals.js',
     'js/views/generatorPanel.js',

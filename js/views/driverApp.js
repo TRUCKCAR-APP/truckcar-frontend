@@ -20,17 +20,13 @@ window.DriverApp = {
 
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative select-none">
-                <div class="h-8 px-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between text-[11px] text-slate-400 z-50 shrink-0">
-                    <div class="flex items-center gap-2">
-                        <span class="font-mono font-bold text-slate-200">${new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
-                        <span class="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 font-bold rounded text-[9px]">TRUCKCAR GPS</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        ${state.isOffline ?
-                            '<span class="flex items-center gap-1 text-amber-400 font-bold animate-pulse"><i class="fas fa-plane-slash"></i> MODO OFFLINE</span>' :
-                            '<span class="flex items-center gap-1 text-emerald-400"><i class="fas fa-satellite-dish"></i> En línea</span>'
-                        }
-                        <button onclick="window.app.logout()" class="flex items-center gap-1 hover:text-rose-400" title="Cerrar sesión">
+                <div class="safe-top bg-slate-900/95 border-b border-slate-800 z-50 shrink-0">
+                    <div class="h-12 pl-3 pr-1.5 flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <img src="assets/icon.svg" alt="" class="w-7 h-7 rounded-lg shrink-0">
+                            <span data-network-status aria-live="polite" class="min-w-0"></span>
+                        </div>
+                        <button onclick="window.app.logout()" class="w-10 h-10 rounded-xl grid place-items-center text-slate-400 hover:text-rose-300" title="Cerrar sesión" aria-label="Cerrar sesión">
                             <i class="fas fa-right-from-bracket"></i>
                         </button>
                     </div>
@@ -38,38 +34,40 @@ window.DriverApp = {
 
                 ${window.ui.syncBanner(state)}
 
-                <div class="flex-1 relative overflow-hidden flex flex-col">
+                <div data-screen class="flex-1 relative overflow-hidden flex flex-col">
                     ${screenContent}
                 </div>
 
                 ${(isLandscape && currentScreen === 'navigation') ? '' : `
-                    <div class="h-16 bg-slate-900 border-t border-slate-800 px-2 flex items-center justify-around z-40 shrink-0">
-                        <button onclick="window.store.setState({ driverScreen: 'profile' })" class="flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition ${currentScreen === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'}">
-                            <i class="fas fa-truck text-base"></i>
-                            <span class="text-[10px]">Vehículo</span>
-                        </button>
-                        <button onclick="window.store.setState({ driverScreen: 'assigned_load' })" class="flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition relative ${currentScreen === 'assigned_load' ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'}">
-                            <i class="fas fa-clipboard-list text-base"></i>
-                            <span class="text-[10px]">Carga</span>
-                            ${window.DriverApp.hasPendingLoad() ? '<span class="absolute top-0 right-3 w-2 h-2 bg-amber-400 rounded-full animate-ping"></span>' : ''}
-                        </button>
-                        <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition ${currentScreen === 'route_overview' ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'}">
-                            <i class="fas fa-route text-base"></i>
-                            <span class="text-[10px]">Rutas</span>
-                        </button>
-                        <button onclick="window.store.setState({ driverScreen: 'navigation' })" class="flex flex-col items-center gap-1 px-4 py-1.5 rounded-2xl bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 transform hover:scale-105 active:scale-95 transition">
-                            <i class="fas fa-location-arrow text-base"></i>
-                            <span class="text-[10px]">Navegar</span>
-                        </button>
-                        <button onclick="window.store.setState({ driverScreen: 'alerts' })" class="flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition ${currentScreen === 'alerts' ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'}">
-                            <i class="fas fa-shield-alt text-base"></i>
-                            <span class="text-[10px]">Alertas</span>
-                        </button>
-                        <button onclick="window.store.setState({ driverScreen: 'offline' })" class="flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition ${currentScreen === 'offline' ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'}">
-                            <i class="fas fa-download text-base"></i>
-                            <span class="text-[10px]">Offline</span>
-                        </button>
-                    </div>
+                    <nav class="safe-bottom bg-slate-900/95 border-t border-slate-800 z-40 shrink-0" aria-label="Secciones del conductor">
+                        <div class="h-16 px-1 flex items-center justify-around">
+                            <button onclick="window.store.setState({ driverScreen: 'profile' })" ${currentScreen === 'profile' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'profile' ? 'is-active' : ''}">
+                                <i class="fas fa-truck"></i>
+                                <span>Vehículo</span>
+                            </button>
+                            <button onclick="window.store.setState({ driverScreen: 'assigned_load' })" ${currentScreen === 'assigned_load' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'assigned_load' ? 'is-active' : ''}">
+                                <i class="fas fa-clipboard-list"></i>
+                                <span>Carga</span>
+                                ${window.DriverApp.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>' : ''}
+                            </button>
+                            <button onclick="window.store.setState({ driverScreen: 'route_overview' })" ${currentScreen === 'route_overview' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'route_overview' ? 'is-active' : ''}">
+                                <i class="fas fa-route"></i>
+                                <span>Rutas</span>
+                            </button>
+                            <button onclick="window.store.setState({ driverScreen: 'navigation' })" ${currentScreen === 'navigation' ? 'aria-current="page"' : ''} class="driver-tab-primary">
+                                <i class="fas fa-location-arrow"></i>
+                                <span>Navegar</span>
+                            </button>
+                            <button onclick="window.store.setState({ driverScreen: 'alerts' })" ${currentScreen === 'alerts' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'alerts' ? 'is-active' : ''}">
+                                <i class="fas fa-shield-alt"></i>
+                                <span>Alertas</span>
+                            </button>
+                            <button onclick="window.store.setState({ driverScreen: 'offline' })" ${currentScreen === 'offline' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'offline' ? 'is-active' : ''}">
+                                <i class="fas fa-download"></i>
+                                <span>Offline</span>
+                            </button>
+                        </div>
+                    </nav>
                 `}
             </div>
         `;
@@ -122,7 +120,7 @@ window.DriverApp = {
         const initials = (driver.name || 'C').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
 
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4">
+            <div class="h-full overflow-y-auto p-4 space-y-4 pb-24">
                 <div class="flex items-center justify-between">
                     <div>
                         <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
@@ -243,14 +241,14 @@ window.DriverApp = {
                             Entrega guardada en el teléfono sin señal: la firma, la foto y el registro se enviarán al reconectar.
                         </div>` : ''}
                     ${window.PodUI.receiptHtml(pod, lastDelivery.load)}
-                    <button onclick="window.app.refreshAssignment()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold"><i class="fas fa-rotate"></i> Buscar nueva carga</button>
+                    <button onclick="window.app.refreshAssignment()" class="btn-cta"><i class="fas fa-rotate"></i> Buscar nueva carga</button>
                 </div>
             `;
         }
         if (!load) {
             return this.renderEmptyState('fa-clipboard-check', 'Sin carga asignada',
                 'Cuando el motor de asignación le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
-                '<button onclick="window.app.refreshAssignment()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold"><i class="fas fa-rotate"></i> Consultar de nuevo</button>');
+                '<button onclick="window.app.refreshAssignment()" class="btn-secondary px-5 mt-1"><i class="fas fa-rotate"></i> Consultar de nuevo</button>');
         }
         const pending = load.status === 'AVAILABLE'
             && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED');
@@ -260,7 +258,8 @@ window.DriverApp = {
         const title = pending ? 'Nueva Carga Propuesta' : inTransit ? 'Viaje en Curso' : 'Carga Aceptada';
 
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4">
+            <div class="h-full overflow-y-auto p-4 space-y-4 pb-24" data-stagger>
+                ${window.DriverActions.tripProgressHtml(load)}
                 <div class="flex items-center justify-between">
                     <div>
                         <div class="flex items-center gap-2">
@@ -274,7 +273,7 @@ window.DriverApp = {
                     </div>
                 </div>
 
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div class="card p-4 space-y-3">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
                         <div>
                             <span class="text-[10px] text-slate-400 uppercase font-bold">Tipo de Carga</span>
@@ -331,33 +330,33 @@ window.DriverApp = {
                         </div>
                     </div>
                 ` : pending ? `
-                    <div class="grid grid-cols-2 gap-3 pt-1">
-                        <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="py-3.5 bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-50 text-rose-300 border border-rose-500/40 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition active:scale-95">
-                            <i class="fas ${busy === 'reject' ? 'fa-spinner fa-spin' : 'fa-times-circle'}"></i> Rechazar Viaje
+                    <div class="space-y-2.5 pt-1">
+                        <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-cta">
+                            <i class="fas ${busy === 'accept' ? 'fa-circle-notch fa-spin' : 'fa-circle-check'} text-lg"></i> Aceptar carga y ver ruta
                         </button>
-                        <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition active:scale-95">
-                            <i class="fas ${busy === 'accept' ? 'fa-spinner fa-spin' : 'fa-check-circle'}"></i> Aceptar & Ver Ruta
+                        <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-secondary w-full !text-rose-300 !border-rose-500/30">
+                            <i class="fas ${busy === 'reject' ? 'fa-circle-notch fa-spin' : 'fa-circle-xmark'}"></i> Rechazar
                         </button>
                     </div>
                 ` : inTransit ? `
                     <div id="driver-telemetry-badge" class="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-[11px] text-slate-200" aria-live="polite">
                         <span class="inline-block w-2 h-2 rounded-full bg-slate-500"></span> Preparando telemetría…
                     </div>
-                    <div class="grid grid-cols-2 gap-3 pt-1">
-                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="py-3.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition">
-                            <i class="fas fa-location-arrow"></i> Continuar navegación
+                    <div class="space-y-2.5 pt-1">
+                        <button onclick="window.app.finishTrip()" ${busy ? 'disabled' : ''} class="btn-cta is-success">
+                            <i class="fas ${busy === 'deliver' ? 'fa-circle-notch fa-spin' : 'fa-flag-checkered'} text-lg"></i> Llegué a destino · registrar entrega
                         </button>
-                        <button onclick="window.app.finishTrip()" ${busy ? 'disabled' : ''} class="py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 transition">
-                            <i class="fas ${busy === 'deliver' ? 'fa-spinner fa-spin' : 'fa-clipboard-check'}"></i> Registrar entrega
+                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-secondary w-full">
+                            <i class="fas fa-location-arrow"></i> Continuar navegación
                         </button>
                     </div>
                 ` : `
-                    <div class="grid grid-cols-2 gap-3 pt-1">
-                        <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition">
-                            <i class="fas fa-route"></i> Ver ruta planeada
+                    <div class="space-y-2.5 pt-1">
+                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-cta">
+                            <i class="fas ${busy === 'start-trip' ? 'fa-circle-notch fa-spin' : 'fa-truck-moving'} text-lg"></i> Iniciar viaje
                         </button>
-                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 transition">
-                            <i class="fas ${busy === 'start-trip' ? 'fa-spinner fa-spin' : 'fa-truck-moving'}"></i> Iniciar viaje
+                        <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="btn-secondary w-full">
+                            <i class="fas fa-route"></i> Ver ruta planeada
                         </button>
                     </div>
                 `}
@@ -481,7 +480,7 @@ window.DriverApp = {
                     <div class="landscape-overlay-left pointer-events-none">
                         <div class="hud-pill rounded-2xl p-3.5 shadow-2xl border border-slate-700/60 pointer-events-auto">
                             <div class="flex items-center gap-3">
-                                <div class="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xl shadow-lg shrink-0">
+                                <div class="w-12 h-12 rounded-xl bg-brand-600 text-white flex items-center justify-center text-xl shadow-lg shrink-0">
                                     <i class="fas ${step.maneuver === 'turn-right' ? 'fa-arrow-right' : step.maneuver === 'tunnel' ? 'fa-archway' : step.maneuver === 'scale' ? 'fa-weight-hanging' : 'fa-arrow-up'}"></i>
                                 </div>
                                 <div>
@@ -547,7 +546,7 @@ window.DriverApp = {
             <div class="h-full flex flex-col relative bg-slate-950">
                 <div class="bg-gradient-to-b from-slate-900 to-slate-900/90 border-b border-slate-800 p-3.5 z-20 shadow-xl">
                     <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shadow-lg shrink-0">
+                        <div class="w-12 h-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center text-xl shadow-lg shadow-brand-900/50 shrink-0">
                             <i class="fas ${step.maneuver === 'turn-right' ? 'fa-arrow-right' : step.maneuver === 'tunnel' ? 'fa-archway' : step.maneuver === 'scale' ? 'fa-weight-hanging' : 'fa-arrow-up'}"></i>
                         </div>
                         <div class="flex-1 min-w-0">
@@ -580,11 +579,11 @@ window.DriverApp = {
                         <div class="text-[9px] font-bold uppercase text-slate-400">km/h</div>
                     </div>
 
-                    <div class="absolute bottom-4 right-4 z-[400] flex flex-col gap-2">
+                    <div class="absolute bottom-4 right-4 z-[400] flex flex-col items-center gap-2">
                         <button onclick="window.app.toggleVoice()" class="w-11 h-11 bg-slate-900/90 text-white rounded-full shadow-xl border border-slate-700 flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}">
                             <i class="fas ${state.voiceEnabled ? 'fa-volume-up' : 'fa-volume-mute'}"></i>
                         </button>
-                        <button onclick="window.app.openReportModal()" class="w-12 h-12 bg-amber-500 text-slate-950 font-bold rounded-full shadow-2xl flex items-center justify-center text-lg border-2 border-white transition transform hover:scale-110 active:scale-90">
+                        <button onclick="window.app.openReportModal()" class="w-14 h-14 bg-amber-500 text-slate-950 font-bold rounded-full shadow-2xl shadow-amber-900/50 flex items-center justify-center text-xl border-2 border-white/80" aria-label="Reportar novedad en la vía">
                             <i class="fas fa-bullhorn"></i>
                         </button>
                     </div>
@@ -596,11 +595,11 @@ window.DriverApp = {
                         <b>${window.ui.escape(window.DriverApp.destinationLabel())}: ${window.ui.escape(window.DriverApp.routeDistance())}</b>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="window.app.nextSimulationStep()" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow">
-                            <i class="fas fa-step-forward"></i> Simular Avance
+                        <button onclick="window.app.nextSimulationStep()" class="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5" title="Avanzar el GPS simulado">
+                            <i class="fas fa-step-forward"></i> Simular
                         </button>
-                        <button onclick="window.app.finishTrip()" class="px-3 py-2 bg-rose-600/30 hover:bg-rose-600 text-rose-300 hover:text-white rounded-xl text-xs font-bold transition">
-                            Registrar entrega
+                        <button onclick="window.app.finishTrip()" class="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg shadow-emerald-900/40">
+                            <i class="fas fa-flag-checkered"></i> Llegué
                         </button>
                     </div>
                 </div>

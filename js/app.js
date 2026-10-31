@@ -239,6 +239,7 @@ window.app = {
             this.syncLiveTracking(state);
             mount.innerHTML = window.LoginView.render(state);
             window.Native.markScreen(mount, 'login');
+            window.DriverActions.syncSos(state);
             window.Native.NetworkStatus.render();
             return;
         }
@@ -276,6 +277,7 @@ window.app = {
         window.Native.markScreen(mount, screenKey);
         window.Native.NetworkStatus.render();
         window.Native.animateCounters(mount);
+        window.DriverActions.syncSos(state);
     },
 
     KEEP_ALIVE_MAPS: ['coordinator-map-container', 'generator-map-container'],
@@ -462,7 +464,15 @@ window.app = {
     },
 
     async handleRejectTrip() {
-        const reason = prompt('Indique el motivo de rechazo (Ej: exceso de horas de conducción, falla mecánica, flete no acorde):');
+        const reason = await window.Sheet.prompt({
+            title: 'Rechazar esta carga',
+            message: 'El motor de asignación la ofrecerá a otro conductor. ¿Por qué no puede tomarla?',
+            icon: 'fa-circle-xmark',
+            tone: 'danger',
+            suggestions: ['Exceso de horas de conducción', 'Falla mecánica', 'Flete no acorde', 'Ruta no apta para mi vehículo'],
+            placeholder: 'Otro motivo…',
+            confirmLabel: 'Rechazar carga'
+        });
         if (!reason) return;
         window.store.setState({ busyAction: 'reject' });
         try {
@@ -606,30 +616,9 @@ window.app = {
         return null;
     },
 
-    async openReportModal(presetType = 'scale') {
-        const reportTypeNames = {
-            scale: 'Báscula de Pesaje',
-            bridge: 'Gálibo Bajo / Puente Peligroso',
-            police: 'Retén Policial / Control Vía',
-            rest: 'Parador de Camiones 24h'
-        };
-        const title = reportTypeNames[presetType] || 'Novedad de Carretera';
-        const coords = this.currentPosition();
-        if (!coords) {
-            window.ui.toast('No hay una posición GPS disponible para el reporte.', 'warning');
-            return;
-        }
-        const comment = prompt('Reportar alerta comunitaria: ' + title + '\nEscriba detalles u observaciones:', 'Reporte confirmado en mi carril.');
-        if (comment === null) return;
-
-        try {
-            await window.TruckCarService.reportAlert(presetType, comment, coords);
-            window.voiceEngine.speak('Gracias compañero. Alerta de ' + title + ' compartida con la red de transporte.');
-            window.ui.toast('Alerta publicada en Community-Alerts.', 'success');
-            window.store.setState({});
-        } catch (error) {
-            window.ui.failure('No se pudo publicar la alerta', error, 'publicar la alerta');
-        }
+    /** Reporte vial de un toque (hoja con la cuadrícula de tipos, js/views/driverActions.js). */
+    openReportModal(presetType) {
+        window.DriverActions.openReportSheet(presetType);
     },
 
     async upvoteAlert(id) {
