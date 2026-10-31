@@ -10,7 +10,7 @@
  *
  * Cambiar VERSION invalida el app shell anterior en la activación.
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v1';
@@ -21,16 +21,23 @@ const SHELL = [
     'index.html',
     'manifest.webmanifest',
     'assets/icon.svg',
+    'assets/icon-192.png',
+    'assets/icon-512.png',
+    'assets/icon-maskable-512.png',
+    'assets/apple-touch-icon.png',
     'css/main.css',
     'css/navigation.css',
     'js/config.js',
     'js/api.js',
     'js/mockData.js',
     'js/state.js',
+    'js/ui/toaster.js',
+    'js/ui/sheet.js',
     'js/offlineQueue.js',
     'js/podEvidence.js',
     'js/dataService.js',
     'js/telemetry.js',
+    'js/ui/native.js',
     'js/speechEngine.js',
     'js/mapController.js',
     'js/views/loginView.js',

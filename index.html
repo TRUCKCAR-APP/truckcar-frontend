@@ -2,32 +2,42 @@
 <html lang="es" class="h-full bg-slate-950 text-slate-100">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TruckCar - Navegación para Transporte Pesado & Torre de Control</title>
+    <!-- Sin user-scalable=no ni maximum-scale: bloquear el zoom es una barrera de accesibilidad. El zoom accidental
+         al enfocar un campo se evita con campos de 16 px (css/main.css). viewport-fit=cover pinta bajo el notch y
+         las áreas seguras se rellenan con env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+    <title>TruckCar</title>
+    <meta name="description" content="Navegación, entregas con prueba digital y alertas viales para transporte pesado, con funcionamiento sin señal.">
     <!-- URL del api-gateway en despliegue. Vacío = automático (localhost:8000 en local, mismo origen en producción). -->
     <meta name="truckcar-api-base-url" content="">
+
     <!-- PWA: instalable y operable sin señal (sw.js + cola durable js/offlineQueue.js). -->
     <link rel="manifest" href="manifest.webmanifest">
+    <meta name="color-scheme" content="dark">
     <meta name="theme-color" content="#020617">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="TruckCar">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            // :hover solo con un puntero que puede hacer hover: en el teléfono no se queda "pegado" tras un toque.
+            future: { hoverOnlyWhenSupported: true },
             theme: {
                 extend: {
                     colors: {
                         brand: {
-                            50: '#ecfdf5',
-                            500: '#10b981',
-                            600: '#059669',
-                            700: '#047857',
-                            900: '#064e3b'
+                            50: '#eff6ff', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6',
+                            600: '#2563eb', 700: '#1d4ed8', 900: '#1e3a8a'
                         }
                     },
                     fontFamily: {
-                        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'ui-monospace', 'SF Mono', 'monospace']
                     }
                 }
             }
@@ -40,53 +50,56 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/navigation.css">
 </head>
-<body class="h-full flex flex-col overflow-hidden bg-slate-950 font-sans select-none antialiased">
+<body class="h-full flex flex-col overflow-hidden bg-slate-950 font-sans antialiased">
 
-    <nav class="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-50 shrink-0">
-        <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-950/60">
-                <i class="fas fa-truck-fast text-base"></i>
+    <nav id="top-nav" class="safe-top safe-x bg-slate-900/95 border-b border-slate-800 z-50 shrink-0">
+        <div class="h-14 px-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <img src="assets/icon.svg" alt="" class="w-9 h-9 rounded-[11px] shadow-lg shadow-black/40">
+                <div class="leading-tight">
+                    <span class="font-black text-white text-base tracking-tight">TRUCK<span class="text-brand-400">CAR</span></span>
+                    <span class="hidden sm:block text-[10px] text-slate-400 font-medium">Transporte pesado · Telemática en vivo</span>
+                </div>
             </div>
-            <div>
-                <span class="font-black text-white text-base tracking-tight">TRUCK<span class="text-emerald-400">CAR</span></span>
-                <span class="hidden sm:inline text-[10px] text-slate-400 font-mono ml-2 border-l border-slate-700 pl-2">Transporte Pesado & Logística</span>
-            </div>
-        </div>
 
-        <div class="flex items-center gap-2 sm:gap-3">
-            <div id="role-switcher" class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
-                <button id="role-btn-driver" onclick="window.app.setRole('driver')" class="px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-emerald-600 text-white shadow">
-                    <i class="fas fa-mobile-screen"></i>
-                    <span class="hidden md:inline">Conductor (Móvil)</span>
+            <div class="flex items-center gap-2 sm:gap-3">
+                <span data-network-status class="hidden lg:inline-flex"></span>
+
+                <div id="role-switcher" class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
+                    <button id="role-btn-driver" onclick="window.app.setRole('driver')" class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 text-slate-400 hover:text-slate-200">
+                        <i class="fas fa-mobile-screen"></i>
+                        <span class="hidden md:inline">Conductor</span>
+                    </button>
+                    <button id="role-btn-coordinator" onclick="window.app.setRole('coordinator')" class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 text-slate-400 hover:text-slate-200">
+                        <i class="fas fa-tower-broadcast"></i>
+                        <span class="hidden md:inline">Torre de Control</span>
+                    </button>
+                </div>
+
+                <!-- Herramientas de la demostración en escritorio: en el teléfono no se muestran. -->
+                <button id="rotate-device-btn" onclick="window.app.toggleRotation()" class="demo-only px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow" title="Rotar pantalla (Horizontal / Vertical)">
+                    <i class="fas fa-rotate text-brand-400"></i>
+                    <span class="hidden sm:inline">Rotar</span>
                 </button>
-                <button id="role-btn-coordinator" onclick="window.app.setRole('coordinator')" class="px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-400 hover:text-slate-200">
-                    <i class="fas fa-tower-broadcast"></i>
-                    <span class="hidden md:inline">Torre de Control</span>
+
+                <button id="gps-step-btn" onclick="window.app.nextSimulationStep()" class="demo-only px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow" title="Avanzar posición GPS simulada">
+                    <i class="fas fa-forward-step text-brand-400"></i>
+                    <span class="hidden sm:inline">Avanzar GPS</span>
+                </button>
+
+                <button onclick="window.app.toggleVoice()" class="w-9 h-9 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs flex items-center justify-center shadow" title="Activar o silenciar la voz de navegación" aria-label="Activar o silenciar la voz de navegación">
+                    <i class="fas fa-volume-up text-brand-400"></i>
                 </button>
             </div>
-
-            <button id="rotate-device-btn" onclick="window.app.toggleRotation()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow" title="Rotar pantalla (Horizontal / Vertical)">
-                <i class="fas fa-rotate text-emerald-400"></i>
-                <span class="hidden sm:inline">Rotar Celular</span>
-            </button>
-
-            <button id="gps-step-btn" onclick="window.app.nextSimulationStep()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow" title="Avanzar posición GPS">
-                <i class="fas fa-forward-step"></i>
-                <span class="hidden sm:inline">Avanzar GPS</span>
-            </button>
-
-            <button onclick="window.app.toggleVoice()" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs flex items-center justify-center transition shadow" title="Activar/Silenciar voz de navegación">
-                <i class="fas fa-volume-up text-emerald-400"></i>
-            </button>
         </div>
     </nav>
 
-    <main class="flex-1 relative overflow-hidden flex items-center justify-center p-2 sm:p-4 bg-slate-950">
+    <main id="app-main" class="flex-1 relative overflow-hidden flex items-center justify-center p-2 sm:p-4 bg-slate-950">
         <div id="workspace-container" class="w-full h-full flex items-center justify-center">
             <div id="phone-mockup-frame" class="phone-frame w-full h-full flex flex-col overflow-hidden">
                 <div id="app-mount" class="w-full h-full"></div>
@@ -98,10 +111,13 @@
     <script src="js/api.js"></script>
     <script src="js/mockData.js"></script>
     <script src="js/state.js"></script>
+    <script src="js/ui/toaster.js"></script>
+    <script src="js/ui/sheet.js"></script>
     <script src="js/offlineQueue.js"></script>
     <script src="js/podEvidence.js"></script>
     <script src="js/dataService.js"></script>
     <script src="js/telemetry.js"></script>
+    <script src="js/ui/native.js"></script>
     <script src="js/speechEngine.js"></script>
     <script src="js/mapController.js"></script>
     <script src="js/views/loginView.js"></script>
@@ -110,26 +126,5 @@
     <script src="js/views/podModals.js"></script>
     <script src="js/views/generatorPanel.js"></script>
     <script src="js/app.js"></script>
-
-    <script>
-        window.store.subscribe((state) => {
-            const btnDriver = document.getElementById('role-btn-driver');
-            const btnCoord = document.getElementById('role-btn-coordinator');
-            const btnRotate = document.getElementById('rotate-device-btn');
-            const phoneFrame = document.getElementById('phone-mockup-frame');
-
-            if (state.activeRole === 'driver') {
-                btnDriver.className = 'px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-emerald-600 text-white shadow';
-                btnCoord.className = 'px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-400 hover:text-slate-200';
-                btnRotate.style.display = 'flex';
-                phoneFrame.className = state.isLandscape ? 'phone-frame landscape-mode w-full h-full flex flex-col overflow-hidden' : 'phone-frame w-full h-full flex flex-col overflow-hidden';
-            } else {
-                btnCoord.className = 'px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-indigo-600 text-white shadow';
-                btnDriver.className = 'px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 text-slate-400 hover:text-slate-200';
-                btnRotate.style.display = 'none';
-                phoneFrame.className = 'coordinator-frame w-full h-full flex flex-col overflow-hidden';
-            }
-        });
-    </script>
 </body>
 </html>

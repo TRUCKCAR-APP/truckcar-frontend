@@ -5,25 +5,24 @@ window.ui = {
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
 
-    toast(message, type = 'info') {
-        const colors = {
-            info: 'bg-slate-800 border-slate-600 text-slate-100',
-            success: 'bg-emerald-900/90 border-emerald-500/60 text-emerald-100',
-            error: 'bg-rose-900/90 border-rose-500/60 text-rose-100',
-            warning: 'bg-amber-900/90 border-amber-500/60 text-amber-100'
-        };
-        let container = document.getElementById('toast-container');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'toast-container';
-            container.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[2000] flex flex-col gap-2 items-center pointer-events-none';
-            document.body.appendChild(container);
-        }
-        const toast = document.createElement('div');
-        toast.className = 'px-4 py-2.5 rounded-xl border shadow-2xl text-xs font-semibold max-w-md pointer-events-auto ' + (colors[type] || colors.info);
-        toast.textContent = message;
-        container.appendChild(toast);
-        setTimeout(() => toast.remove(), 5000);
+    /**
+     * Notificación flotante (js/ui/toaster.js). options.description añade una segunda línea y options.action un botón
+     * ({ label, onClick }).
+     */
+    toast(message, type = 'info', options = {}) {
+        if (!window.Toaster) return;
+        window.Toaster.show({ title: message, type, ...options });
+    },
+
+    /**
+     * Error de una acción del usuario: 401/403/409 se explican en un diálogo (qué pasó y qué hacer); el resto, en un
+     * toast con el detalle técnico como segunda línea.
+     */
+    failure(title, error, context) {
+        // 401: el listener global de truckcar:unauthorized ya cerró la sesión y lo explicó.
+        if (error && error.status === 401) return;
+        if (window.Sheet && window.Sheet.explainError(error, context)) return;
+        this.toast(title, 'error', { description: this.errorMessage(error) });
     },
 
     errorMessage(error) {
@@ -54,12 +53,13 @@ window.app = {
 
     init() {
         window.store.subscribe((state) => this.renderCurrentView(state));
+        window.Native.init();
         this.initOffline();
 
         window.addEventListener('truckcar:unauthorized', () => {
             if (window.store.state.isAuthenticated) {
-                window.ui.toast('La sesión expiró. Inicie sesión nuevamente.', 'warning');
                 this.endSession();
+                window.Sheet.explainError({ status: 401 });
             }
         });
 
@@ -110,11 +110,37 @@ window.app = {
             busyAction: null,
             activeRole: this.roleToView(session.role)
         });
+        this.scheduleSessionRefresh();
         await window.TruckCarService.loadAll();
         this.schedulePolling();
+        window.Native.applyShortcut();
+        window.Native.Install.maybeOffer();
+    },
+
+    /**
+     * Renueva el access token (15 min) un minuto antes de que venza, aunque no haya peticiones: la reconexión del
+     * WebSocket y la cola offline siempre encuentran un token válido y la sesión no se interrumpe. Si la renovación
+     * falla por red se reintenta en 30 s; si el refresh token ya no sirve, api.js emite truckcar:unauthorized.
+     */
+    scheduleSessionRefresh() {
+        clearTimeout(this.sessionRefreshTimer);
+        const session = window.TruckCarApi.session.get();
+        if (!session || !session.expiresAt) return;
+        const delay = Math.max(5000, session.expiresAt - Date.now() - 60 * 1000);
+        this.sessionRefreshTimer = setTimeout(async () => {
+            if (!window.store.state.isAuthenticated) return;
+            try {
+                await window.TruckCarApi.ensureFreshSession();
+                this.scheduleSessionRefresh();
+            } catch (error) {
+                if (error && error.status === 401) return;
+                this.sessionRefreshTimer = setTimeout(() => this.scheduleSessionRefresh(), 30 * 1000);
+            }
+        }, delay);
     },
 
     endSession() {
+        clearTimeout(this.sessionRefreshTimer);
         clearInterval(this.pollTimer);
         clearInterval(this.shipmentsTimer);
         window.DriverTelemetry.stop();
@@ -212,6 +238,8 @@ window.app = {
         if (!state.isAuthenticated) {
             this.syncLiveTracking(state);
             mount.innerHTML = window.LoginView.render(state);
+            window.Native.markScreen(mount, 'login');
+            window.Native.NetworkStatus.render();
             return;
         }
 
@@ -243,6 +271,11 @@ window.app = {
         this.syncLiveTracking(state);
         window.TruckCarTelemetry.renderStatusBadges();
         window.DriverTelemetry.renderBadge();
+
+        const screenKey = state.activeRole + ':' + (state.activeRole === 'driver' ? state.driverScreen : state.coordinatorTab);
+        window.Native.markScreen(mount, screenKey);
+        window.Native.NetworkStatus.render();
+        window.Native.animateCounters(mount);
     },
 
     KEEP_ALIVE_MAPS: ['coordinator-map-container', 'generator-map-container'],
@@ -298,7 +331,17 @@ window.app = {
         show('role-switcher', controlTower);
         show('rotate-device-btn', role !== 'GENERADOR');
         show('gps-step-btn', role !== 'GENERADOR');
-        const active = 'bg-emerald-600 text-white shadow';
+        // La vista activa decide el layout móvil (css/main.css): el conductor usa su propia barra superior.
+        document.body.dataset.view = state.isAuthenticated ? state.activeRole : 'login';
+        const frame = document.getElementById('phone-mockup-frame');
+        if (frame) {
+            const driverLike = !state.isAuthenticated || state.activeRole === 'driver';
+            frame.classList.toggle('phone-frame', driverLike);
+            frame.classList.toggle('landscape-mode', driverLike && state.isLandscape);
+            frame.classList.toggle('coordinator-frame', !driverLike);
+            frame.style.position = 'relative'; // ancla del botón SOS
+        }
+        const active = 'bg-brand-600 text-white shadow';
         const idle = 'text-slate-400 hover:text-slate-200';
         [['role-btn-driver', 'driver'], ['role-btn-coordinator', 'coordinator']].forEach(([id, view]) => {
             const el = document.getElementById(id);
@@ -414,7 +457,7 @@ window.app = {
             window.store.setState({ busyAction: null, driverScreen: 'route_overview' });
         } catch (error) {
             window.store.setState({ busyAction: null });
-            window.ui.toast('No se pudo aceptar la carga: ' + window.ui.errorMessage(error), 'error');
+            window.ui.failure('No se pudo aceptar la carga', error, 'aceptar la carga');
         }
     },
 
@@ -429,7 +472,7 @@ window.app = {
             window.store.setState({ busyAction: null, driverScreen: 'profile' });
         } catch (error) {
             window.store.setState({ busyAction: null });
-            window.ui.toast('No se pudo rechazar la carga: ' + window.ui.errorMessage(error), 'error');
+            window.ui.failure('No se pudo rechazar la carga', error, 'rechazar la carga');
         }
     },
 
@@ -453,7 +496,7 @@ window.app = {
                 window.ui.toast('Viaje iniciado: la carga está en tránsito.', 'success');
             } catch (error) {
                 window.store.setState({ busyAction: null });
-                window.ui.toast('No se pudo iniciar el viaje: ' + window.ui.errorMessage(error), 'error');
+                window.ui.failure('No se pudo iniciar el viaje', error, 'iniciar el viaje');
                 return;
             }
         }
@@ -585,7 +628,7 @@ window.app = {
             window.ui.toast('Alerta publicada en Community-Alerts.', 'success');
             window.store.setState({});
         } catch (error) {
-            window.ui.toast('No se pudo publicar la alerta: ' + window.ui.errorMessage(error), 'error');
+            window.ui.failure('No se pudo publicar la alerta', error, 'publicar la alerta');
         }
     },
 
@@ -595,7 +638,7 @@ window.app = {
             window.ui.toast('Confirmación registrada.', 'success');
             window.store.setState({});
         } catch (error) {
-            window.ui.toast('No se pudo confirmar la alerta: ' + window.ui.errorMessage(error), 'error');
+            window.ui.failure('No se pudo confirmar la alerta', error, 'confirmar la alerta');
         }
     }
 };
