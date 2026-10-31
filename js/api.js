@@ -56,8 +56,42 @@
         isActive() {
             const s = this.get();
             return Boolean(s && s.accessToken && s.expiresAt > Date.now());
+        },
+        /** El access token dura 15 min: con refresh token la sesión se puede renovar aunque haya expirado. */
+        isRenewable() {
+            const s = this.get();
+            return Boolean(s && s.refreshToken);
         }
     };
+
+    // Margen antes de la expiración en el que se renueva el token por adelantado.
+    const REFRESH_MARGIN_MS = 60 * 1000;
+    let refreshInFlight = null;
+
+    /**
+     * Renueva la sesión con el refresh token. User-Identity revoca el refresh usado (rotación), así que las peticiones
+     * concurrentes comparten una sola renovación: dos /auth/refresh con el mismo token cerrarían la sesión.
+     */
+    function refreshSession() {
+        if (!refreshInFlight) {
+            const current = session.get();
+            refreshInFlight = (current && current.refreshToken
+                ? request('POST', '/auth/refresh', { body: { refreshToken: current.refreshToken }, auth: false })
+                    .then(response => session.save(response))
+                : Promise.reject(new ApiError('No hay sesión para renovar', { status: 401 })))
+                .finally(() => { refreshInFlight = null; });
+        }
+        return refreshInFlight;
+    }
+
+    /** Garantiza un access token vigente (lo renueva si vence en menos de un minuto). Lanza si no se puede. */
+    async function ensureFreshSession() {
+        const current = session.get();
+        if (current && current.accessToken && current.expiresAt - REFRESH_MARGIN_MS > Date.now()) {
+            return current;
+        }
+        return refreshSession();
+    }
 
     function decodeJwt(token) {
         try {
@@ -116,7 +150,14 @@
     }
 
     // ---------------------------------------------------------------- núcleo
-    async function request(method, path, { body, query, auth = true, timeoutMs, headers = {} } = {}) {
+    async function request(method, path, { body, query, auth = true, timeoutMs, headers = {}, retried = false } = {}) {
+        if (auth && session.isRenewable()) {
+            try {
+                await ensureFreshSession();
+            } catch (e) {
+                // Si la renovación falla se envía igual: el 401 del gateway cierra la sesión más abajo.
+            }
+        }
         const correlationId = newCorrelationId();
         const requestHeaders = {
             'Accept': 'application/json',
@@ -172,6 +213,17 @@
                 correlationId: responseCorrelation,
                 path
             });
+            if (error.isUnauthorized && auth && !retried && session.isRenewable()) {
+                // Token vencido o revocado entre la comprobación y el envío: una renovación y un reintento.
+                try {
+                    await refreshSession();
+                } catch (refreshError) {
+                    session.clear();
+                    window.dispatchEvent(new CustomEvent('truckcar:unauthorized', { detail: error }));
+                    throw error;
+                }
+                return request(method, path, { body, query, auth, timeoutMs, headers, retried: true });
+            }
             if (error.isUnauthorized && auth) {
                 session.clear();
                 window.dispatchEvent(new CustomEvent('truckcar:unauthorized', { detail: error }));
@@ -202,6 +254,7 @@
     window.TruckCarApi = {
         ApiError,
         session,
+        ensureFreshSession,
         decodeJwt,
         http,
 
@@ -215,12 +268,7 @@
                 const response = await http.post('/auth/register', data, { auth: false });
                 return session.save(response);
             },
-            async refresh() {
-                const current = session.get();
-                if (!current || !current.refreshToken) throw new ApiError('No hay sesión para renovar', { status: 401 });
-                const response = await http.post('/auth/refresh', { refreshToken: current.refreshToken }, { auth: false });
-                return session.save(response);
-            },
+            refresh: () => refreshSession(),
             async logout() {
                 try { await http.post('/auth/logout'); } finally { session.clear(); }
             }

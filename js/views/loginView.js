@@ -32,9 +32,9 @@ window.LoginView = {
                         <input name="phoneNumber" placeholder="Teléfono (opcional)" class="login-input w-full">
                         <select name="role" required class="login-input w-full">
                             <option value="CONDUCTOR">Conductor</option>
-                            <option value="COORDINADOR">Coordinador (Torre de Control)</option>
                             <option value="GENERADOR">Generador de carga (empresa)</option>
                         </select>
+                        <p class="text-[11px] text-slate-400">Las cuentas de coordinador (torre de control) las habilita un administrador.</p>
                     ` : ''}
 
                     <input name="email" type="email" required autocomplete="username" placeholder="correo@empresa.com" class="login-input w-full">

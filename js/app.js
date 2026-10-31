@@ -79,6 +79,14 @@ window.app = {
         const session = window.TruckCarApi.session;
         if (session.isActive()) {
             this.startSession(session.get());
+        } else if (session.isRenewable()) {
+            // Access token vencido (dura 15 min) pero con refresh token: se renueva sin pedir login.
+            window.TruckCarApi.ensureFreshSession()
+                .then(renewed => this.startSession(renewed))
+                .catch(() => {
+                    session.clear();
+                    this.renderCurrentView(window.store.state);
+                });
         } else {
             session.clear();
             this.renderCurrentView(window.store.state);

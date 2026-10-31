@@ -4,7 +4,7 @@
  * - TruckCarTelemetry: cliente STOMP mínimo (sin dependencias) con reconexión, heartbeats y re-suscripción.
  * - DriverTelemetry: el conductor transmite su posición cada 3 s mientras la carga está IN_TRANSIT, con el GPS del
  *   dispositivo o, si no hay señal (o en pruebas locales), con una simulación fluida sobre la ruta OSRM.
- * - LiveTracking: la torre de control (/topic/fleet-locations) y "Mis envíos" (/topic/trip/{loadId}) mueven los
+ * - LiveTracking: la torre de control (/topic/fleet-locations) y "Mis envíos" (/topic/trip.{loadId}) mueven los
  *   marcadores del mapa sin recargar la vista ni consultar la API por HTTP.
  *
  * El navegador no puede enviar cabeceras al abrir un WebSocket: el JWT viaja como ?access_token= y el gateway lo
@@ -54,15 +54,31 @@
         return !!(session && session.accessToken) && (subscriptions.size > 0 || publishers > 0);
     }
 
+    let opening = false;
+
     function connect() {
-        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+        if (opening || (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING))) return;
         clearTimeout(retryTimer);
         if (!wanted()) {
             setStatus('offline');
             return;
         }
-        const token = api.session.get().accessToken;
         setStatus(status === 'reconnecting' ? 'reconnecting' : 'connecting');
+        // El gateway valida el JWT solo en el handshake: al reconectar tras 15 min hay que renovarlo antes.
+        opening = true;
+        api.ensureFreshSession()
+            .catch(() => null)
+            .then(() => {
+                opening = false;
+                if (!wanted()) {
+                    setStatus('offline');
+                    return;
+                }
+                openSocket(api.session.get().accessToken);
+            });
+    }
+
+    function openSocket(token) {
         const socket = new WebSocket(WS_URL + '?access_token=' + encodeURIComponent(token));
         ws = socket;
         socket.onopen = () => frame('CONNECT', { 'accept-version': '1.2', host: 'truckcar', 'heart-beat': HEARTBEAT_MS + ',' + HEARTBEAT_MS });
@@ -437,7 +453,7 @@
             });
             wantedIds.forEach(loadId => {
                 if (tripSubscriptions.has(loadId)) return;
-                tripSubscriptions.set(loadId, TruckCarTelemetry.subscribe('/topic/trip/' + loadId, (msg) => {
+                tripSubscriptions.set(loadId, TruckCarTelemetry.subscribe('/topic/trip.' + loadId, (msg) => {
                     const data = window.TruckCarData;
                     const trucks = data.shipmentTrucks || (data.shipmentTrucks = {});
                     const truck = Object.assign(trucks[msg.driverId] || { driverId: msg.driverId, id: msg.driverId }, {
