@@ -30,3 +30,6 @@ bin/
 .DS_Store
 ### IDE local (estado personal) ###
 .idea/
+
+### Node (lint y pruebas) ###
+node_modules/
