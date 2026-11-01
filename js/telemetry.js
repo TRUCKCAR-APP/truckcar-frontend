@@ -245,7 +245,8 @@
      * herramientas de prueba (barra de escritorio, "Simular GPS") y queda marcada como tal en la interfaz.
      */
     const SIMULATION_KM_PER_TICK = 1.2;    // avance por envío en la simulación de prueba (recorrido acelerado)
-    const GPS_FRESH_MS = 10000;
+    const GPS_FRESH_MS = 10000;          // lectura de los últimos 10 s: el vehículo se está moviendo con señal
+    const GPS_STALE_MS = 2 * 60 * 1000;  // sin lecturas en 2 min y sin poder confirmar una nueva: "Sin posición"
     const MODE_KEY = 'truckcar.telemetryMode';
 
     const driver = {
@@ -305,17 +306,32 @@
             driver.mode = 'simulation';
             return nextSimulatedPoint();
         }
-        const fix = window.DeviceLocation.last(GPS_FRESH_MS);
+        // El navegador solo entrega lecturas nuevas cuando el teléfono se mueve: con el camión detenido la última lectura
+        // sigue siendo la posición real. Se usa mientras no supere GPS_STALE_MS y, si ya no es reciente, se pide una
+        // lectura nueva en segundo plano para confirmarla.
+        const fix = window.DeviceLocation.last(GPS_STALE_MS);
         if (!fix) {
             driver.mode = 'waiting';
+            refreshFix();
             return null;
         }
+        const resting = Date.now() - fix.time > GPS_FRESH_MS;
+        if (resting) refreshFix();
         driver.mode = 'gps';
         const previous = driver.lastPoint;
         const heading = fix.heading != null ? fix.heading
             : previous && previous.source === 'gps' && distanceKm(previous.coords, fix.coords) > 0.005
                 ? bearing(previous.coords, fix.coords) : null;
-        return { coords: fix.coords, heading, speed: fix.speedKmH != null ? fix.speedKmH : 0, accuracy: fix.accuracy, source: 'gps' };
+        // Sin lecturas nuevas el vehículo no se está moviendo: la velocidad de la última lectura ya no aplica.
+        const speed = resting ? 0 : (fix.speedKmH != null ? fix.speedKmH : 0);
+        return { coords: fix.coords, heading, speed, accuracy: fix.accuracy, resting, source: 'gps' };
+    }
+
+    let refreshing = null;
+    function refreshFix() {
+        if (refreshing) return;
+        refreshing = window.DeviceLocation.fix({ timeoutMs: 8000, maximumAgeMs: GPS_FRESH_MS })
+            .finally(() => { refreshing = null; });
     }
 
     function tick() {
@@ -378,7 +394,7 @@
             return;
         }
         const source = driver.mode === 'gps'
-            ? 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '')
+            ? 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '')
             : '<b class="text-amber-300">Simulación de prueba</b>';
         el.innerHTML = `
             <span class="inline-block w-2 h-2 rounded-full ${live ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}"></span>

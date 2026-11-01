@@ -32,7 +32,7 @@ function browser({ gps = null } = {}) {
   const watchers = [];
   w.fetch = async (url) => { fetches.push(String(url)); return { ok: true, json: async () => OSRM }; };
   Object.defineProperty(w.navigator, "geolocation", { configurable: true, value: {
-    getCurrentPosition(ok, fail) { setTimeout(() => gps ? ok({ coords: gps, timestamp: Date.now() }) : fail({ code: 2 }), 1); },
+    getCurrentPosition(ok, fail) { w.gpsRequests = (w.gpsRequests || 0) + 1; setTimeout(() => gps ? ok({ coords: gps, timestamp: Date.now() }) : fail({ code: 2 }), 1); },
     watchPosition(ok) { watchers.push(ok); return watchers.length; },
     clearWatch() {}
   } });
@@ -48,8 +48,8 @@ function browser({ gps = null } = {}) {
   w.WebSocket.OPEN = 1;
   w.OfflineQueue = { isOffline: () => false, enqueue: async (kind, payload) => { queued.push({ kind, payload }); } };
   ["js/geolocation.js", "js/telemetry.js"].forEach((file) => w.eval(readFileSync(file, "utf8")));
-  const emit = (latitude, longitude, extra = {}) =>
-    watchers.forEach((cb) => cb({ coords: { latitude, longitude, accuracy: 6, speed: 15, heading: 0, ...extra }, timestamp: Date.now() }));
+  const emit = (latitude, longitude, extra = {}, ageMs = 0) =>
+    watchers.forEach((cb) => cb({ coords: { latitude, longitude, accuracy: 6, speed: 15, heading: 0, ...extra }, timestamp: Date.now() - ageMs }));
   return { w, fetches, spoken, queued, emit };
 }
 
@@ -88,4 +88,29 @@ test("la simulación solo existe si se activa en las herramientas de prueba y nu
 
   await w.DriverTelemetry.toggleSimulation();
   assert.equal(w.DriverTelemetry.simulating, false);
+});
+
+test("con el camión detenido la última lectura sigue siendo la posición: velocidad 0 y se pide confirmarla", async () => {
+  const { w, queued, emit } = browser();
+  await w.DriverTelemetry.start(LOAD, "driver-ana");
+  emit(4.6012, -74.0001, { speed: 15 }, 40 * 1000);   // el navegador no repite lecturas si el teléfono no se mueve
+  await sleep(3100);
+  w.DriverTelemetry.stop();
+
+  assert.equal(queued.length, 1, "se transmite la posición aunque la lectura tenga 40 s");
+  assert.equal(queued[0].payload.latitude, 4.6012);
+  assert.equal(queued[0].payload.speedKmH, 0, "detenido: la velocidad de la última lectura ya no aplica");
+  assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /detenido/);
+  assert.ok(w.gpsRequests >= 1, "se pide una lectura nueva para confirmar la posición");
+});
+
+test("sin lecturas en más de 2 minutos ya no se usa la última posición", async () => {
+  const { w, queued, emit } = browser();
+  await w.DriverTelemetry.start(LOAD, "driver-ana");
+  emit(4.6012, -74.0001, {}, 3 * 60 * 1000);
+  await sleep(3100);
+  w.DriverTelemetry.stop();
+
+  assert.equal(queued.length, 0);
+  assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /Sin posición/);
 });
