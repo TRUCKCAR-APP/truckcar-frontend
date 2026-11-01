@@ -246,7 +246,8 @@
      */
     const SIMULATION_KM_PER_TICK = 1.2;    // avance por envío en la simulación de prueba (recorrido acelerado)
     const GPS_FRESH_MS = 10000;          // lectura de los últimos 10 s: el vehículo se está moviendo con señal
-    const GPS_STALE_MS = 2 * 60 * 1000;  // sin lecturas en 2 min y sin poder confirmar una nueva: "Sin posición"
+    const GPS_STALE_MS = 2 * 60 * 1000;  // una lectura detenida vale como posición hasta 2 min; después, "Sin posición"
+    const STATIONARY_KMH = 3;            // velocidad medida por el GPS por debajo de la cual el camión está detenido
     const MODE_KEY = 'truckcar.telemetryMode';
 
     const driver = {
@@ -306,25 +307,26 @@
             driver.mode = 'simulation';
             return nextSimulatedPoint();
         }
-        // El navegador solo entrega lecturas nuevas cuando el teléfono se mueve: con el camión detenido la última lectura
-        // sigue siendo la posición real. Se usa mientras no supere GPS_STALE_MS y, si ya no es reciente, se pide una
-        // lectura nueva en segundo plano para confirmarla.
+        // El navegador solo entrega lecturas nuevas cuando el teléfono se mueve. Una lectura de más de 10 s sigue siendo
+        // la posición real solo si el propio GPS la midió detenida (velocidad ≈0): entonces se conserva hasta
+        // GPS_STALE_MS y se pide una lectura nueva para confirmarla. Si iba en movimiento, o el dispositivo no informó
+        // la velocidad, una lectura vieja ya no dice dónde está el camión: "Sin posición".
         const fix = window.DeviceLocation.last(GPS_STALE_MS);
-        if (!fix) {
+        const stale = fix && Date.now() - fix.time > GPS_FRESH_MS;
+        const stoppedWhenRead = fix && fix.speedKmH != null && fix.speedKmH <= STATIONARY_KMH;
+        if (!fix || (stale && !stoppedWhenRead)) {
             driver.mode = 'waiting';
             refreshFix();
             return null;
         }
-        const resting = Date.now() - fix.time > GPS_FRESH_MS;
-        if (resting) refreshFix();
+        if (stale) refreshFix();
         driver.mode = 'gps';
         const previous = driver.lastPoint;
         const heading = fix.heading != null ? fix.heading
             : previous && previous.source === 'gps' && distanceKm(previous.coords, fix.coords) > 0.005
                 ? bearing(previous.coords, fix.coords) : null;
-        // Sin lecturas nuevas el vehículo no se está moviendo: la velocidad de la última lectura ya no aplica.
-        const speed = resting ? 0 : (fix.speedKmH != null ? fix.speedKmH : 0);
-        return { coords: fix.coords, heading, speed, accuracy: fix.accuracy, resting, source: 'gps' };
+        const speed = stale ? 0 : (fix.speedKmH != null ? fix.speedKmH : 0);
+        return { coords: fix.coords, heading, speed, accuracy: fix.accuracy, resting: stale, source: 'gps' };
     }
 
     let refreshing = null;

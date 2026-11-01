@@ -93,7 +93,7 @@ test("la simulación solo existe si se activa en las herramientas de prueba y nu
 test("con el camión detenido la última lectura sigue siendo la posición: velocidad 0 y se pide confirmarla", async () => {
   const { w, queued, emit } = browser();
   await w.DriverTelemetry.start(LOAD, "driver-ana");
-  emit(4.6012, -74.0001, { speed: 15 }, 40 * 1000);   // el navegador no repite lecturas si el teléfono no se mueve
+  emit(4.6012, -74.0001, { speed: 0 }, 40 * 1000);    // el GPS la midió detenida y no repite lecturas sin movimiento
   await sleep(3100);
   w.DriverTelemetry.stop();
 
@@ -113,4 +113,17 @@ test("sin lecturas en más de 2 minutos ya no se usa la última posición", asyn
 
   assert.equal(queued.length, 0);
   assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /Sin posición/);
+});
+
+test("una lectura vieja tomada en movimiento, o sin velocidad informada, no se usa: Sin posición", async () => {
+  for (const speed of [15, null]) {
+    const { w, queued, emit } = browser();
+    await w.DriverTelemetry.start(LOAD, "driver-ana");
+    emit(4.6012, -74.0001, { speed }, 40 * 1000);
+    await sleep(3100);
+    w.DriverTelemetry.stop();
+    assert.equal(queued.length, 0, "velocidad " + speed + ": no se transmite una posición que ya no es la del camión");
+    assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /Sin posición/);
+    assert.ok(w.gpsRequests >= 1, "se pide una lectura nueva");
+  }
 });
