@@ -52,6 +52,8 @@ window.app = {
     pollTimer: null,
 
     init() {
+        // Enlace público de seguimiento (?track=): sin sesión, sin cola offline ni barra de roles.
+        if (window.PublicTracking.maybeStart()) return;
         window.store.subscribe((state) => this.renderCurrentView(state));
         window.Native.init();
         this.initOffline();
@@ -143,6 +145,7 @@ window.app = {
         clearTimeout(this.sessionRefreshTimer);
         clearInterval(this.pollTimer);
         clearInterval(this.shipmentsTimer);
+        window.SosMonitor.stop();
         window.DriverTelemetry.stop();
         window.LiveTracking.stopAll();
         window.TruckCarTelemetry.disconnect();
@@ -240,6 +243,7 @@ window.app = {
             mount.innerHTML = window.LoginView.render(state);
             window.Native.markScreen(mount, 'login');
             window.DriverActions.syncSos(state);
+            window.SosMonitor.sync(state);
             window.Native.NetworkStatus.render();
             return;
         }
@@ -278,6 +282,7 @@ window.app = {
         window.Native.NetworkStatus.render();
         window.Native.animateCounters(mount);
         window.DriverActions.syncSos(state);
+        window.SosMonitor.sync(state);
     },
 
     KEEP_ALIVE_MAPS: ['coordinator-map-container', 'generator-map-container'],

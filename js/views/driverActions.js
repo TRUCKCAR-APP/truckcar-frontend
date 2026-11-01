@@ -190,38 +190,95 @@ window.DriverActions = (function () {
         return { hint, button };
     }
 
+    /** Una lectura GPS puntual cuando la app aún no tiene posición (máx. 5 s): [lat, lng, precisión] o null. */
+    function freshFix() {
+        if (!navigator.geolocation) return Promise.resolve(null);
+        return new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+                (p) => resolve([p.coords.latitude, p.coords.longitude, p.coords.accuracy]),
+                () => resolve(null),
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 });
+        });
+    }
+
+    function sosStatusHtml(kind, title, detail) {
+        const tones = {
+            sending: ['fa-circle-notch fa-spin', 'bg-slate-800/60 border-slate-700 text-slate-200'],
+            sent: ['fa-circle-check', 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'],
+            queued: ['fa-cloud-arrow-up', 'bg-amber-500/10 border-amber-500/30 text-amber-200'],
+            failed: ['fa-triangle-exclamation', 'bg-rose-500/10 border-rose-500/30 text-rose-200']
+        };
+        const [icon, cls] = tones[kind];
+        return `<div class="p-3 rounded-2xl border ${cls} text-[13px] leading-snug flex gap-2.5" role="status">
+            <i class="fas ${icon} mt-0.5"></i><div><b class="block">${esc(title)}</b>${detail ? `<span class="opacity-90">${esc(detail)}</span>` : ''}</div></div>`;
+    }
+
     /**
-     * SOS (maquetado): el backend aún no tiene un servicio de emergencias. La hoja muestra lo que se enviaría
-     * (posición, carga, vehículo) y ofrece llamar a la línea 123; nada de esto se reporta como alerta comunitaria.
+     * SOS: POST /api/v1/alerts/sos con la posición actual. La hoja se abre al instante y muestra el resultado real:
+     * torre avisada (id y hora del servidor), guardado sin señal (cola durable) o error. La llamada al 123 siempre está.
      */
     async function activate() {
-        const coords = window.app.currentPosition();
+        let coords = window.app.currentPosition();
+        let accuracy = null;
         const load = window.TruckCarData.activeLoadOrder;
         const driver = window.TruckCarData.currentDriver || {};
-        const result = await window.Sheet.open({
+        let send = null;
+
+        const result = window.Sheet.open({
             title: 'SOS activado',
             subtitle: 'Mantenga la calma. Si hay heridos o peligro inmediato, llame a la línea de emergencias.',
             icon: 'fa-life-ring',
             tone: 'danger',
             body: `
-                <div class="card p-3.5 space-y-2 text-[13px]">
+                <div data-sos-status>${sosStatusHtml('sending', 'Avisando a la torre de control…', 'Enviando su posición.')}</div>
+                <div class="card p-3.5 space-y-2 text-[13px] mt-3">
                     <div class="flex justify-between gap-3"><span class="text-slate-400">Posición</span>
-                        <b class="font-mono text-right">${coords ? coords[0].toFixed(5) + ', ' + coords[1].toFixed(5) : 'Sin GPS'}</b></div>
+                        <b class="font-mono text-right" data-sos-position>${coords ? coords[0].toFixed(5) + ', ' + coords[1].toFixed(5) : 'Buscando GPS…'}</b></div>
                     <div class="flex justify-between gap-3"><span class="text-slate-400">Vehículo</span>
                         <b class="font-mono">${esc((driver.vehicle && driver.vehicle.plate) || '—')}</b></div>
                     <div class="flex justify-between gap-3"><span class="text-slate-400">Carga</span>
                         <b>${load ? esc(load.id) : 'Sin carga activa'}</b></div>
-                </div>
-                <p class="mt-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-[12px] text-amber-200 leading-snug">
-                    <i class="fas fa-flask"></i> <b>Componente de demostración:</b> TruckCar todavía no tiene un servicio de
-                    emergencias que reciba esta alerta en la torre de control. Use la llamada al 123.
-                </p>`,
+                </div>`,
             actions: [
                 { label: 'Llamar al 123', tone: 'danger', icon: 'fa-phone', value: 'call' },
-                { label: 'Cancelar SOS', tone: 'secondary', value: 'cancel' }
-            ]
+                { label: 'Cerrar', tone: 'secondary', value: 'close' }
+            ],
+            onMount(sheet) {
+                const status = sheet.querySelector('[data-sos-status]');
+                const show = (...args) => { status.innerHTML = sosStatusHtml(...args); };
+                send = (async () => {
+                    if (!coords) {
+                        const fix = await freshFix();
+                        if (fix) { coords = [fix[0], fix[1]]; accuracy = fix[2]; }
+                        sheet.querySelector('[data-sos-position]').textContent =
+                            coords ? coords[0].toFixed(5) + ', ' + coords[1].toFixed(5) : 'Sin GPS';
+                    }
+                    if (!coords) {
+                        show('failed', 'No hay posición GPS', 'Sin ubicación la torre no puede ubicarlo: active el GPS o llame al 123.');
+                        window.Native.haptic('warning');
+                        return;
+                    }
+                    try {
+                        const sos = await window.TruckCarService.triggerSos(coords, accuracy);
+                        if (sos.pendingSync) {
+                            show('queued', 'SOS guardado sin señal', 'Se enviará a la torre en cuanto haya cobertura. Si puede, llame al 123.');
+                            window.voiceEngine.speak('Sin señal. El SOS se enviará al recuperar la cobertura.');
+                        } else {
+                            const at = new Date(sos.receivedAt || sos.triggeredAt || Date.now())
+                                .toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+                            show('sent', 'Torre de control avisada', 'SOS #' + sos.id + ' recibido a las ' + at + '. Un coordinador lo atenderá.');
+                            window.Native.haptic('success');
+                            window.voiceEngine.speak('SOS enviado. La torre de control fue avisada.', true);
+                        }
+                    } catch (error) {
+                        show('failed', 'No se pudo enviar el SOS', window.ui.errorMessage(error) + '. Llame al 123.');
+                        window.Native.haptic('warning');
+                    }
+                })();
+            }
         });
-        if (result === 'call') window.location.href = 'tel:123';
+        if (await result === 'call') window.location.href = 'tel:123';
+        await send;
     }
 
     /** Muestra el SOS solo al conductor autenticado, sobre la app y por encima de la barra de pestañas. */
@@ -239,5 +296,5 @@ window.DriverActions = (function () {
         sos.hint.hidden = false;
     }
 
-    return { tripProgressHtml, openReportSheet, syncSos, REPORTS };
+    return { tripProgressHtml, openReportSheet, syncSos, activate, REPORTS };
 })();

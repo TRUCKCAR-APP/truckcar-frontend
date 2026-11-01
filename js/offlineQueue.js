@@ -24,7 +24,8 @@
         'trip.started': '/loads/sync/batch',
         'trip.delivered': '/loads/sync/batch',
         'alert.reported': '/alerts/sync/batch',
-        'alert.confirmed': '/alerts/sync/batch'
+        'alert.confirmed': '/alerts/sync/batch',
+        'alert.sos': '/alerts/sync/batch'
     };
 
     let dbPromise = null;
@@ -222,12 +223,16 @@
         return events.sort((a, b) => (a.occurredAt < b.occurredAt ? -1 : a.occurredAt > b.occurredAt ? 1 : a.seq - b.seq));
     }
 
-    /** Agrupa por servicio conservando el orden; Load-Allocation primero (inicio de viaje antes que la entrega). */
+    /**
+     * Agrupa por servicio conservando el orden. Los SOS van primero en su propio lote (no esperan a cientos de
+     * posiciones); después Load-Allocation (inicio de viaje antes que la entrega).
+     */
     function groupByEndpoint(events) {
+        const sos = events.filter(event => event.kind === 'alert.sos');
         const groups = new Map();
         ['/loads/sync/batch', '/fleets-drivers/sync/batch', '/alerts/sync/batch'].forEach(e => groups.set(e, []));
-        events.forEach(event => groups.get(ENDPOINTS[event.kind]).push(event));
-        return [...groups.entries()].filter(([, group]) => group.length);
+        events.filter(event => event.kind !== 'alert.sos').forEach(event => groups.get(ENDPOINTS[event.kind]).push(event));
+        return [['/alerts/sync/batch', sos], ...groups.entries()].filter(([, group]) => group.length);
     }
 
     /** Aceptados, duplicados y rechazados salen de la cola; lo demás queda para el siguiente intento. */

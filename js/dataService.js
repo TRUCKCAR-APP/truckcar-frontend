@@ -662,7 +662,49 @@
             if (!queued) await this.loadAlerts();
         },
 
+        /**
+         * SOS del conductor (Community-Alerts publica alert.sos.triggered a la torre y a Notifications). Sin señal se
+         * guarda en la cola durable con la hora del dispositivo y sale primero al reconectar; el id del evento (o
+         * clientEventId en línea) hace idempotente el reintento.
+         */
+        async triggerSos(coords, accuracyMeters) {
+            const driver = data.currentDriver || {};
+            const load = data.activeLoadOrder;
+            const sos = {
+                latitude: coords[0],
+                longitude: coords[1],
+                accuracyMeters: Number.isFinite(accuracyMeters) ? Math.round(accuracyMeters) : null,
+                loadId: load ? load.backendId : null,
+                vehiclePlate: (driver.vehicle && driver.vehicle.plate) || null,
+                driverName: driver.name || null
+            };
+            return offlineCapable(
+                () => api.alerts.sos({
+                    ...sos,
+                    clientEventId: (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : undefined
+                }),
+                async () => {
+                    await window.OfflineQueue.enqueue('alert.sos', sos, { tripId: sos.loadId });
+                    return { ...sos, id: null, status: 'ACTIVE', triggeredAt: new Date().toISOString(), pendingSync: true };
+                });
+        },
+
+        async loadActiveSos() {
+            data.activeSos = (await api.alerts.activeSos()) || [];
+            return data.activeSos;
+        },
+
+        async acknowledgeSos(sosId) {
+            await api.alerts.acknowledgeSos(sosId);
+            data.activeSos = (data.activeSos || []).filter(s => s.id !== sosId);
+        },
+
+        async createTrackingLink(loadId) {
+            return api.loads.publicTrackingLink(loadId);
+        },
+
         reset() {
+            data.activeSos = [];
             data.currentDriver = null;
             data.activeLoadOrder = null;
             data.availableLoads = [];

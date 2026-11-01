@@ -543,6 +543,74 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 }
 .sos-hint.is-visible { opacity: 1; transform: none; }
 
+/* SOS en la torre de control: franja roja fija sobre el panel hasta que un coordinador lo atienda. */
+.sos-alerts {
+    position: absolute;
+    top: calc(var(--safe-top) + 8px);
+    left: calc(8px + var(--safe-left));
+    right: calc(8px + var(--safe-right));
+    z-index: 650;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 640px;
+    margin: 0 auto;
+    pointer-events: none;
+}
+.sos-alerts[hidden] { display: none; }
+.sos-alert {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px 9px 12px;
+    border-radius: 16px;
+    color: #fff;
+    background: linear-gradient(180deg, #dc2626, #b91c1c);
+    border: 1px solid rgba(254, 202, 202, 0.35);
+    box-shadow: 0 12px 28px -10px rgba(220, 38, 38, 0.75);
+    animation: sos-in 260ms var(--ease-out);
+}
+.sos-alert-icon { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 999px; background: rgba(255, 255, 255, 0.18); }
+.sos-alert-icon i { animation: sos-pulse 1.4s ease-in-out infinite; }
+.sos-alert-btn {
+    flex: none;
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 11px;
+    font-size: 12.5px;
+    font-weight: 800;
+    color: #991b1b;
+    background: #fff;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.sos-alert-btn.is-ghost { color: #fff; background: rgba(255, 255, 255, 0.16); padding: 0 10px; }
+.sos-alert-btn:active { transform: scale(0.97); }
+.sos-alert-btn:disabled { opacity: 0.7; }
+@keyframes sos-in { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes sos-pulse { 50% { transform: scale(1.18); } }
+@media (prefers-reduced-motion: reduce) {
+    .sos-alert, .sos-alert-icon i { animation: none; }
+}
+
+/* Seguimiento público (?track=): sin barra de roles ni herramientas de demostración, a pantalla completa. */
+body[data-mode="public-tracking"] #role-switcher,
+body[data-mode="public-tracking"] .demo-only { display: none !important; }
+body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius: 16px; }
+.public-truck-pin {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: var(--primary, #2563eb);
+    border: 3px solid #fff;
+    box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.7);
+}
+
 /* Cuadrícula de reporte vial: un toque por tipo */
 .report-tile {
     min-height: 96px;

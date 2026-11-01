@@ -309,7 +309,11 @@
             /** Torre de control (COORDINADOR/ADMIN): cargas de todos los generadores por status. */
             list: (statuses) => http.get('/loads', { query: { status: statuses && statuses.length ? statuses.join(',') : undefined } }),
             /** POD completo con firma y foto: conductor de la carga o torre de control. */
-            proofOfDelivery: (loadId) => http.get('/loads/' + enc(loadId) + '/proof-of-delivery')
+            proofOfDelivery: (loadId) => http.get('/loads/' + enc(loadId) + '/proof-of-delivery'),
+            /** Enlace firmado de seguimiento público (GENERADOR dueño o torre): { token, url, expiresAt }. */
+            publicTrackingLink: (loadId) => http.post('/loads/' + enc(loadId) + '/public-tracking-link'),
+            /** Vista pública anónima del envío: sin JWT (el gateway abre solo este GET). */
+            publicTracking: (token) => http.get('/loads/public-tracking/' + enc(token), { auth: false })
         },
 
         /** AI-powered-fleet-allocation: motor de scoring de conductores */
@@ -331,7 +335,12 @@
             nearby: (latitude, longitude, radiusMeters = 50000) =>
                 http.get('/alerts/nearby', { query: { latitude, longitude, radiusMeters } }),
             create: (alert) => http.post('/alerts', alert),
-            confirm: (alertId) => http.patch('/alerts/' + enc(alertId) + '/confirm')
+            confirm: (alertId) => http.patch('/alerts/' + enc(alertId) + '/confirm'),
+            /** Botón de pánico del conductor: { latitude, longitude, accuracyMeters, loadId, vehiclePlate, driverName, clientEventId }. */
+            sos: (sos) => http.post('/alerts/sos', sos, { timeoutMs: 8000 }),
+            /** Torre de control: SOS sin atender. */
+            activeSos: () => http.get('/alerts/sos'),
+            acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
         },
 
         /** Routing-Restrictions: restricciones y cierres viales */

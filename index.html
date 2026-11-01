@@ -10,6 +10,8 @@
     <meta name="description" content="Navegación, entregas con prueba digital y alertas viales para transporte pesado, con funcionamiento sin señal.">
     <!-- URL del api-gateway en despliegue. Vacío = automático (localhost:8000 en local, mismo origen en producción). -->
     <meta name="truckcar-api-base-url" content="">
+    <!-- Los enlaces públicos llevan el token en ?track=: hacia otros orígenes (teselas, CDN) solo viaja el origen. -->
+    <meta name="referrer" content="strict-origin-when-cross-origin">
 
     <!-- PWA: instalable y operable sin señal (sw.js + cola durable js/offlineQueue.js). -->
     <link rel="manifest" href="manifest.webmanifest">
@@ -126,6 +128,8 @@
     <script src="js/views/coordinatorPanel.js"></script>
     <script src="js/views/podModals.js"></script>
     <script src="js/views/generatorPanel.js"></script>
+    <script src="js/views/sosMonitor.js"></script>
+    <script src="js/views/publicTracking.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

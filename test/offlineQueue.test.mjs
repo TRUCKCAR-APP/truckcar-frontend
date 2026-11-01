@@ -153,3 +153,19 @@ test("solo la falta de red y los 502/503/504 cuentan como error de conectividad"
   for (const status of [0, 502, 503, 504]) assert.ok(queue.isConnectivityError({ status }));
   for (const status of [400, 401, 403, 409, 500]) assert.ok(!queue.isConnectivityError({ status }));
 });
+
+test("un SOS guardado sin señal sale primero, en su propio lote, antes que el viaje y las posiciones", async () => {
+  await queue.enqueue("position", { latitude: 4.6, longitude: -74.1 }, { tripId: 7 });
+  await queue.enqueue("trip.started", { loadId: 7 }, { tripId: 7 });
+  await queue.enqueue("alert.reported", { alertType: "DERRUMBE" });
+  const sos = await queue.enqueue("alert.sos", { latitude: 4.61, longitude: -74.11, loadId: 7 }, { tripId: 7 });
+
+  online = true;
+  await queue.flush();
+
+  assert.deepEqual(posts.map((p) => p.endpoint),
+    ["/alerts/sync/batch", "/loads/sync/batch", "/fleets-drivers/sync/batch", "/alerts/sync/batch"]);
+  assert.deepEqual(posts[0].body.events.map((e) => e.clientEventId), [sos.clientEventId]);
+  assert.equal(posts[0].body.events[0].kind, "alert.sos");
+  assert.equal(queue.status().pending, 0);
+});

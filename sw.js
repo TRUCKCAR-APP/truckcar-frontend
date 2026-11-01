@@ -10,7 +10,7 @@
  *
  * Cambiar VERSION invalida el app shell anterior en la activación.
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v1';
@@ -46,6 +46,8 @@ const SHELL = [
     'js/views/coordinatorPanel.js',
     'js/views/podModals.js',
     'js/views/generatorPanel.js',
+    'js/views/sosMonitor.js',
+    'js/views/publicTracking.js',
     'js/app.js'
 ];
 

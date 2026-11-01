@@ -376,6 +376,7 @@ window.generatorCtrl = (function () {
     let companyEdited = false;
     let step = 0;
     let touched = new Set();
+    let sharing = false;
 
     function defaultDraft() {
         const user = window.store.state.currentUser;
@@ -468,31 +469,56 @@ window.generatorCtrl = (function () {
         },
 
         /**
-         * Enlace de seguimiento público (maquetado): el backend aún no firma ni sirve una vista pública del envío.
-         * Genera el formato previsto (?track=<id>&sig=<token>) y lo comparte o copia.
+         * Enlace de seguimiento público: Load-Allocation firma un token (vence a las 48 h o 6 h después de la entrega)
+         * y devuelve la URL de la PWA que lo abre sin sesión. La hoja muestra la URL real y su vencimiento.
          */
         async shareTracking(loadId) {
-            const bytes = new Uint8Array(16);
-            window.crypto.getRandomValues(bytes);
-            const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-            const url = window.location.origin + window.location.pathname + '?track=' + loadId + '&sig=' + token;
+            if (sharing) return;
+            sharing = true;
+            let link;
             try {
-                if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
-                    await navigator.share({ title: 'Seguimiento CARGA-' + loadId, url });
-                } else {
-                    await navigator.clipboard.writeText(url);
-                }
-                window.ui.toast('Enlace de seguimiento copiado', 'success', {
-                    description: 'Vista previa: el backend aún no firma ni publica el seguimiento de envíos.'
-                });
+                link = await window.TruckCarService.createTrackingLink(loadId);
             } catch (error) {
-                if (error && error.name === 'AbortError') return;
-                window.Sheet.open({
-                    title: 'Enlace de seguimiento', subtitle: 'Cópielo manualmente.', icon: 'fa-link',
-                    body: '<input readonly class="login-input w-full text-sm font-mono" value="' + window.ui.escape(url) + '">',
-                    actions: [{ label: 'Listo', tone: 'secondary' }]
-                });
+                window.ui.failure('No se pudo generar el enlace', error, 'compartir el seguimiento');
+                return;
+            } finally {
+                sharing = false;
             }
+            const expires = new Date(link.expiresAt).toLocaleString('es-CO',
+                { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            const canShare = !!navigator.share && window.matchMedia('(pointer: coarse)').matches;
+            window.Sheet.open({
+                title: 'Enlace de seguimiento',
+                subtitle: 'Quien lo abra ve el estado y la posición del envío, sin iniciar sesión.',
+                icon: 'fa-link',
+                body: `
+                    <input readonly data-tracking-url class="login-input w-full text-sm font-mono" value="${window.ui.escape(link.url)}" aria-label="Enlace de seguimiento">
+                    <p class="text-[12px] text-slate-400 mt-2 leading-snug"><i class="fas fa-clock"></i> Vence el ${window.ui.escape(expires)}
+                        o 6 h después de la entrega. No muestra la placa completa ni datos del conductor.</p>`,
+                actions: [
+                    {
+                        label: canShare ? 'Compartir' : 'Copiar enlace', tone: 'primary', icon: canShare ? 'fa-share-nodes' : 'fa-copy',
+                        onClick: async (sheet) => {
+                            try {
+                                if (canShare) {
+                                    await navigator.share({ title: 'Seguimiento CARGA-' + loadId, url: link.url });
+                                } else {
+                                    await navigator.clipboard.writeText(link.url);
+                                    window.ui.toast('Enlace copiado', 'success', { description: 'Vence el ' + expires + '.' });
+                                }
+                            } catch (error) {
+                                if (error && error.name === 'AbortError') return false;
+                                const input = sheet.querySelector('[data-tracking-url]');
+                                input.focus();
+                                input.select();
+                                window.ui.toast('Cópielo manualmente', 'info', { description: 'El enlace quedó seleccionado.' });
+                                return false;
+                            }
+                        }
+                    },
+                    { label: 'Listo', tone: 'secondary' }
+                ]
+            });
         },
 
         async publish() {
