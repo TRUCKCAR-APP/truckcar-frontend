@@ -1,4 +1,16 @@
 window.DriverApp = {
+    /** Estados del backend en el español de la interfaz: el conductor nunca ve códigos como IN_TRANSIT. */
+    STATUS_LABELS: {
+        PROPOSED: 'Propuesta', NOTIFIED: 'Propuesta', AVAILABLE: 'Disponible', ASSIGNED: 'Aceptada',
+        IN_TRANSIT: 'En tránsito', DELIVERED: 'Entregada', CANCELLED: 'Cancelada',
+        DISPONIBLE: 'Disponible', EN_TRANSITO: 'En tránsito', DESCANSO: 'En descanso', SIN_VEHICULO: 'Sin vehículo'
+    },
+
+    statusLabel(code) {
+        if (!code) return 'Sin estado';
+        return this.STATUS_LABELS[code] || String(code).charAt(0) + String(code).slice(1).toLowerCase().replace(/_/g, ' ');
+    },
+
     render(state) {
         const currentScreen = state.driverScreen;
         const isLandscape = state.isLandscape;
@@ -145,7 +157,7 @@ window.DriverApp = {
                             </span>
                             ${driver.restRequired
                                 ? '<span class="text-[10px] text-amber-400 font-bold"><i class="fas fa-bed"></i> Descanso requerido</span>'
-                                : `<span class="text-[10px] text-emerald-400 font-bold"><i class="fas fa-check-circle"></i> ${esc(driver.status)}</span>`}
+                                : `<span class="text-[10px] text-emerald-400 font-bold"><i class="fas fa-check-circle"></i> ${esc(window.DriverApp.statusLabel(driver.status))}</span>`}
                         </div>
                     </div>
                 </div>
@@ -263,8 +275,8 @@ window.DriverApp = {
                 <div class="flex items-center justify-between">
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="px-2 py-0.5 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-bold uppercase font-mono">
-                                ${esc(badge || 'SIN ESTADO')}
+                            <span class="px-2 py-0.5 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-bold font-mono">
+                                ${esc(window.DriverApp.statusLabel(badge))}
                             </span>
                             <span class="text-xs text-slate-400">Orden #${esc(load.id)}</span>
                         </div>
