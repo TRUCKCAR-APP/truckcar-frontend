@@ -133,7 +133,10 @@
                 brand: state.vehicleModel || '—',
                 category: state.vehicleType || '—',
                 height: state.maxHeightMeters,
-                maxWeight: state.grossWeightTons != null ? state.grossWeightTons : state.netCargoWeightTons,
+                // fleets-drivers calcula grossWeightTons = tara + carga a bordo: es el peso bruto actual, no la capacidad
+                // máxima del vehículo (ese dato aún no existe en el backend).
+                grossWeight: state.grossWeightTons != null ? state.grossWeightTons
+                    : (state.tareWeightTons || 0) + (state.netCargoWeightTons || 0),
                 netCargoWeight: state.netCargoWeightTons,
                 tareWeight: state.tareWeightTons,
                 hazmatAuthorized: Boolean(state.hazmatAuthorized),

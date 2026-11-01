@@ -177,14 +177,14 @@ window.DriverApp = {
 
                         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
                             <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Peso Bruto Máx.</span>
+                                <span>Peso bruto actual</span>
                                 <i class="fas fa-weight-hanging text-amber-400"></i>
                             </div>
                             <div class="mt-2 flex items-baseline gap-1">
-                                <span class="text-2xl font-extrabold text-white font-mono">${fixed(v.maxWeight, 1)}</span>
+                                <span class="text-2xl font-extrabold text-white font-mono">${fixed(v.grossWeight, 1)}</span>
                                 <span class="text-xs text-slate-400">Toneladas</span>
                             </div>
-                            <span class="text-[10px] text-amber-400 mt-1 font-medium"><i class="fas fa-balance-scale"></i> Tara: ${fixed(v.tareWeight, 1)} Ton</span>
+                            <span class="text-[10px] text-amber-400 mt-1 font-medium"><i class="fas fa-balance-scale"></i> Tara ${fixed(v.tareWeight, 1)} + carga ${fixed(v.netCargoWeight, 1)} Ton</span>
                         </div>
 
                         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
@@ -200,7 +200,7 @@ window.DriverApp = {
 
                         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
                             <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Carga Útil</span>
+                                <span>Carga a bordo</span>
                                 <i class="fas fa-boxes-stacked text-purple-400"></i>
                             </div>
                             <div class="mt-2">
