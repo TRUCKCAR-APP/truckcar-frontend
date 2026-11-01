@@ -543,6 +543,10 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 }
 .sos-hint.is-visible { opacity: 1; transform: none; }
 
+/* Herramienta de prueba "Simular GPS" activa: imposible de confundir con el GPS real. */
+.sim-toggle.is-active { background: #f59e0b; color: #0f172a; border-color: #fbbf24; }
+.sim-toggle.is-active i { color: #0f172a; }
+
 /* SOS en la torre de control: franja roja fija sobre el panel hasta que un coordinador lo atienda. */
 .sos-alerts {
     position: absolute;

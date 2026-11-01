@@ -89,9 +89,11 @@
                     <span class="hidden sm:inline">Rotar</span>
                 </button>
 
-                <button id="gps-step-btn" onclick="window.app.nextSimulationStep()" class="demo-only px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow" title="Avanzar posición GPS simulada">
-                    <i class="fas fa-forward-step text-brand-400"></i>
-                    <span class="hidden sm:inline">Avanzar GPS</span>
+                <!-- Herramienta de prueba: mueve la telemetría y la guía sobre la ruta sin GPS. Por defecto, GPS real.
+                     El SOS y los reportes nunca usan esta posición. -->
+                <button id="sim-toggle-btn" onclick="window.DriverTelemetry.toggleSimulation()" aria-pressed="false" class="demo-only sim-toggle px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow" title="Herramienta de prueba: simular el movimiento del GPS sobre la ruta">
+                    <i class="fas fa-flask text-amber-400"></i>
+                    <span class="hidden sm:inline" data-sim-label>Simular GPS</span>
                 </button>
 
                 <button onclick="window.app.toggleVoice()" class="w-9 h-9 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs flex items-center justify-center shadow" title="Activar o silenciar la voz de navegación" aria-label="Activar o silenciar la voz de navegación">

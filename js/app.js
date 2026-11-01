@@ -286,6 +286,7 @@ window.app = {
         window.DriverActions.syncSos(state);
         window.SosMonitor.sync(state);
         window.DeviceLocation.sync(state);
+        window.DriverTelemetry.renderSimulationToggle();
     },
 
     KEEP_ALIVE_MAPS: ['coordinator-map-container', 'generator-map-container'],
@@ -329,7 +330,7 @@ window.app = {
 
     /**
      * Barra superior según el rol de la sesión: el selector conductor/torre solo para COORDINADOR y ADMIN; las
-     * herramientas de simulación del conductor (rotar, avanzar GPS) no aplican a un generador.
+     * herramientas de prueba del conductor (rotar, simular GPS) no aplican a un generador.
      */
     updateHeader(state) {
         const role = state.isAuthenticated ? state.sessionRole : null;
@@ -340,7 +341,7 @@ window.app = {
         const controlTower = role === 'COORDINADOR' || role === 'ADMIN';
         show('role-switcher', controlTower);
         show('rotate-device-btn', role !== 'GENERADOR');
-        show('gps-step-btn', role !== 'GENERADOR');
+        show('sim-toggle-btn', role !== 'GENERADOR');
         // La vista activa decide el layout móvil (css/main.css): el conductor usa su propia barra superior.
         document.body.dataset.view = state.isAuthenticated ? state.activeRole : 'login';
         const frame = document.getElementById('phone-mockup-frame');

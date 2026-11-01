@@ -10,7 +10,7 @@
  *
  * Cambiar VERSION invalida el app shell anterior en la activación.
  */
-const VERSION = 'v4';
+const VERSION = 'v5';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v1';

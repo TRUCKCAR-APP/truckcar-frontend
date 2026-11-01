@@ -2,8 +2,8 @@
  * Telemetría GPS en tiempo real (STOMP 1.2 sobre WebSocket) a través del api-gateway: ws://<gateway>/ws-telemetry.
  *
  * - TruckCarTelemetry: cliente STOMP mínimo (sin dependencias) con reconexión, heartbeats y re-suscripción.
- * - DriverTelemetry: el conductor transmite su posición cada 3 s mientras la carga está IN_TRANSIT, con el GPS del
- *   dispositivo o, si no hay señal (o en pruebas locales), con una simulación fluida sobre la ruta OSRM.
+ * - DriverTelemetry: el conductor transmite su posición cada 3 s mientras la carga está IN_TRANSIT con el GPS real del
+ *   dispositivo. La simulación sobre la ruta OSRM solo se usa si se activa en las herramientas de prueba.
  * - LiveTracking: la torre de control (/topic/fleet-locations) y "Mis envíos" (/topic/trip.{loadId}) mueven los
  *   marcadores del mapa sin recargar la vista ni consultar la API por HTTP.
  *
@@ -239,21 +239,22 @@
     }
 
     // =================================================================== emisor del conductor
-    const SIMULATION_KM_PER_TICK = 1.2;    // avance visual por envío (≈ recorrido acelerado para demos)
+    /**
+     * Fuente de posición: el GPS real del dispositivo (window.DeviceLocation). Sin señal no se inventa nada: no se
+     * transmite y el indicador lo dice. La simulación sobre la ruta solo existe como interruptor explícito de las
+     * herramientas de prueba (barra de escritorio, "Simular GPS") y queda marcada como tal en la interfaz.
+     */
+    const SIMULATION_KM_PER_TICK = 1.2;    // avance por envío en la simulación de prueba (recorrido acelerado)
     const GPS_FRESH_MS = 10000;
     const MODE_KEY = 'truckcar.telemetryMode';
 
     const driver = {
-        loadId: null, driverId: null, timer: null, watchId: null, lastGps: null, previousGps: null,
+        loadId: null, driverId: null, timer: null, load: null, previousPoint: null,
         path: null, cumulative: null, travelledKm: 0, simulatedSpeed: 62, mode: null, lastSent: null, lastPoint: null
     };
 
-    /** auto: simulación en local, GPS (con respaldo de simulación) en despliegue. Se puede forzar desde la app. */
-    function preferredMode() {
-        let stored = null;
-        try { stored = localStorage.getItem(MODE_KEY); } catch (e) { /* sin almacenamiento */ }
-        if (stored === 'gps' || stored === 'simulation') return stored;
-        return config.environment === 'local' ? 'simulation' : 'gps';
+    function simulating() {
+        try { return localStorage.getItem(MODE_KEY) === 'simulation'; } catch (e) { return false; }
     }
 
     async function buildPath(load) {
@@ -262,9 +263,8 @@
             ? routes.optimal.waypoints.map(w => w.coords)
             : [load.origin && load.origin.coords, load.destination && load.destination.coords].filter(Boolean);
         if (waypoints.length < 2) return null;
-        if (window.mapCtrl && window.mapCtrl.cachedOptimalRoadGeometry && window.mapCtrl.cachedOptimalRoadGeometry.length > 1) {
-            return window.mapCtrl.cachedOptimalRoadGeometry;
-        }
+        const guided = window.RouteGuidance && window.RouteGuidance.route;
+        if (guided && guided.geometry.length > 1) return guided.geometry;
         try {
             const url = 'https://router.project-osrm.org/route/v1/driving/'
                 + waypoints.map(c => c[1] + ',' + c[0]).join(';') + '?overview=full&geometries=geojson';
@@ -280,30 +280,50 @@
         return waypoints;
     }
 
+    async function prepareSimulation() {
+        if (!driver.load || driver.path) return;
+        const loadId = driver.loadId;
+        const path = await buildPath(driver.load);
+        if (driver.loadId !== loadId || !path) return;
+        driver.path = path;
+        driver.cumulative = path.reduce((acc, point, i) => {
+            acc.push(i === 0 ? 0 : acc[i - 1] + distanceKm(path[i - 1], point));
+            return acc;
+        }, []);
+    }
+
     function nextSimulatedPoint() {
         if (!driver.path) return null;
         driver.simulatedSpeed = Math.max(45, Math.min(80, driver.simulatedSpeed + (Math.random() * 8 - 4)));
         driver.travelledKm += SIMULATION_KM_PER_TICK;
         const point = pointAlong(driver.path, driver.cumulative, driver.travelledKm);
-        return { ...point, speed: point.atEnd ? 0 : Math.round(driver.simulatedSpeed * 10) / 10 };
+        return { ...point, speed: point.atEnd ? 0 : Math.round(driver.simulatedSpeed * 10) / 10, source: 'simulation' };
     }
 
     function currentPoint() {
-        const gpsFresh = driver.lastGps && Date.now() - driver.lastGps.time < GPS_FRESH_MS;
-        if (preferredMode() === 'gps' && gpsFresh) {
-            driver.mode = 'gps';
-            const gps = driver.lastGps;
-            const heading = gps.heading != null ? gps.heading
-                : driver.previousGps ? bearing(driver.previousGps.coords, gps.coords) : null;
-            return { coords: gps.coords, heading, speed: gps.speed };
+        if (simulating()) {
+            driver.mode = 'simulation';
+            return nextSimulatedPoint();
         }
-        driver.mode = 'simulation';
-        return nextSimulatedPoint();
+        const fix = window.DeviceLocation.last(GPS_FRESH_MS);
+        if (!fix) {
+            driver.mode = 'waiting';
+            return null;
+        }
+        driver.mode = 'gps';
+        const previous = driver.lastPoint;
+        const heading = fix.heading != null ? fix.heading
+            : previous && previous.source === 'gps' && distanceKm(previous.coords, fix.coords) > 0.005
+                ? bearing(previous.coords, fix.coords) : null;
+        return { coords: fix.coords, heading, speed: fix.speedKmH != null ? fix.speedKmH : 0, accuracy: fix.accuracy, source: 'gps' };
     }
 
     function tick() {
         const point = currentPoint();
-        if (!point) return;
+        if (!point) {
+            renderDriverBadge();
+            return;
+        }
         driver.lastPoint = point;
         // Con la red caída (o la simulación de pérdida de señal) no se intenta el envío en vivo.
         const offline = window.OfflineQueue && window.OfflineQueue.isOffline();
@@ -319,6 +339,10 @@
             driver.lastSent = Date.now();
         } else {
             queueOfflinePosition(point);
+        }
+        if (window.RouteGuidance) window.RouteGuidance.update(point);
+        if (window.mapCtrl && window.mapCtrl.map && window.store.state.driverScreen === 'navigation') {
+            window.mapCtrl.updateTruckPosition(point.coords);
         }
         renderDriverBadge();
     }
@@ -346,43 +370,37 @@
         const el = document.getElementById('driver-telemetry-badge');
         if (!el) return;
         const live = status === 'online' && driver.lastSent && Date.now() - driver.lastSent < 8000;
-        const source = driver.mode === 'gps' ? 'GPS del dispositivo' : 'Simulación de ruta';
         const p = driver.lastPoint;
+        if (driver.mode === 'waiting' || !driver.mode) {
+            const reason = window.DeviceLocation.error || 'Esperando la señal GPS del dispositivo…';
+            el.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-amber-400"></span>
+                <span class="font-bold">Sin posición</span><span class="opacity-80">· ${window.ui.escape(reason)}</span>`;
+            return;
+        }
+        const source = driver.mode === 'gps'
+            ? 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '')
+            : '<b class="text-amber-300">Simulación de prueba</b>';
         el.innerHTML = `
             <span class="inline-block w-2 h-2 rounded-full ${live ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}"></span>
             <span class="font-bold">${live ? 'Transmitiendo' : 'Sin transmitir'}</span>
-            <span class="opacity-80">· ${source}${p ? ' · ' + p.speed + ' km/h' : ''}</span>
-            <button type="button" onclick="window.DriverTelemetry.toggleMode()" class="ml-1 underline opacity-90">
-                ${preferredMode() === 'gps' ? 'Usar simulación' : 'Usar GPS real'}
-            </button>`;
+            <span class="opacity-80">· ${source}${p ? ' · ' + p.speed + ' km/h' : ''}</span>`;
     }
 
-    function startGps() {
-        if (driver.watchId != null || !navigator.geolocation || preferredMode() !== 'gps') return;
-        driver.watchId = navigator.geolocation.watchPosition((position) => {
-            driver.previousGps = driver.lastGps;
-            const c = position.coords;
-            driver.lastGps = {
-                coords: [c.latitude, c.longitude],
-                speed: c.speed != null ? Math.round(c.speed * 3.6 * 10) / 10 : 0,
-                heading: c.heading != null && !isNaN(c.heading) ? c.heading : null,
-                time: Date.now()
-            };
-        }, () => {
-            // Sin permiso o sin señal: se transmite con la simulación de ruta.
-        }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
-    }
-
-    function stopGps() {
-        if (driver.watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(driver.watchId);
-        driver.watchId = null;
-        driver.lastGps = null;
-        driver.previousGps = null;
+    function renderSimulationToggle() {
+        const button = document.getElementById('sim-toggle-btn');
+        if (!button) return;
+        const on = simulating();
+        button.setAttribute('aria-pressed', String(on));
+        button.classList.toggle('is-active', on);
+        const label = button.querySelector('[data-sim-label]');
+        if (label) label.textContent = on ? 'Simulando GPS' : 'Simular GPS';
     }
 
     const DriverTelemetry = {
         get isRunning() { return driver.timer != null; },
         get loadId() { return driver.loadId; },
+        get lastPoint() { return driver.lastPoint; },
+        get simulating() { return simulating(); },
 
         /** Inicia (o mantiene) la transmisión de una carga IN_TRANSIT. Idempotente para la misma carga. */
         async start(load, driverId) {
@@ -390,18 +408,14 @@
             if (driver.timer && driver.loadId === load.backendId) return;
             this.stop();
             driver.loadId = load.backendId;
+            driver.load = load;
             driver.driverId = driverId;
             driver.travelledKm = 0;
             driver.timer = setInterval(tick, 3000);
             TruckCarTelemetry.acquirePublisher();
-            startGps();
-            const path = await buildPath(load);
+            window.DeviceLocation.watch();
+            if (simulating()) await prepareSimulation();
             if (driver.loadId !== load.backendId) return;    // se detuvo mientras se calculaba la ruta
-            driver.path = path;
-            driver.cumulative = path ? path.reduce((acc, point, i) => {
-                acc.push(i === 0 ? 0 : acc[i - 1] + distanceKm(path[i - 1], point));
-                return acc;
-            }, []) : null;
             tick();
         },
 
@@ -410,21 +424,32 @@
                 clearInterval(driver.timer);
                 TruckCarTelemetry.releasePublisher();
             }
-            stopGps();
-            Object.assign(driver, { loadId: null, timer: null, path: null, cumulative: null, lastSent: null, lastPoint: null });
+            Object.assign(driver, { loadId: null, load: null, timer: null, path: null, cumulative: null, lastSent: null,
+                lastPoint: null, mode: null });
         },
 
-        toggleMode() {
-            const next = preferredMode() === 'gps' ? 'simulation' : 'gps';
-            try { localStorage.setItem(MODE_KEY, next); } catch (e) { /* sin almacenamiento */ }
-            if (next === 'gps') startGps(); else stopGps();
-            window.ui.toast(next === 'gps'
-                ? 'Telemetría con el GPS del dispositivo (con simulación si no hay señal).'
-                : 'Telemetría con simulación sobre la ruta.', 'info');
+        /** Herramientas de prueba: alterna la simulación de movimiento sobre la ruta (por defecto, GPS real). */
+        async toggleSimulation() {
+            const next = !simulating();
+            try {
+                if (next) localStorage.setItem(MODE_KEY, 'simulation');
+                else localStorage.removeItem(MODE_KEY);
+            } catch (e) { /* sin almacenamiento */ }
+            driver.lastPoint = null;
+            renderSimulationToggle();
+            window.ui.toast(next ? 'Simulación de GPS activada (herramienta de prueba)' : 'GPS real del dispositivo',
+                next ? 'warning' : 'success', {
+                    description: next
+                        ? 'La telemetría y la guía avanzan sobre la ruta. El SOS y los reportes siguen usando solo el GPS real.'
+                        : 'La telemetría y la guía usan la ubicación del teléfono.'
+                });
+            if (next) await prepareSimulation();
+            if (driver.timer) tick();
             renderDriverBadge();
         },
 
-        renderBadge: renderDriverBadge
+        renderBadge: renderDriverBadge,
+        renderSimulationToggle
     };
 
     // =================================================================== receptores (torre y generador)
