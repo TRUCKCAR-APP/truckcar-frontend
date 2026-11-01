@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0C0E12">
+    <title>Vehículo · prototipo TruckCar</title>
+    <link rel="preload" href="fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="proto.css">
+</head>
+<body data-screen="vehiculo">
+<div class="app">
+    <div data-header></div>
+
+    <main class="screen">
+        <h1 class="large-title">Vehículo</h1>
+        <div style="display:flex; align-items:center; gap:16px; margin-top:20px">
+            <span class="plate" aria-label="Placa TDK 410">TDK 410</span>
+            <div>
+                <div style="font-weight:700; font-size:var(--t-17)">Kenworth T800 2021</div>
+                <div class="secondary">Tractocamión turbo</div>
+            </div>
+        </div>
+
+        <h2 class="group-title">Conductor</h2>
+        <div class="group">
+            <div class="row"><span class="label">Nombre</span><span class="value strong">Carlos Conductor</span></div>
+            <div class="row"><span class="label">Licencia</span><span class="value">C3</span></div>
+            <div class="row"><span class="label">Calificación</span><span class="value">4,8 de 5</span></div>
+            <div class="row"><span class="label">Viajes completados</span><span class="value">126</span></div>
+            <div class="row"><span class="label">Horas de conducción hoy</span><span class="value">0 h de 9 h</span></div>
+            <div class="row"><span class="label">Estado</span><span class="value"><span class="dot ok"></span>Disponible</span></div>
+        </div>
+
+        <h2 class="group-title">Dimensiones y peso</h2>
+        <div class="group">
+            <div class="row"><span class="label">Gálibo (altura)</span><span class="value strong">3,90 m</span></div>
+            <div class="row"><span class="label">Tara</span><span class="value">8,5 t</span></div>
+            <div class="row"><span class="label">Carga a bordo</span><span class="value">0,0 t</span></div>
+            <div class="row"><span class="label">Peso bruto actual</span><span class="value strong">8,5 t</span></div>
+        </div>
+
+        <h2 class="group-title">Documentos y permisos</h2>
+        <div class="group">
+            <div class="row"><span class="label">RUNT</span><span class="value"><span class="dot ok"></span>Vigente</span></div>
+            <div class="row"><span class="label">TAG de telepeaje</span><span class="value"><span class="dot ok"></span>Activo</span></div>
+            <div class="row"><span class="label">Cadena de frío</span><span class="value"><span class="dot ok"></span>Certificado</span></div>
+            <div class="row"><span class="label">Mercancías peligrosas</span><span class="value"><span class="dot"></span>No autorizado</span></div>
+        </div>
+    </main>
+
+    <div data-tabbar></div>
+</div>
+<script src="proto.js"></script>
+</body>
+</html>

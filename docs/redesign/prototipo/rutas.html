@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0C0E12">
+    <title>Rutas · prototipo TruckCar</title>
+    <link rel="preload" href="fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <link rel="stylesheet" href="proto.css">
+</head>
+<body data-screen="rutas">
+<div class="app">
+    <div data-header></div>
+
+    <div class="map-screen">
+        <div id="map" aria-label="Mapa de la ruta Bogotá a Ibagué"></div>
+        <div class="map-tools">
+            <button type="button" class="map-tool" aria-label="Centrar en mi posición"><svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#crosshair"></use></svg></button>
+        </div>
+
+        <section class="sheet" aria-label="Ruta de la carga">
+            <div class="sheet-handle" aria-hidden="true"></div>
+            <div class="route-title">Bogotá → Ibagué</div>
+            <div class="secondary">Por la troncal Bogotá – Girardot – Ibagué</div>
+            <div class="route-figures">
+                <span class="figure" data-km>195<small>km</small></span>
+                <span class="figure" data-time>3<small>h</small> 20<small>min</small></span>
+            </div>
+            <span class="status"><span class="dot ok"></span>Apta para TDK 410 <span class="sub">· gálibo 3,90 m</span></span>
+            <div class="group">
+                <div class="row"><span class="label">Restricciones para el vehículo</span><span class="value">Ninguna</span></div>
+                <div class="row"><span class="label">Alertas en la ruta</span><span class="value">Ninguna</span></div>
+            </div>
+            <div class="actions">
+                <button type="button" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#navigation-arrow-fill"></use></svg>Continuar navegación</button>
+            </div>
+        </section>
+    </div>
+
+    <div data-tabbar></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="route.js"></script>
+<script src="proto.js"></script>
+<script>
+    (function () {
+        const route = window.ROUTE;
+        const hours = Math.floor(route.durationMin / 60);
+        document.querySelector('[data-km]').firstChild.textContent = Math.round(route.distanceKm);
+        document.querySelector('[data-time]').innerHTML = hours + '<small>h</small> ' + (route.durationMin % 60) + '<small>min</small>';
+
+        const map = L.map('map', { zoomControl: false, attributionControl: false });
+        L.control.attribution({ position: 'topleft', prefix: false }).addTo(map);
+        // Teselas oscuras reales (no un filtro CSS sobre el mapa claro). CARTO Dark Matter ya exige clave: Stadia
+        // Alidade Smooth Dark funciona en localhost sin clave y en producción con el dominio registrado.
+        L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+            maxZoom: 20,
+            attribution: '&copy; Stadia Maps &copy; OpenMapTiles &copy; OpenStreetMap'
+        }).addTo(map);
+        // Línea de ruta: borde del color del fondo para separarla de las vías del mapa, y el azul encima.
+        L.polyline(route.points, { color: '#0C0E12', weight: 9, opacity: 1, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+        L.polyline(route.points, { color: '#5AA2FF', weight: 5, opacity: 1, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+        const pin = (cls) => L.divIcon({ className: '', html: '<span class="' + cls + '"></span>', iconSize: [18, 18], iconAnchor: [9, 9] });
+        L.marker(route.points[0], { icon: pin('pin-origin') }).addTo(map);
+        L.marker(route.points[route.points.length - 1], { icon: pin('pin-dest') }).addTo(map);
+
+        // Encuadre que deja la ruta entera visible sobre la hoja inferior.
+        const sheet = document.querySelector('.sheet');
+        const fit = () => map.fitBounds(L.latLngBounds(route.points), {
+            paddingTopLeft: [32, 72], paddingBottomRight: [32, sheet.offsetHeight + 24]
+        });
+        new ResizeObserver(() => { map.invalidateSize({ pan: false }); fit(); }).observe(document.getElementById('map'));
+        fit();
+    })();
+</script>
+<style>
+    .pin-origin, .pin-dest { display: block; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #ECEEF1; background: #0C0E12; }
+    .pin-dest { background: #ECEEF1; border-color: #0C0E12; box-shadow: 0 0 0 2px #ECEEF1; }
+</style>
+</body>
+</html>

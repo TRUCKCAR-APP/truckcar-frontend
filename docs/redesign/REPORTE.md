@@ -79,6 +79,9 @@ Cada carpeta tiene las 10 pantallas en los 4 tamaños.
    dato de capacidad (peso bruto vehicular o carga útil máxima).
 2. **Carga en tránsito: "Volumen —"** mientras peso y distancia tienen valor: el campo es opcional al publicar y la
    tarjeta reserva un tercio del ancho para un dato que casi nunca existe.
+4. **Distancia de la ruta: 450 km y 10 h en la app (plan de Route-AI) contra 195 km y 3 h 20 min por carretera (OSRM)**
+   para Bogotá → Ibagué. El plan de Route-AI parece una estimación de respaldo (dos tramos iguales de 225 km con un
+   "Checkpoint Intermedio"); el tiempo de OSRM es de perfil de carro y subestima el de un camión.
 3. **"Orden #CARGA-88" junto a la etiqueta técnica `IN_TRANSIT`**: el estado se muestra con el nombre interno del
    backend y no con su texto en español ("En tránsito"), que la misma pantalla sí usa en el stepper.
 
@@ -88,5 +91,9 @@ Cada carpeta tiene las 10 pantallas en los 4 tamaños.
 - **SF Pro donde exista, Inter en el resto**: el brief permite ambas; en iOS la fuente del sistema trae ajuste óptico
   y tracking por tamaño, y en Android Inter se carga de Google Fonts. El detector de impeccable marca Inter como
   "fuente sobreusada"; aquí la fija el brief, y en una herramienta de trabajo la familiaridad es una virtud.
+- **Mapa oscuro: CARTO Dark Matter ya exige clave de API** (devuelve una imagen "API KEY REQUIRED" con código 200).
+  El prototipo usa Stadia Maps *Alidade Smooth Dark*: teselas raster oscuras reales, sin clave en `localhost`; en
+  producción requiere una cuenta (gratuita para uso no comercial) con el dominio registrado. Alternativa: Esri Dark Gray
+  Canvas. Es una decisión de proveedor que necesita tu aprobación antes de la fase 2.
 - **Fondo oscuro**: decidido por la escena (cabina de noche, sol directo sobre una pantalla oscura con texto claro de
   alto contraste), no por la categoría.
