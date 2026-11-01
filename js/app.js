@@ -147,6 +147,7 @@ window.app = {
         clearInterval(this.shipmentsTimer);
         window.SosMonitor.stop();
         window.DriverTelemetry.stop();
+        window.DeviceLocation.forget();
         window.LiveTracking.stopAll();
         window.TruckCarTelemetry.disconnect();
         window.TruckCarService.reset();
@@ -244,6 +245,7 @@ window.app = {
             window.Native.markScreen(mount, 'login');
             window.DriverActions.syncSos(state);
             window.SosMonitor.sync(state);
+            window.DeviceLocation.sync(state);
             window.Native.NetworkStatus.render();
             return;
         }
@@ -283,6 +285,7 @@ window.app = {
         window.Native.animateCounters(mount);
         window.DriverActions.syncSos(state);
         window.SosMonitor.sync(state);
+        window.DeviceLocation.sync(state);
     },
 
     KEEP_ALIVE_MAPS: ['coordinator-map-container', 'generator-map-container'],
@@ -608,17 +611,13 @@ window.app = {
         window.addEventListener('offline', () => window.ui.toast('Sin conexión: las acciones se guardan en el teléfono.', 'warning'));
     },
 
-    /** Posición actual para reportes: GPS simulado de navegación, luego posición registrada del vehículo. */
-    currentPosition() {
-        const state = window.store.state;
-        const steps = window.TruckCarData.liveNavigationSteps;
-        if (state.driverScreen === 'navigation' && steps[state.navStepIndex]) {
-            return [steps[state.navStepIndex].coords.lat, steps[state.navStepIndex].coords.lng];
-        }
-        const driver = window.TruckCarData.currentDriver;
-        if (driver && driver.coords) return driver.coords;
-        if (window.mapCtrl && window.mapCtrl.currentCoords) return window.mapCtrl.currentCoords;
-        return null;
+    /**
+     * Posición para el SOS y los reportes viales: solo el GPS real del dispositivo (la última lectura confirmada). Nunca
+     * la guía de navegación, la simulación de prueba ni la posición guardada en el backend.
+     */
+    currentPosition(maxAgeMs) {
+        const fix = window.DeviceLocation.last(maxAgeMs);
+        return fix ? fix.coords : null;
     },
 
     /** Reporte vial de un toque (hoja con la cuadrícula de tipos, js/views/driverActions.js). */

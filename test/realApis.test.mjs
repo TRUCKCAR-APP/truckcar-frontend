@@ -5,15 +5,24 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
-const SCRIPTS = ["js/ui/toaster.js", "js/ui/sheet.js", "js/ui/native.js", "js/views/driverActions.js",
+const SCRIPTS = ["js/ui/toaster.js", "js/ui/sheet.js", "js/ui/native.js", "js/geolocation.js", "js/views/driverActions.js",
   "js/views/generatorPanel.js", "js/views/sosMonitor.js", "js/views/publicTracking.js"];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function browser({ url = "http://localhost:5500/", service = {}, api = {}, state = {} } = {}) {
+/** gps: lo que entrega el chip GPS falso ({ latitude, longitude, accuracy } o null = sin señal); stored: última posición guardada. */
+function browser({ url = "http://localhost:5500/", service = {}, api = {}, state = {}, gps = { latitude: 4.60971, longitude: -74.08175, accuracy: 8 }, stored = null } = {}) {
   const dom = new JSDOM(`<!doctype html><html><body><div id="phone-mockup-frame"><div id="app-mount"></div></div></body></html>`,
     { runScripts: "outside-only", pretendToBeVisual: true, url });
   const w = dom.window;
   w.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  if (stored) w.localStorage.setItem("truckcar.lastGpsFix", JSON.stringify(stored));
+  Object.defineProperty(w.navigator, "geolocation", { configurable: true, value: {
+    getCurrentPosition(ok, fail) {
+      setTimeout(() => gps ? ok({ coords: { ...gps, speed: null, heading: null }, timestamp: Date.now() }) : fail({ code: 2 }), 5);
+    },
+    watchPosition() { return 1; },
+    clearWatch() {}
+  } });
   const toasts = [];
   w.ui = {
     escape: (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"),
@@ -25,7 +34,7 @@ function browser({ url = "http://localhost:5500/", service = {}, api = {}, state
   w.OfflineQueue = { status: () => ({ pending: 0 }), onChange() {} };
   w.TruckCarTelemetry = { status: "online", onStatusChange() {} };
   w.voiceEngine = { speak() {} };
-  w.app = { currentPosition: () => [4.60971, -74.08175] };
+  w.app = { currentPosition: () => [9.99, -79.99] };   // posición de navegación/simulación: el SOS no debe usarla
   w.TruckCarData = { activeLoadOrder: { id: "CARGA-30", backendId: 30 }, currentDriver: { name: "Ana Ruiz", vehicle: { plate: "TDK-410" } } };
   w.TruckCarService = service;
   w.TruckCarApi = { loads: api };
@@ -157,4 +166,37 @@ test("la vista pública muestra estado y posición sin sesión, y explica un enl
   assert.equal(malformed.w.PublicTracking.maybeStart(), true);
   assert.match(malformed.w.document.getElementById("app-mount").textContent, /incompleto/);
   assert.equal(browser().w.PublicTracking.maybeStart(), false);
+});
+
+test("el SOS envía la lectura del GPS del teléfono, nunca la posición de navegación o simulación", async () => {
+  const calls = [];
+  const { w } = browser({ gps: { latitude: 6.2442, longitude: -75.5812, accuracy: 12 }, service: {
+    triggerSos: async (coords, accuracy) => { calls.push({ coords: Array.from(coords), accuracy }); return { id: 7, receivedAt: new Date().toISOString() }; }
+  } });
+  const done = w.DriverActions.activate();
+  await sleep(40);
+  assert.deepEqual(calls, [{ coords: [6.2442, -75.5812], accuracy: 12 }]);
+  assert.match(w.document.querySelector("[data-sos-position]").textContent, /6\.24420, -75\.58120 ±12 m/);
+  w.document.querySelector("[data-sheet-action='1']").click();
+  await done;
+});
+
+test("sin señal GPS el SOS usa la última posición real confirmada y dice su antigüedad; sin ninguna, no envía", async () => {
+  const calls = [];
+  const stored = { coords: [4.4389, -75.2322], accuracy: 20, time: Date.now() - 5 * 60 * 1000 };
+  const { w } = browser({ gps: null, stored, service: { triggerSos: async (coords) => { calls.push(Array.from(coords)); return { id: 8 }; } } });
+  const done = w.DriverActions.activate();
+  await sleep(60);
+  assert.deepEqual(calls, [[4.4389, -75.2322]]);
+  assert.match(w.document.querySelector("[data-sos-position]").textContent, /última confirmada hace 5 min/);
+  w.document.querySelector("[data-sheet-action='1']").click();
+  await done;
+
+  const none = browser({ gps: null, service: { triggerSos: async () => { calls.push("no debería"); return {}; } } });
+  const again = none.w.DriverActions.activate();
+  await sleep(60);
+  assert.equal(calls.length, 1);
+  assert.match(none.w.document.querySelector("[data-sos-status]").textContent, /No hay posición GPS/);
+  none.w.document.querySelector("[data-sheet-action='1']").click();
+  await again;
 });

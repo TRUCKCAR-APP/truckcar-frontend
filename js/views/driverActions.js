@@ -56,12 +56,13 @@ window.DriverActions = (function () {
         { type: 'rest', label: 'Parador seguro', icon: 'fa-square-parking', tone: 'text-emerald-400' }
     ];
 
+    /** Reporte vial con la posición GPS real del dispositivo: la reciente (≤ 2 min) o una lectura nueva al abrir. */
     function openReportSheet(preset) {
-        const coords = window.app.currentPosition();
+        let coords = window.app.currentPosition(2 * 60 * 1000);
         const body = document.createElement('div');
         body.innerHTML = `
-            ${coords ? '' : `<p class="mb-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-[13px] text-amber-200">
-                <i class="fas fa-location-crosshairs"></i> Aún no hay una posición GPS: active la ubicación para reportar.</p>`}
+            ${coords ? '' : `<p data-report-gps class="mb-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-[13px] text-amber-200">
+                <i class="fas fa-location-crosshairs"></i> Buscando su posición GPS…</p>`}
             <div class="grid grid-cols-3 gap-2.5">
                 ${REPORTS.map(r => `
                     <button type="button" class="report-tile ${r.type === preset ? '!border-brand-500' : ''}" data-report="${r.type}" ${coords ? '' : 'disabled'}>
@@ -85,6 +86,19 @@ window.DriverActions = (function () {
             tone: 'warning',
             body,
             onMount(sheet, close) {
+                if (!coords) {
+                    window.DeviceLocation.fix({ timeoutMs: 8000 }).then((fix) => {
+                        const note = sheet.querySelector('[data-report-gps]');
+                        if (!fix) {
+                            if (note) note.innerHTML = '<i class="fas fa-location-crosshairs"></i> '
+                                + esc(window.DeviceLocation.error || 'Sin señal GPS') + ' Active la ubicación para reportar.';
+                            return;
+                        }
+                        coords = fix.coords;
+                        if (note) note.remove();
+                        sheet.querySelectorAll('[data-report]').forEach(t => { t.disabled = false; });
+                    });
+                }
                 sheet.querySelectorAll('[data-report]').forEach(tile => tile.addEventListener('click', async () => {
                     const report = REPORTS.find(r => r.type === tile.dataset.report);
                     const detail = sheet.querySelector('[data-report-detail]').value.trim();
@@ -190,15 +204,26 @@ window.DriverActions = (function () {
         return { hint, button };
     }
 
-    /** Una lectura GPS puntual cuando la app aún no tiene posición (máx. 5 s): [lat, lng, precisión] o null. */
-    function freshFix() {
-        if (!navigator.geolocation) return Promise.resolve(null);
-        return new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-                (p) => resolve([p.coords.latitude, p.coords.longitude, p.coords.accuracy]),
-                () => resolve(null),
-                { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 });
-        });
+    /**
+     * Posición del SOS: únicamente el GPS real del dispositivo (window.DeviceLocation). Una lectura de los últimos 15 s
+     * se usa al instante; si no, se pide una nueva (máx. 6 s) y, si no llega, la última posición real confirmada con su
+     * antigüedad. Nunca la guía de navegación, la simulación de prueba ni la posición guardada en el backend.
+     */
+    async function sosPosition() {
+        const recent = window.DeviceLocation.last(15000);
+        if (recent) return { fix: recent, stale: false };
+        const fresh = await window.DeviceLocation.fix({ timeoutMs: 6000 });
+        if (fresh) return { fix: fresh, stale: false };
+        const last = window.DeviceLocation.last();
+        return last ? { fix: last, stale: true } : null;
+    }
+
+    function positionLabel(position) {
+        if (!position) return 'Sin GPS';
+        const { fix, stale } = position;
+        return fix.coords[0].toFixed(5) + ', ' + fix.coords[1].toFixed(5)
+            + (fix.accuracy ? ' ±' + Math.round(fix.accuracy) + ' m' : '')
+            + (stale ? ' (última confirmada ' + window.DeviceLocation.age(fix) + ')' : '');
     }
 
     function sosStatusHtml(kind, title, detail) {
@@ -214,12 +239,11 @@ window.DriverActions = (function () {
     }
 
     /**
-     * SOS: POST /api/v1/alerts/sos con la posición actual. La hoja se abre al instante y muestra el resultado real:
-     * torre avisada (id y hora del servidor), guardado sin señal (cola durable) o error. La llamada al 123 siempre está.
+     * SOS: POST /api/v1/alerts/sos con la posición GPS real del dispositivo. La hoja se abre al instante y muestra el
+     * resultado real: torre avisada (id y hora del servidor), guardado sin señal (cola durable) o error. La llamada al
+     * 123 siempre está.
      */
     async function activate() {
-        let coords = window.app.currentPosition();
-        let accuracy = null;
         const load = window.TruckCarData.activeLoadOrder;
         const driver = window.TruckCarData.currentDriver || {};
         let send = null;
@@ -233,7 +257,7 @@ window.DriverActions = (function () {
                 <div data-sos-status>${sosStatusHtml('sending', 'Avisando a la torre de control…', 'Enviando su posición.')}</div>
                 <div class="card p-3.5 space-y-2 text-[13px] mt-3">
                     <div class="flex justify-between gap-3"><span class="text-slate-400">Posición</span>
-                        <b class="font-mono text-right" data-sos-position>${coords ? coords[0].toFixed(5) + ', ' + coords[1].toFixed(5) : 'Buscando GPS…'}</b></div>
+                        <b class="font-mono text-right" data-sos-position>Obteniendo GPS del teléfono…</b></div>
                     <div class="flex justify-between gap-3"><span class="text-slate-400">Vehículo</span>
                         <b class="font-mono">${esc((driver.vehicle && driver.vehicle.plate) || '—')}</b></div>
                     <div class="flex justify-between gap-3"><span class="text-slate-400">Carga</span>
@@ -247,19 +271,16 @@ window.DriverActions = (function () {
                 const status = sheet.querySelector('[data-sos-status]');
                 const show = (...args) => { status.innerHTML = sosStatusHtml(...args); };
                 send = (async () => {
-                    if (!coords) {
-                        const fix = await freshFix();
-                        if (fix) { coords = [fix[0], fix[1]]; accuracy = fix[2]; }
-                        sheet.querySelector('[data-sos-position]').textContent =
-                            coords ? coords[0].toFixed(5) + ', ' + coords[1].toFixed(5) : 'Sin GPS';
-                    }
-                    if (!coords) {
-                        show('failed', 'No hay posición GPS', 'Sin ubicación la torre no puede ubicarlo: active el GPS o llame al 123.');
+                    const position = await sosPosition();
+                    sheet.querySelector('[data-sos-position]').textContent = positionLabel(position);
+                    if (!position) {
+                        show('failed', 'No hay posición GPS', (window.DeviceLocation.error || 'Sin señal GPS.')
+                            + ' Sin ubicación la torre no puede ubicarlo: active el GPS o llame al 123.');
                         window.Native.haptic('warning');
                         return;
                     }
                     try {
-                        const sos = await window.TruckCarService.triggerSos(coords, accuracy);
+                        const sos = await window.TruckCarService.triggerSos(position.fix.coords, position.fix.accuracy);
                         if (sos.pendingSync) {
                             show('queued', 'SOS guardado sin señal', 'Se enviará a la torre en cuanto haya cobertura. Si puede, llame al 123.');
                             window.voiceEngine.speak('Sin señal. El SOS se enviará al recuperar la cobertura.');
