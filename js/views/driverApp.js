@@ -469,9 +469,19 @@ window.DriverApp = {
         `;
     },
 
+    /**
+     * Navegación paso a paso de la carga en tránsito. Las instrucciones salen de la ruta real (js/navigation.js:
+     * plan de Route-AI + maniobras de OSRM) y avanzan con la posición GPS; RouteGuidance.renderHud() actualiza los
+     * elementos data-nav-* en sitio para no recrear el mapa en cada posición.
+     */
     renderNavigationScreen(state, isLandscape) {
-        const step = window.TruckCarData.liveNavigationSteps[state.navStepIndex] || window.TruckCarData.liveNavigationSteps[0];
-        
+        const esc = window.ui.escape;
+        const s = window.RouteGuidance.snapshot();
+        const hud = window.RouteGuidance.hudText(s);
+        const speed = s.speed == null ? '—' : s.speed;
+        const offRoute = `<div data-nav-offroute ${s.offRoute ? '' : 'hidden'} class="mt-2 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[11px] font-semibold flex items-center gap-1.5">
+            <i class="fas fa-triangle-exclamation"></i> Fuera de la ruta: recalculando desde su posición.</div>`;
+
         if (isLandscape) {
             return `
                 <div class="h-full w-full relative bg-slate-950 overflow-hidden">
@@ -481,30 +491,26 @@ window.DriverApp = {
                         <div class="hud-pill rounded-2xl p-3.5 shadow-2xl border border-slate-700/60 pointer-events-auto">
                             <div class="flex items-center gap-3">
                                 <div class="w-12 h-12 rounded-xl bg-brand-600 text-white flex items-center justify-center text-xl shadow-lg shrink-0">
-                                    <i class="fas ${step.maneuver === 'turn-right' ? 'fa-arrow-right' : step.maneuver === 'tunnel' ? 'fa-archway' : step.maneuver === 'scale' ? 'fa-weight-hanging' : 'fa-arrow-up'}"></i>
+                                    <i data-nav-icon class="fas ${s.icon}"></i>
                                 </div>
-                                <div>
-                                    <div class="text-2xl font-black text-white font-mono">${step.distanceLeft}</div>
-                                    <div class="text-xs text-slate-300 font-semibold line-clamp-2 leading-tight">${step.street}</div>
+                                <div class="min-w-0">
+                                    <div data-nav-distance class="text-2xl font-black text-white font-mono">${esc(hud.distance)}</div>
+                                    <div data-nav-instruction class="text-xs text-slate-200 font-semibold line-clamp-2 leading-tight">${esc(hud.instruction)}</div>
+                                    <div data-nav-street class="text-[10px] text-slate-400 truncate">${esc(hud.street)}</div>
                                 </div>
                             </div>
-                            <div class="mt-2 pt-2 border-t border-slate-700/50 text-[11px] text-emerald-300 flex items-center gap-1.5">
-                                <i class="fas fa-shield-alt"></i> ${step.alert.title}: ${step.alert.text}
-                            </div>
+                            ${offRoute}
                         </div>
 
                         <div class="flex items-center gap-3 pointer-events-auto">
                             <div class="hud-pill rounded-2xl p-3 flex items-center gap-3 border border-slate-700/60 shadow-xl">
                                 <div class="text-center">
-                                    <div class="text-3xl font-black text-emerald-400 font-mono">${state.simulatedSpeed}</div>
+                                    <div data-nav-speed class="text-3xl font-black text-emerald-400 font-mono">${speed}</div>
                                     <div class="text-[9px] uppercase font-bold text-slate-400">km/h</div>
-                                </div>
-                                <div class="speed-limit-sign">
-                                    ${step.speedLimit}
                                 </div>
                             </div>
 
-                            <button onclick="window.app.toggleVoice()" class="hud-pill p-3.5 rounded-2xl border border-slate-700/60 text-white shadow-xl flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}">
+                            <button onclick="window.app.toggleVoice()" class="hud-pill p-3.5 rounded-2xl border border-slate-700/60 text-white shadow-xl flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}" aria-label="Activar o silenciar la voz">
                                 <i class="fas ${state.voiceEnabled ? 'fa-volume-up text-lg' : 'fa-volume-mute text-lg'}"></i>
                             </button>
                         </div>
@@ -525,17 +531,12 @@ window.DriverApp = {
 
                         <div class="hud-pill rounded-2xl p-3 border border-slate-700/60 shadow-xl pointer-events-auto w-full">
                             <div class="text-right font-mono mb-2">
-                                <span class="text-xs text-slate-400 block font-sans">Destino: ${window.ui.escape(window.DriverApp.destinationLabel())}</span>
-                                <span class="text-sm font-bold text-white"><span class="text-emerald-400">${window.ui.escape(window.DriverApp.routeEta())}</span></span>
+                                <span class="text-xs text-slate-400 block font-sans">Destino: ${esc(window.DriverApp.destinationLabel())}</span>
+                                <span class="text-sm font-bold text-white">Faltan <span data-nav-remaining class="text-emerald-400">${esc(s.remaining)}</span></span>
                             </div>
-                            <div class="flex gap-2">
-                                <button onclick="window.app.nextSimulationStep()" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 transition">
-                                    <i class="fas fa-step-forward"></i> Avanzar
-                                </button>
-                                <button onclick="window.app.finishTrip()" class="py-2 px-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition">
-                                    <i class="fas fa-stop"></i>
-                                </button>
-                            </div>
+                            <button onclick="window.app.finishTrip()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
+                                <i class="fas fa-flag-checkered"></i> Llegué
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -547,27 +548,18 @@ window.DriverApp = {
                 <div class="bg-gradient-to-b from-slate-900 to-slate-900/90 border-b border-slate-800 p-3.5 z-20 shadow-xl">
                     <div class="flex items-center gap-3">
                         <div class="w-12 h-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center text-xl shadow-lg shadow-brand-900/50 shrink-0">
-                            <i class="fas ${step.maneuver === 'turn-right' ? 'fa-arrow-right' : step.maneuver === 'tunnel' ? 'fa-archway' : step.maneuver === 'scale' ? 'fa-weight-hanging' : 'fa-arrow-up'}"></i>
+                            <i data-nav-icon class="fas ${s.icon}"></i>
                         </div>
                         <div class="flex-1 min-w-0">
-                            <div class="text-xl font-black text-white font-mono">${step.distanceLeft}</div>
-                            <p class="text-xs text-slate-200 font-medium leading-tight truncate">${step.maneuverText}</p>
-                            <span class="text-[10px] text-slate-400 font-mono">${step.street}</span>
+                            <div data-nav-distance class="text-xl font-black text-white font-mono">${esc(hud.distance)}</div>
+                            <p data-nav-instruction class="text-xs text-slate-200 font-medium leading-tight line-clamp-2">${esc(hud.instruction)}</p>
+                            <span data-nav-street class="text-[10px] text-slate-400 block truncate">${esc(hud.street)}</span>
                         </div>
-                        <div class="speed-limit-sign shrink-0">
-                            ${step.speedLimit}
-                        </div>
-                    </div>
-
-                    <div class="mt-2.5 px-2.5 py-1.5 bg-slate-800/80 border border-slate-700/50 rounded-xl flex items-center justify-between text-xs">
-                        <div class="flex items-center gap-1.5 text-emerald-300 text-[11px]">
-                            <i class="fas fa-info-circle text-emerald-400"></i>
-                            <span><b>${step.alert.title}</b>: ${step.alert.text}</span>
-                        </div>
-                        <button onclick="window.voiceEngine.speak('${step.voiceAudioText}', true)" class="text-slate-400 hover:text-emerald-400 p-1">
+                        <button onclick="window.app.repeatInstruction()" class="w-10 h-10 shrink-0 rounded-xl bg-slate-800/80 border border-slate-700/50 text-slate-300 flex items-center justify-center" aria-label="Repetir la instrucción">
                             <i class="fas fa-volume-up"></i>
                         </button>
                     </div>
+                    ${offRoute}
                 </div>
 
                 <div class="flex-1 relative">
@@ -575,12 +567,12 @@ window.DriverApp = {
                     <div id="live-nav-map-container" class="w-full h-full"></div>
 
                     <div class="absolute bottom-4 left-4 z-[400] speed-gauge rounded-2xl p-2.5 shadow-2xl border border-slate-700 text-center min-w-[75px]">
-                        <div class="text-2xl font-black text-emerald-400 font-mono">${state.simulatedSpeed}</div>
+                        <div data-nav-speed class="text-2xl font-black text-emerald-400 font-mono">${speed}</div>
                         <div class="text-[9px] font-bold uppercase text-slate-400">km/h</div>
                     </div>
 
                     <div class="absolute bottom-4 right-4 z-[400] flex flex-col items-center gap-2">
-                        <button onclick="window.app.toggleVoice()" class="w-11 h-11 bg-slate-900/90 text-white rounded-full shadow-xl border border-slate-700 flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}">
+                        <button onclick="window.app.toggleVoice()" class="w-11 h-11 bg-slate-900/90 text-white rounded-full shadow-xl border border-slate-700 flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}" aria-label="Activar o silenciar la voz">
                             <i class="fas ${state.voiceEnabled ? 'fa-volume-up' : 'fa-volume-mute'}"></i>
                         </button>
                         <button onclick="window.app.openReportModal()" class="w-14 h-14 bg-amber-500 text-slate-950 font-bold rounded-full shadow-2xl shadow-amber-900/50 flex items-center justify-center text-xl border-2 border-white/80" aria-label="Reportar novedad en la vía">
@@ -590,18 +582,13 @@ window.DriverApp = {
                 </div>
 
                 <div class="p-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-2 z-20">
-                    <div class="text-xs font-mono text-slate-300">
-                        <span class="text-slate-400 text-[10px] block font-sans">Paso ${state.navStepIndex + 1} de ${window.TruckCarData.liveNavigationSteps.length}</span>
-                        <b>${window.ui.escape(window.DriverApp.destinationLabel())}: ${window.ui.escape(window.DriverApp.routeDistance())}</b>
+                    <div class="text-xs font-mono text-slate-300 min-w-0">
+                        <span data-nav-step class="text-slate-400 text-[10px] block font-sans">${s.stepCount ? 'Paso ' + s.stepNumber + ' de ' + s.stepCount : 'Ruta real'}</span>
+                        <b class="block truncate">${esc(window.DriverApp.destinationLabel())}: <span data-nav-remaining>${esc(s.remaining)}</span></b>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="window.app.nextSimulationStep()" class="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5" title="Avanzar el GPS simulado">
-                            <i class="fas fa-step-forward"></i> Simular
-                        </button>
-                        <button onclick="window.app.finishTrip()" class="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg shadow-emerald-900/40">
-                            <i class="fas fa-flag-checkered"></i> Llegué
-                        </button>
-                    </div>
+                    <button onclick="window.app.finishTrip()" class="shrink-0 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg shadow-emerald-900/40">
+                        <i class="fas fa-flag-checkered"></i> Llegué
+                    </button>
                 </div>
             </div>
         `;

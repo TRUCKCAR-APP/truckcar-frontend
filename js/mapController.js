@@ -85,20 +85,30 @@ class MapController {
         this.fitAllRoute();
     }
 
-    drawLiveNavigation(stepIndex = 0) {
+    /** Navegación: ruta, alertas, la línea de la guía paso a paso y el camión en la posición actual (si la hay). */
+    drawLiveNavigation(position) {
         if (!this.map) return;
-        const steps = window.TruckCarData.liveNavigationSteps;
-        const currentStep = steps[stepIndex] || steps[0];
-        const lat = currentStep.coords.lat;
-        const lng = currentStep.coords.lng;
-
         this.renderRoutes();
         this.renderAlerts();
-        this.createTruckMarker([lat, lng]);
-
-        if (this.map) {
-            this.map.setView([lat, lng], 13);
+        this.guidanceLayer = null;
+        const guided = window.RouteGuidance && window.RouteGuidance.route;
+        if (guided) this.drawGuidanceLine(guided.geometry);
+        if (position) {
+            this.createTruckMarker(position);
+            this.map.setView(position, 15);
+        } else {
+            this.truckMarker = null;
+            this.fitAllRoute();
         }
+    }
+
+    /** Línea de la ruta que sigue la guía (la del plan o la recalculada desde la posición actual). */
+    drawGuidanceLine(geometry) {
+        if (!this.map || !geometry || geometry.length < 2 || !document.getElementById('live-nav-map-container')) return;
+        if (this.guidanceLayer) {
+            try { this.map.removeLayer(this.guidanceLayer); } catch (e) { /* capa ya removida */ }
+        }
+        this.guidanceLayer = L.polyline(geometry, { color: '#3b82f6', weight: 6, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }).addTo(this.map);
     }
 
     drawCoordinatorFleet() {

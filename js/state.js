@@ -17,8 +17,6 @@ class TruckCarStore {
             isLandscape: false,
             showDeviceFrame: true,
             isNavigating: true,
-            navStepIndex: 0,
-            simulatedSpeed: 54,
             voiceEnabled: true,
             isOffline: false,
             tripAccepted: true,

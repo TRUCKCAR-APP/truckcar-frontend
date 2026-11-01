@@ -147,6 +147,7 @@ window.app = {
         clearInterval(this.shipmentsTimer);
         window.SosMonitor.stop();
         window.DriverTelemetry.stop();
+        window.RouteGuidance.reset();
         window.DeviceLocation.forget();
         window.LiveTracking.stopAll();
         window.TruckCarTelemetry.disconnect();
@@ -398,10 +399,13 @@ window.app = {
                 window.mapCtrl.drawOverviewRoutes();
             } else if (state.driverScreen === 'navigation') {
                 if (!document.getElementById('live-nav-map-container')) return;
-                const steps = window.TruckCarData.liveNavigationSteps;
-                const step = steps[state.navStepIndex] || steps[0];
-                window.mapCtrl.initMap('live-nav-map-container', [step.coords.lat, step.coords.lng], 13);
-                window.mapCtrl.drawLiveNavigation(state.navStepIndex);
+                // Centro: la posición de la telemetría (GPS real o simulación de prueba explícita); sin ella, la ruta.
+                const point = window.DriverTelemetry.lastPoint;
+                const fix = point ? point.coords : (window.DeviceLocation.last() || {}).coords;
+                window.mapCtrl.initMap('live-nav-map-container', fix || [4.6097, -74.0817], fix ? 15 : 7);
+                window.mapCtrl.drawLiveNavigation(fix || null);
+                window.RouteGuidance.prepare(window.TruckCarData.activeLoadOrder);
+                window.RouteGuidance.renderHud();
             }
         });
     },
@@ -519,27 +523,12 @@ window.app = {
                 return;
             }
         }
-        window.store.setState({ busyAction: null, driverScreen: 'navigation', navStepIndex: 0, simulatedSpeed: 48 });
-        const step0 = window.TruckCarData.liveNavigationSteps[0];
-        window.voiceEngine.speak(step0.voiceAudioText, true);
-    },
-
-    nextSimulationStep() {
-        const currentIndex = window.store.state.navStepIndex;
-        const totalSteps = window.TruckCarData.liveNavigationSteps.length;
-        const nextIndex = (currentIndex + 1) % totalSteps;
-
-        const nextStep = window.TruckCarData.liveNavigationSteps[nextIndex];
-        window.store.setState({
-            navStepIndex: nextIndex,
-            simulatedSpeed: nextStep.speedLimit - 5
-        });
-
-        window.voiceEngine.speak(nextStep.voiceAudioText, false);
-
-        if (window.mapCtrl && window.mapCtrl.map) {
-            window.mapCtrl.updateTruckPosition(nextStep.coords.lat, nextStep.coords.lng);
-        }
+        window.store.setState({ busyAction: null, driverScreen: 'navigation' });
+        window.DeviceLocation.watch();
+        // La guía paso a paso sale de la ruta real (Route-AI + OSRM); la primera instrucción se anuncia con la
+        // primera posición GPS.
+        window.RouteGuidance.prepare(window.TruckCarData.activeLoadOrder);
+        window.voiceEngine.speak('Navegación iniciada hacia ' + window.DriverApp.destinationLabel() + '.', true);
     },
 
     /** Registra la entrega con su prueba (IN_TRANSIT -> DELIVERED). */
@@ -555,7 +544,15 @@ window.app = {
         if (!delivered) return;
         window.voiceEngine.speak('Entrega registrada. Viaje finalizado.');
         window.ui.toast('Entrega registrada (DELIVERED) con firma y prueba de entrega.', 'success');
-        window.store.setState({ busyAction: null, driverScreen: 'assigned_load', navStepIndex: 0 });
+        window.RouteGuidance.reset();
+        window.store.setState({ busyAction: null, driverScreen: 'assigned_load' });
+    },
+
+    /** Repite en voz la instrucción de navegación actual. */
+    repeatInstruction() {
+        const s = window.RouteGuidance.snapshot();
+        const hud = window.RouteGuidance.hudText(s);
+        window.voiceEngine.speak((s.hasPosition && s.status === 'ready' ? 'En ' + hud.distance + ', ' : '') + hud.instruction, true);
     },
 
     toggleVoice() {

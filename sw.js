@@ -10,7 +10,7 @@
  *
  * Cambiar VERSION invalida el app shell anterior en la activación.
  */
-const VERSION = 'v5';
+const VERSION = 'v6';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v1';
@@ -38,6 +38,7 @@ const SHELL = [
     'js/dataService.js',
     'js/geolocation.js',
     'js/telemetry.js',
+    'js/navigation.js',
     'js/ui/native.js',
     'js/speechEngine.js',
     'js/mapController.js',

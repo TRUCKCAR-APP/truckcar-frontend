@@ -87,8 +87,10 @@
         const driver = data.currentDriver;
         if (load && load.status === 'IN_TRANSIT' && driver && driver.id) {
             window.DriverTelemetry.start(load, driver.id);
+            window.RouteGuidance.prepare(load);
         } else if (window.DriverTelemetry.isRunning) {
             window.DriverTelemetry.stop();
+            window.RouteGuidance.reset();
         }
     }
 
@@ -500,6 +502,7 @@
                     destinationLongitude: load.destination.coords ? load.destination.coords[1] : null
                 });
                 data.routes = { ...mapRoutePlan(plan, load), planForLoadId: load.backendId };
+                if (load.status === 'IN_TRANSIT') window.RouteGuidance.prepare(load);
                 load.totalDistance = data.routes.optimal.distance;
                 load.estimatedDuration = data.routes.optimal.eta;
                 if (window.mapCtrl) window.mapCtrl.resetRouteCache();
