@@ -18,6 +18,10 @@ class MapController {
     }
 
     initMap(containerId, center = [4.6097, -74.0817], zoom = 8) {
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
         if (this.map) {
             try {
                 // Detener animaciones pendientes evita el error "_leaflet_pos" al destruir el mapa.
@@ -58,11 +62,19 @@ class MapController {
         this.shipmentTruckMarker = null;
         this.mountKey = containerId;
 
-        setTimeout(() => {
-            if (this.map) {
-                this.map.invalidateSize();
-            }
-        }, 200);
+        // Leaflet mide el contenedor una sola vez al crearse. Si después cambia de tamaño (la pestaña termina de
+        // aparecer, cargan las fuentes, rota el teléfono, se abre una hoja), las teselas quedan desalineadas y con
+        // huecos: se vuelve a medir cada vez que el contenedor cambia, una vez por cuadro.
+        if (typeof ResizeObserver === 'function') {
+            let frame = null;
+            this.resizeObserver = new ResizeObserver(() => {
+                cancelAnimationFrame(frame);
+                frame = requestAnimationFrame(() => { if (this.map) this.map.invalidateSize({ pan: false }); });
+            });
+            this.resizeObserver.observe(container);
+        } else {
+            setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 200);
+        }
     }
 
     /** Invalida la geometría cacheada cuando cambia la carga o el plan de ruta. */
