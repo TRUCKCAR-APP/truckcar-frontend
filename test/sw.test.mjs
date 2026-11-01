@@ -12,13 +12,15 @@ function loadServiceWorker() {
   const handlers = {};
   const cacheStores = new Map();
   const keyOf = (request) => (typeof request === "string" ? request : request.url);
+  // Como Cache Storage: "css/main.css" y "http://localhost:5500/css/main.css" son la misma entrada.
+  const same = (a, b) => new URL(a, ORIGIN + "/").href === new URL(b, ORIGIN + "/").href;
   const cacheFor = (name) => {
     if (!cacheStores.has(name)) {
       const entries = new Map();
       cacheStores.set(name, {
         entries,
         addAll: async (urls) => urls.forEach((url) => entries.set(url, "precached")),
-        match: async (request) => entries.get(keyOf(request)),
+        match: async (request) => { const key = [...entries.keys()].find((k) => same(k, keyOf(request))); return key === undefined ? undefined : entries.get(key); },
         put: async (request, response) => entries.set(keyOf(request), response),
         keys: async () => [...entries.keys()],
         delete: async (key) => entries.delete(key),
@@ -45,7 +47,7 @@ function loadServiceWorker() {
         return undefined;
       },
     },
-    fetch: async () => ({ ok: true, type: "basic", clone() { return this; } }),
+    fetch: async (url) => ({ ok: true, type: "basic", body: typeof url === "string" ? url : url.url, clone() { return this; } }),
     Response: { error: () => ({ type: "error" }) },
     URL,
     Promise,
@@ -126,7 +128,30 @@ test("sin red, la navegación cae al index.html precargado", async () => {
   context.fetch = async () => { throw new TypeError("Failed to fetch"); };
   const event = fetchEvent(`${ORIGIN}/conductor`, { mode: "navigate" });
   handlers.fetch(event);
-  assert.equal(await event.responded, "precached");
+  assert.equal((await event.responded).body, "index.html");
+});
+
+test("el precargado se salta la caché HTTP del navegador (una versión nueva nunca guarda el CSS viejo)", async () => {
+  const { handlers, context } = loadServiceWorker();
+  const options = [];
+  context.fetch = async (url, init) => { options.push(init && init.cache); return { ok: true, body: url, clone() { return this; } }; };
+  await install(handlers);
+  assert.ok(options.length > 20);
+  assert.ok(options.every((cache) => cache === "reload"), "cada archivo del app shell se pide con cache: 'reload'");
+});
+
+test("con red el app shell llega fresco; sin red, desde la copia guardada", async () => {
+  const { handlers, context } = loadServiceWorker();
+  await install(handlers);
+  context.fetch = async (request, init) => ({ ok: true, body: "fresco:" + (init && init.cache), clone() { return this; } });
+  const online = fetchEvent(`${ORIGIN}/css/main.css`);
+  handlers.fetch(online);
+  assert.equal((await online.responded).body, "fresco:no-cache");
+
+  context.fetch = async () => { throw new TypeError("Failed to fetch"); };
+  const offline = fetchEvent(`${ORIGIN}/css/tokens.css`);
+  handlers.fetch(offline);
+  assert.equal((await offline.responded).body, "css/tokens.css", "la copia precargada");
 });
 
 test("el manifiesto de la PWA es válido y sus íconos existen", () => {

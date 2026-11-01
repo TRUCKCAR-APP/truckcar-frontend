@@ -1,8 +1,8 @@
 /**
  * Service Worker de TruckCar (PWA offline-first del conductor).
  *
- *  - App shell (HTML, CSS, JS propios): precargado al instalar; se sirve desde caché y se actualiza en segundo plano
- *    (stale-while-revalidate). La navegación usa la red primero y cae al index.html guardado sin señal.
+ *  - App shell (HTML, CSS, JS propios): precargado al instalar (sin pasar por la caché HTTP). Con red se sirve la
+ *    versión vigente (red primero, revalidada); sin señal, la copia guardada. Así nunca se mezcla HTML nuevo con CSS viejo.
  *  - Librerías de CDN (Tailwind, Leaflet, Font Awesome, fuentes): caché en tiempo de ejecución.
  *  - Teselas de OpenStreetMap: caché primero, con un máximo de entradas (las más antiguas se descartan).
  *  - API REST (api-gateway), WebSocket, evidencias (/pod-media/) y rutas OSRM: nunca se sirven desde caché; lo que
@@ -10,7 +10,7 @@
  *
  * Cambiar VERSION invalida el app shell anterior en la activación.
  */
-const VERSION = 'v7';
+const VERSION = 'v8';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v1';
@@ -57,8 +57,15 @@ const SHELL = [
 const CDN_HOSTS = ['cdn.tailwindcss.com', 'cdnjs.cloudflare.com', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 const TILE_HOSTS = /(^|\.)tile\.openstreetmap\.org$/;
 
+// Cada archivo se pide con cache: 'reload' para saltarse la caché HTTP del navegador: con addAll() una versión nueva
+// del Service Worker podía guardar el CSS o el JS viejo que el navegador aún tenía en su caché.
 self.addEventListener('install', (event) => {
-    event.waitUntil(caches.open(SHELL_CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+    event.waitUntil(caches.open(SHELL_CACHE)
+        .then(cache => Promise.all(SHELL.map(url => fetch(url, { cache: 'reload' }).then(response => {
+            if (!response.ok) throw new Error('No se pudo precargar ' + url + ' (' + response.status + ')');
+            return cache.put(url, response);
+        }))))
+        .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -89,8 +96,24 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(networkFirstNavigation(request));
         return;
     }
-    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE));
+    event.respondWith(networkFirstShell(request));
 });
+
+/**
+ * App shell (CSS, JS, íconos): con red siempre la versión vigente, revalidada con el servidor (no-cache: un 304 si no
+ * cambió); sin red, la copia guardada. Servirlo primero desde la caché mezclaba un index.html nuevo con el CSS viejo
+ * hasta la recarga siguiente.
+ */
+async function networkFirstShell(request) {
+    const cache = await caches.open(SHELL_CACHE);
+    try {
+        const response = await fetch(request, { cache: 'no-cache' });
+        if (response.ok) cache.put(request, response.clone());
+        return response;
+    } catch (error) {
+        return (await cache.match(request)) || Response.error();
+    }
+}
 
 async function networkFirstNavigation(request) {
     try {

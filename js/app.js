@@ -585,6 +585,15 @@ window.app = {
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(error =>
                 console.warn('[TruckCar] No se pudo registrar el Service Worker', error));
+            // Una versión nueva del Service Worker tomó el control: se recarga una vez para no seguir con el CSS y el JS
+            // que sirvió la anterior. En la primera instalación (sin controlador previo) no hace falta.
+            const hadController = !!navigator.serviceWorker.controller;
+            let reloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!hadController || reloading) return;
+                reloading = true;
+                window.location.reload();
+            });
         }
         const data = window.TruckCarData;
         const refreshTileCount = () => {
