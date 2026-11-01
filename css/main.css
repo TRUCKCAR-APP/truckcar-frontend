@@ -1,51 +1,31 @@
 /* =====================================================================================================================
- * TruckCar · sistema de diseño
- * Telemática B2B en cabina: fondos pizarra profundos, acciones en azul industrial, ámbar para alertas y verde para
- * estados activos. Alto contraste para leer bajo el sol y objetivos táctiles grandes para usar con el camión detenido.
+ * TruckCar · estilos de componentes
+ * Todos los valores salen de css/tokens.css. Los nombres de abajo son alias de compatibilidad para los componentes
+ * existentes; el código nuevo usa directamente los tokens semánticos (--color-*, --space-*, --radius-*, --elev-*).
  * ===================================================================================================================== */
 
 :root {
-    color-scheme: dark;
+    --bg: var(--color-bg);
+    --surface: var(--color-surface);
+    --surface-2: var(--color-surface);
+    --surface-3: var(--color-elevated);
+    --border: var(--color-border);
+    --border-strong: var(--color-border-elevated);
 
-    /* Superficies */
-    --bg: #020617;            /* slate-950 */
-    --surface: #0f172a;       /* slate-900 */
-    --surface-2: #162036;
-    --surface-3: #1e293b;     /* slate-800 */
-    --border: rgba(148, 163, 184, 0.14);
-    --border-strong: rgba(148, 163, 184, 0.28);
+    --text: var(--color-text);
+    --text-muted: var(--color-text-secondary);
+    --text-faint: var(--color-text-secondary);
 
-    /* Texto (contraste >= 7:1 sobre --bg salvo --text-faint) */
-    --text: #f1f5f9;
-    --text-muted: #a3b1c6;
-    --text-faint: #8796ad;
+    --primary: var(--color-accent);
+    --primary-hi: var(--color-accent);
+    --primary-lo: var(--color-accent-pressed);
+    --warning: var(--color-warn);
+    --success: var(--color-ok);
+    --danger: var(--color-sos);
 
-    /* Semántica */
-    --primary: #2563eb;
-    --primary-hi: #3b82f6;
-    --primary-lo: #1d4ed8;
-    --warning: #f59e0b;
-    --success: #10b981;
-    --danger: #ef4444;
-
-    /* Movimiento: curvas con más energía que las nativas de CSS */
-    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* hojas tipo iOS */
-    --dur-press: 140ms;
-    --dur-ui: 220ms;
-    --dur-sheet: 420ms;
-
-    /* Elevación */
-    --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 30px -12px rgba(0, 0, 0, 0.65);
-    --shadow-float: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 24px 48px -16px rgba(0, 0, 0, 0.8);
-    --radius-card: 20px;
-
-    /* Áreas seguras (notch, isla dinámica, indicador de inicio) */
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-left: env(safe-area-inset-left, 0px);
-    --safe-right: env(safe-area-inset-right, 0px);
+    --shadow-card: var(--elev-1);
+    --shadow-float: var(--elev-3);
+    --radius-card: var(--radius-lg);
 }
 
 /* ------------------------------------------------------------------ base móvil */
@@ -70,7 +50,9 @@ body {
     padding: 0;
     background: var(--bg);
     color: var(--text);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
     font-feature-settings: 'cv11', 'ss01';      /* Inter: 1 y a de lectura rápida */
     overflow: hidden;
 }
@@ -91,19 +73,24 @@ button:not(:disabled), [role="button"], .tappable {
     transition-timing-function: var(--ease-out);
 }
 button:not(:disabled):active, [role="button"]:active, .tappable:active {
-    scale: 0.97;
+    scale: var(--press-scale);
 }
 
 :focus-visible {
-    outline: 2px solid var(--primary-hi);
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
 }
 
-/* Mono con cifras tabulares: los contadores y coordenadas no bailan al cambiar */
+::selection { background: var(--color-accent-soft); color: var(--color-text); }
+input, textarea { caret-color: var(--color-accent); }
+
+/* Sin monoespaciada en la interfaz: las cifras (velocidad, peso, coordenadas) usan la sans con números tabulares para
+   que no bailen al cambiar. .font-mono queda como alias en el marcado existente. */
 .mono-font, .font-mono {
-    font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace !important;
-    font-variant-numeric: tabular-nums;
+    font-family: var(--font-sans) !important;
+    font-variant-numeric: var(--font-numeric);
+    letter-spacing: 0;
 }
 .tnum { font-variant-numeric: tabular-nums; }
 
@@ -133,11 +120,11 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
 }
 
 /* Gris de apoyo con más contraste bajo luz solar (slate-500 queda en ~4:1 sobre el fondo) */
-.text-slate-500 { color: var(--text-faint) !important; }
+.text-slate-500 { color: var(--color-text-secondary) !important; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+::-webkit-scrollbar-thumb { background: var(--color-pressed); border-radius: var(--radius-pill); }
 
 /* Contenedores con scroll propio: rebotan sin arrastrar la página */
 .overflow-y-auto, .overflow-auto { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
@@ -155,9 +142,9 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
     max-width: 440px;
     max-height: 100%;
     height: 100%;
-    border-radius: 32px;
-    border: 3px solid #1e293b;
-    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    border-radius: calc(var(--radius-xl) + var(--space-3));
+    border: var(--border-elevated);
+    box-shadow: var(--elev-3);
 }
 .phone-frame.landscape-mode {
     max-width: 860px;
@@ -168,8 +155,8 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
     max-height: 100% !important;
     width: 100% !important;
     height: 100% !important;
-    border-radius: 16px !important;
-    border: 1px solid #1e293b !important;
+    border-radius: var(--radius-lg) !important;
+    border: var(--border-subtle) !important;
 }
 
 /* En un teléfono (o instalada) la app ocupa toda la pantalla: sin marco simulado ni herramientas de demostración. */
@@ -189,17 +176,20 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
 
 /* ------------------------------------------------------------------ componentes */
 .card {
-    background: linear-gradient(180deg, rgba(30, 41, 59, 0.55), rgba(15, 23, 42, 0.9));
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card);
-    box-shadow: var(--shadow-card);
+    background: var(--color-surface);
+    border: var(--border-subtle);
+    border-radius: var(--radius-lg);
 }
+/* Lo único que flota sobre el mapa: vidrio grafito con respaldo sólido donde no hay backdrop-filter. */
 .card-float {
-    background: rgba(15, 23, 42, 0.82);
-    border: 1px solid var(--border-strong);
-    box-shadow: var(--shadow-float);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    background: var(--color-glass);
+    border: var(--border-elevated);
+    box-shadow: var(--elev-3);
+    backdrop-filter: blur(var(--blur-glass));
+    -webkit-backdrop-filter: blur(var(--blur-glass));
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .card-float { background: var(--color-glass-solid); }
 }
 
 /* Botón principal gigante: se usa con el camión detenido y guantes puestos */
@@ -329,26 +319,27 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    padding: 5px 11px 5px 9px;
-    border-radius: 999px;
-    font-size: 11.5px;
-    font-weight: 700;
+    min-height: 32px;
+    padding: 0 var(--space-3) 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
     letter-spacing: -0.005em;
     border: 1px solid transparent;
     white-space: nowrap;
     transition: background-color var(--dur-ui) var(--ease-out), color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out);
 }
-.net-pill[data-state="online"] { background: rgba(16, 185, 129, 0.12); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3); }
-.net-pill[data-state="syncing"] { background: rgba(37, 99, 235, 0.16); color: #93c5fd; border-color: rgba(59, 130, 246, 0.4); }
-.net-pill[data-state="offline"] { background: rgba(245, 158, 11, 0.14); color: #fcd34d; border-color: rgba(245, 158, 11, 0.42); }
-.net-pill[data-state="reconnecting"] { background: rgba(245, 158, 11, 0.1); color: #fde68a; border-color: rgba(245, 158, 11, 0.3); }
-.net-dot { width: 8px; height: 8px; border-radius: 999px; background: currentColor; position: relative; flex: none; }
+.net-pill[data-state="online"] { background: var(--color-ok-soft); color: var(--color-ok); }
+.net-pill[data-state="syncing"] { background: var(--color-accent-soft); color: var(--color-accent); }
+.net-pill[data-state="offline"],
+.net-pill[data-state="reconnecting"] { background: var(--color-warn-soft); color: var(--color-warn); }
+.net-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: currentColor; position: relative; flex: none; }
 .net-pill[data-state="online"] .net-dot::after,
 .net-pill[data-state="syncing"] .net-dot::after {
     content: '';
     position: absolute;
     inset: -4px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     border: 2px solid currentColor;
     opacity: 0;
     animation: net-ping 2.2s var(--ease-out) infinite;
@@ -382,9 +373,7 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     position: fixed;
     inset: 0;
     z-index: 2500;
-    background: rgba(2, 6, 23, 0.6);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: rgb(var(--graphite-950) / 0.64);
     opacity: 0;
     transition: opacity var(--dur-sheet) var(--ease-drawer);
     display: flex;
@@ -398,12 +387,12 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     max-height: calc(100dvh - var(--safe-top) - 24px);
     display: flex;
     flex-direction: column;
-    background: linear-gradient(180deg, #172036, var(--surface));
-    border: 1px solid var(--border-strong);
+    background: var(--color-surface);
+    border: var(--border-elevated);
     border-bottom: 0;
-    border-radius: 28px 28px 0 0;
-    box-shadow: 0 -20px 60px -20px rgba(0, 0, 0, 0.8);
-    padding-bottom: calc(16px + var(--safe-bottom));
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: var(--elev-3);
+    padding-bottom: calc(var(--space-4) + var(--safe-bottom));
     transform: translateY(100%);
     transition: transform var(--dur-sheet) var(--ease-drawer);
     will-change: transform;
@@ -412,7 +401,7 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 .sheet.is-dragging { transition: none; }
 .sheet-handle {
     touch-action: none;                         /* el arrastre para cerrar es de la hoja, no del navegador */
-    padding: 10px 0 6px;
+    padding: var(--space-3) 0 var(--space-2);
     display: grid;
     place-items: center;
     cursor: grab;
@@ -422,18 +411,18 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     content: '';
     width: 40px;
     height: 5px;
-    border-radius: 999px;
-    background: rgba(148, 163, 184, 0.45);
+    border-radius: var(--radius-pill);
+    background: var(--color-pressed);
 }
-.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 20px; }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-5); }
 
 /* En pantallas anchas el diálogo flota centrado en vez de subir desde abajo */
 @media (min-width: 768px) {
     .sheet-backdrop { align-items: center; }
     .sheet {
-        border-radius: 24px;
-        border-bottom: 1px solid var(--border-strong);
-        padding-bottom: 16px;
+        border-radius: var(--radius-xl);
+        border-bottom: var(--border-elevated);
+        padding-bottom: var(--space-4);
         transform: translateY(12px) scale(0.97);
         opacity: 0;
         transition: transform 260ms var(--ease-out), opacity 200ms var(--ease-out);
@@ -446,8 +435,8 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 .toaster {
     position: fixed;
     left: 50%;
-    bottom: calc(16px + var(--safe-bottom) + var(--toaster-offset, 0px));
-    width: min(420px, calc(100vw - 24px));
+    bottom: calc(var(--space-4) + var(--safe-bottom) + var(--toaster-offset, 0px));
+    width: min(420px, calc(100vw - 2 * var(--gutter)));
     transform: translateX(-50%);
     z-index: 3000;
     pointer-events: none;
@@ -461,17 +450,15 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     bottom: 0;
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 12px 14px;
-    border-radius: 16px;
-    background: rgba(15, 23, 42, 0.94);
-    border: 1px solid var(--border-strong);
-    box-shadow: var(--shadow-float);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    color: var(--text);
-    font-size: 13px;
-    line-height: 1.35;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--color-elevated);
+    border: var(--border-elevated);
+    box-shadow: var(--elev-3);
+    color: var(--color-text);
+    font-size: var(--text-footnote);
+    line-height: var(--leading-snug);
     pointer-events: auto;
     touch-action: pan-y;                        /* el deslizamiento horizontal descarta; el vertical es del navegador */
     user-select: none;
@@ -485,22 +472,23 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 .toast.is-swiping { transition: none; }
 .toaster[data-expanded="true"] .toast { transform: translateY(calc(-1 * var(--offset))); }
 .toast-icon { flex: none; width: 20px; height: 20px; display: grid; place-items: center; margin-top: 1px; }
-.toast[data-type="success"] .toast-icon { color: var(--success); }
-.toast[data-type="error"] .toast-icon { color: #f87171; }
-.toast[data-type="warning"] .toast-icon { color: var(--warning); }
-.toast[data-type="info"] .toast-icon { color: var(--primary-hi); }
-.toast-title { font-weight: 700; }
-.toast-description { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.toast[data-type="success"] .toast-icon { color: var(--color-ok); }
+.toast[data-type="error"] .toast-icon { color: var(--color-warn); }   /* el rojo es solo del SOS */
+.toast[data-type="warning"] .toast-icon { color: var(--color-warn); }
+.toast[data-type="info"] .toast-icon { color: var(--color-text-secondary); }
+.toast-title { font-weight: var(--weight-semibold); }
+.toast-description { color: var(--color-text-secondary); font-size: var(--text-caption); margin-top: 2px; }
 .toast-action {
     margin-left: auto;
     flex: none;
     align-self: center;
-    padding: 6px 10px;
-    border-radius: 10px;
-    font-size: 12px;
-    font-weight: 700;
-    background: var(--primary);
-    color: #fff;
+    min-height: 36px;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
 }
 
 /* ------------------------------------------------------------------ SOS (mantener para activar) */
@@ -544,8 +532,8 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 .sos-hint.is-visible { opacity: 1; transform: none; }
 
 /* Herramienta de prueba "Simular GPS" activa: imposible de confundir con el GPS real. */
-.sim-toggle.is-active { background: #f59e0b; color: #0f172a; border-color: #fbbf24; }
-.sim-toggle.is-active i { color: #0f172a; }
+.sim-toggle.is-active { background: var(--color-warn); color: var(--color-bg); border-color: var(--color-warn); }
+.sim-toggle.is-active i { color: var(--color-bg); }
 
 /* SOS en la torre de control: franja roja fija sobre el panel hasta que un coordinador lo atienda. */
 .sos-alerts {
