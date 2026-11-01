@@ -16,7 +16,7 @@
     <!-- PWA: instalable y operable sin señal (sw.js + cola durable js/offlineQueue.js). -->
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="color-scheme" content="dark">
-    <meta name="theme-color" content="#0B0D12">
+    <meta name="theme-color" content="#0C0E12">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="TruckCar">
@@ -37,7 +37,7 @@
                         graphite: { 50: 'rgb(var(--graphite-50) / <alpha-value>)', 100: 'rgb(var(--graphite-100) / <alpha-value>)', 200: 'rgb(var(--graphite-200) / <alpha-value>)', 300: 'rgb(var(--graphite-300) / <alpha-value>)', 400: 'rgb(var(--graphite-400) / <alpha-value>)', 500: 'rgb(var(--graphite-500) / <alpha-value>)', 600: 'rgb(var(--graphite-600) / <alpha-value>)', 700: 'rgb(var(--graphite-700) / <alpha-value>)', 800: 'rgb(var(--graphite-800) / <alpha-value>)', 900: 'rgb(var(--graphite-900) / <alpha-value>)', 950: 'rgb(var(--graphite-950) / <alpha-value>)' },
                         slate: { 50: 'rgb(var(--graphite-50) / <alpha-value>)', 100: 'rgb(var(--graphite-100) / <alpha-value>)', 200: 'rgb(var(--graphite-200) / <alpha-value>)', 300: 'rgb(var(--graphite-300) / <alpha-value>)', 400: 'rgb(var(--graphite-400) / <alpha-value>)', 500: 'rgb(var(--graphite-500) / <alpha-value>)', 600: 'rgb(var(--graphite-600) / <alpha-value>)', 700: 'rgb(var(--graphite-700) / <alpha-value>)', 800: 'rgb(var(--graphite-800) / <alpha-value>)', 900: 'rgb(var(--graphite-900) / <alpha-value>)', 950: 'rgb(var(--graphite-950) / <alpha-value>)' },
                         white: 'rgb(var(--graphite-100) / <alpha-value>)',
-                        // Un solo acento (naranja seguridad); "brand" es su alias en el marcado existente.
+                        // Un solo acento (ámbar apagado); "brand" es su alias en el marcado existente.
                         accent: { 300: 'rgb(var(--accent-300) / <alpha-value>)', 400: 'rgb(var(--accent-400) / <alpha-value>)', 500: 'rgb(var(--accent-500) / <alpha-value>)', 600: 'rgb(var(--accent-600) / <alpha-value>)', 700: 'rgb(var(--accent-700) / <alpha-value>)' },
                         brand: { 50: 'rgb(var(--accent-300) / <alpha-value>)', 300: 'rgb(var(--accent-300) / <alpha-value>)', 400: 'rgb(var(--accent-400) / <alpha-value>)', 500: 'rgb(var(--accent-500) / <alpha-value>)', 600: 'rgb(var(--accent-500) / <alpha-value>)', 700: 'rgb(var(--accent-600) / <alpha-value>)', 900: 'rgb(var(--accent-700) / <alpha-value>)' },
                         ok: { 400: 'rgb(var(--ok-400) / <alpha-value>)', 500: 'rgb(var(--ok-500) / <alpha-value>)', 700: 'rgb(var(--ok-700) / <alpha-value>)' },
@@ -58,9 +58,8 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Manrope se sirve desde la app (css/tokens.css): funciona sin señal y no depende de terceros. -->
+    <link rel="preload" href="fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 
     <link rel="stylesheet" href="css/tokens.css">
     <link rel="stylesheet" href="css/main.css">

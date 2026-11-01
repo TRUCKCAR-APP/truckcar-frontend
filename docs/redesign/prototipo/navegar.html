@@ -13,7 +13,8 @@
 <div class="app">
     <div data-header></div>
 
-    <div class="map-screen">
+    <div class="map-screen nav-screen">
+      <div class="map-area">
         <div id="map" aria-label="Mapa de navegación"></div>
 
         <!-- Una sola tarjeta superior: maniobra + distancia, límite de velocidad y gálibo. -->
@@ -26,8 +27,8 @@
                 </div>
             </div>
             <div class="hud-meta">
-                <div><div class="k">Límite de velocidad</div><div class="v none">Sin dato</div></div>
                 <div><div class="k">Altura del vehículo</div><div class="v">4,10 m</div></div>
+                <div><div class="k">Peso bruto</div><div class="v">40,0 t</div></div>
             </div>
             <div class="hud-warning" data-offroute hidden>
                 <div class="warn-line"><svg class="icon" aria-hidden="true"><use href="icons.svg#warning-fill"></use></svg>
@@ -39,11 +40,13 @@
         <div class="hud-panel">
             <div class="hud-speed" aria-label="Velocidad actual"><b data-speed></b><span>km/h</span></div>
             <button type="button" class="hud-btn" aria-label="Silenciar la voz"><svg class="icon" aria-hidden="true"><use href="icons.svg#speaker-high"></use></svg></button>
-            <button type="button" class="hud-btn" aria-label="Reportar novedad en la vía"><svg class="icon" aria-hidden="true"><use href="icons.svg#megaphone"></use></svg></button>
+            <button type="button" class="hud-btn" data-open-report aria-label="Reportar novedad en la vía"><svg class="icon" aria-hidden="true"><use href="icons.svg#megaphone"></use></svg></button>
         </div>
 
+      </div>
+
         <div class="trip-bar">
-            <div class="remaining"><b data-remaining></b><span>a Ibagué · <span data-street></span></span></div>
+            <div class="remaining"><b data-remaining></b><span data-eta></span><span data-route-line></span></div>
             <button type="button" class="btn-secondary"><svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#flag-checkered"></use></svg>Llegué</button>
         </div>
     </div>
@@ -61,8 +64,13 @@
         set('[data-distance]', s.distance);
         set('[data-instruction]', s.instruction);
         set('[data-speed]', s.speed);
+        // Misma ruta que la pantalla Rutas: nombre, distancia total y tiempo (OSRM, perfil de auto).
+        const route = window.ROUTE;
+        const left = parseFloat(s.remaining);
+        const mins = Math.round(route.durationMin * left / route.distanceKm);
         set('[data-remaining]', 'Faltan ' + s.remaining);
-        set('[data-street]', s.street);
+        set('[data-eta]', Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min · estimado para auto');
+        set('[data-route-line]', 'Bogotá → Ibagué · ' + Math.round(route.distanceKm) + ' km');
         if (new URLSearchParams(location.search).get('estado') === 'fuera') document.querySelector('[data-offroute]').hidden = false;
 
         const pts = window.ROUTE.points;
@@ -90,8 +98,6 @@
     })();
 </script>
 <style>
-    /* La atribución queda visible sobre la barra del viaje. */
-    .map-screen .leaflet-bottom.leaflet-left { bottom: 72px; }
     .map-screen .leaflet-control-attribution { margin: 0 0 var(--s-2) var(--s-2) !important; }
 </style>
 </body>

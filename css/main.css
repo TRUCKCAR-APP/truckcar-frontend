@@ -53,7 +53,7 @@ body {
     font-family: var(--font-sans);
     font-size: var(--text-body);
     line-height: var(--leading-body);
-    font-feature-settings: 'cv11', 'ss01';      /* Inter: 1 y a de lectura rápida */
+    font-variant-numeric: var(--font-numeric);
     overflow: hidden;
 }
 

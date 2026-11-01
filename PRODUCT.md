@@ -52,8 +52,9 @@ del vehículo, las alertas vienen de otros conductores en la misma vía y todo f
 
 - Nombre: **TruckCar** (wordmark "TRUCKCAR"); ícono en `assets/icon.svg`.
 - Idioma: español de Colombia, trato de "usted", tono directo y operativo.
-- Rediseño premium nativo (noviembre 2026): paleta grafito neutra con un solo acento, Inter o SF Pro con cifras
-  tabulares, sin monoespaciada en la UI, un solo set de íconos de trazo consistente.
+- Rediseño premium nativo (noviembre 2026): paleta grafito casi monocroma (`#0C0E12`) con un solo acento ámbar
+  apagado (`#E8A33D`) en el botón principal y la pestaña activa, Manrope servida localmente con cifras tabulares, sin
+  monoespaciada en la UI, íconos Phosphor de trazo consistente. Las advertencias llevan siempre triángulo y texto.
 
 ## Evidence on Hand
 

@@ -25,17 +25,36 @@
             <button type="button" class="filter" aria-pressed="false">Incidentes</button>
         </div>
 
-        <section class="empty" aria-labelledby="empty-title">
-            <div class="empty-mark"><svg class="icon" aria-hidden="true"><use href="icons.svg#shield-check"></use></svg></div>
-            <h2 id="empty-title">Sin alertas en su zona</h2>
-            <p>Nadie ha reportado novedades en la vía a 50 km de su posición. Si ve algo, avise a los demás.</p>
-            <button type="button" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#megaphone"></use></svg>Reportar novedad</button>
+        <!-- Vacío: no afirma que la vía sea segura, solo que no hay reportes. -->
+        <section class="empty" data-state="vacio" aria-labelledby="empty-title">
+            <div class="empty-mark"><svg class="icon" aria-hidden="true"><use href="icons.svg#megaphone"></use></svg></div>
+            <h2 id="empty-title">Sin reportes recientes</h2>
+            <p>No hay reportes activos de otros conductores a 50 km de su posición. Si ve algo en la vía, avise a los demás.</p>
+            <button type="button" class="btn-primary" data-open-report><svg class="icon" aria-hidden="true"><use href="icons.svg#megaphone"></use></svg>Reportar novedad</button>
             <p class="meta">Actualizado hace 1 min</p>
+        </section>
+
+        <!-- Cargando: esqueleto de la lista, no el vacío. -->
+        <section data-state="cargando" aria-busy="true" aria-label="Cargando alertas" hidden>
+            <div class="loading-note"><svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#arrows-clockwise"></use></svg>Buscando reportes cerca de usted…</div>
+            <div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
+        </section>
+
+        <!-- Error: distinto del vacío, con la causa y cómo seguir. -->
+        <section class="empty" data-state="error" aria-labelledby="error-title" hidden>
+            <div class="empty-mark"><svg class="icon" aria-hidden="true"><use href="icons.svg#wifi-slash"></use></svg></div>
+            <h2 id="error-title">No se pudieron cargar las alertas</h2>
+            <p>El servidor no respondió. Puede que no haya señal; los reportes de otros conductores aparecerán al reconectar.</p>
+            <button type="button" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#arrows-clockwise"></use></svg>Reintentar</button>
         </section>
     </main>
 
     <div data-tabbar></div>
 </div>
 <script src="proto.js"></script>
+<script>
+    const estado = new URLSearchParams(location.search).get('estado') || 'vacio';
+    document.querySelectorAll('[data-state]').forEach((el) => { el.hidden = el.dataset.state !== estado; });
+</script>
 </body>
 </html>
