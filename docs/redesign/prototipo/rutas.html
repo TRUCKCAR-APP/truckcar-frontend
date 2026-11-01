@@ -27,10 +27,10 @@
                 <span class="figure" data-km>195<small>km</small></span>
                 <span class="figure" data-time>3<small>h</small> 20<small>min</small></span>
             </div>
-            <span class="status"><span class="dot ok"></span>Apta para TDK 410 <span class="sub">· gálibo 3,90 m</span></span>
+            <span class="status"><span class="dot"></span>Aptitud para TDK 410 <span class="sub">· sin información</span></span>
             <div class="group">
-                <div class="row"><span class="label">Restricciones para el vehículo</span><span class="value">Ninguna</span></div>
-                <div class="row"><span class="label">Alertas en la ruta</span><span class="value">Ninguna</span></div>
+                <div class="row"><span class="label">Restricciones</span><span class="value">Sin información</span></div>
+                <div class="row"><span class="label">Alertas en la ruta</span><span class="value">Sin información</span></div>
             </div>
             <div class="actions">
                 <button type="button" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#navigation-arrow-fill"></use></svg>Continuar navegación</button>
@@ -61,9 +61,9 @@
         // Línea de ruta: borde del color del fondo para separarla de las vías del mapa, y el azul encima.
         L.polyline(route.points, { color: '#0C0E12', weight: 9, opacity: 1, lineCap: 'round', lineJoin: 'round' }).addTo(map);
         L.polyline(route.points, { color: '#5AA2FF', weight: 5, opacity: 1, lineCap: 'round', lineJoin: 'round' }).addTo(map);
-        const pin = (cls) => L.divIcon({ className: '', html: '<span class="' + cls + '"></span>', iconSize: [18, 18], iconAnchor: [9, 9] });
-        L.marker(route.points[0], { icon: pin('pin-origin') }).addTo(map);
-        L.marker(route.points[route.points.length - 1], { icon: pin('pin-dest') }).addTo(map);
+        // Origen: anillo hueco (de dónde sale). Destino: alfiler con bandera (a dónde llega). Distintos por forma, no por color.
+        L.marker(route.points[0], { icon: L.divIcon({ className: '', html: '<span class="pin-origin"></span>', iconSize: [18, 18], iconAnchor: [9, 9] }), title: 'Origen: Bogotá' }).addTo(map);
+        L.marker(route.points[route.points.length - 1], { icon: L.divIcon({ className: '', html: '<span class="pin-dest"><svg class="icon"><use href="icons.svg#flag-checkered-fill"></use></svg></span>', iconSize: [32, 40], iconAnchor: [16, 40] }), title: 'Destino: Ibagué' }).addTo(map);
 
         // Encuadre que deja la ruta entera visible sobre la hoja inferior.
         const sheet = document.querySelector('.sheet');
@@ -75,8 +75,7 @@
     })();
 </script>
 <style>
-    .pin-origin, .pin-dest { display: block; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #ECEEF1; background: #0C0E12; }
-    .pin-dest { background: #ECEEF1; border-color: #0C0E12; box-shadow: 0 0 0 2px #ECEEF1; }
+
 </style>
 </body>
 </html>

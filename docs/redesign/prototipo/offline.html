@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0C0E12">
+    <title>Offline · prototipo TruckCar</title>
+    <link rel="preload" href="fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="proto.css">
+</head>
+<body data-screen="offline" data-net="offline">
+<div class="app">
+    <div data-header></div>
+
+    <main class="screen">
+        <h1 class="large-title">Sin señal</h1>
+        <div class="warn-line" style="margin-top: var(--s-2)">
+            <svg class="icon" aria-hidden="true"><use href="icons.svg#warning-fill"></use></svg>
+            <span>Sin conexión desde hace 6 min <span class="sub">· lo que haga se guarda en el teléfono</span></span>
+        </div>
+
+        <h2 class="group-title">Por enviar al recuperar la señal</h2>
+        <div class="group">
+            <div class="row"><span class="label">Posiciones del viaje</span><span class="value strong">24</span></div>
+            <div class="row"><span class="label">Reportes de la vía</span><span class="value strong">1</span></div>
+            <div class="row"><span class="label">Entregas</span><span class="value">Ninguna</span></div>
+        </div>
+
+        <h2 class="group-title">Guardado en el teléfono</h2>
+        <div class="group">
+            <div class="row"><span class="label">Aplicación</span><span class="value"><span class="dot ok"></span>Disponible sin señal</span></div>
+            <div class="row"><span class="label">Teselas del mapa</span><span class="value">1.240</span></div>
+            <div class="row"><span class="label">Última sincronización</span><span class="value">9:08 p. m.</span></div>
+        </div>
+
+        <div class="actions">
+            <button type="button" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#arrows-clockwise"></use></svg>Reintentar ahora</button>
+        </div>
+    </main>
+
+    <div data-tabbar></div>
+</div>
+<script src="proto.js"></script>
+</body>
+</html>

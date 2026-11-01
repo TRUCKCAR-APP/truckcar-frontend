@@ -1,7 +1,8 @@
 // Prototipo estático: cabecera, barra inferior y SOS compartidos. ?dir=b activa la dirección B.
 (function () {
     const params = new URLSearchParams(location.search);
-    const dir = params.get('dir') === 'b' ? 'b' : 'a';
+    // Dirección elegida: B (ámbar). ?dir=a muestra la alternativa descartada.
+    const dir = params.get('dir') === 'a' ? 'a' : 'b';
     document.documentElement.dataset.dir = dir;
 
     const icon = (name, cls = '') => `<svg class="icon ${cls}" aria-hidden="true"><use href="icons.svg#${name}"></use></svg>`;
@@ -14,14 +15,16 @@
         ['alertas', 'Alertas', 'warning'],
         ['offline', 'Offline', 'cloud-arrow-down']
     ];
-    const link = (page) => (['vehiculo', 'carga', 'rutas'].includes(page) ? page + '.html?dir=' + dir : '#');
+    const link = (page) => (['vehiculo', 'carga', 'rutas', 'navegar', 'alertas', 'offline'].includes(page) ? page + '.html?dir=' + dir : '#');
 
     document.querySelector('[data-header]').outerHTML = `
         <header class="header">
             <span class="wordmark">TruckCar</span>
-            <span class="net"><span class="dot ok"></span>En línea</span>
+            ${document.body.dataset.net === 'offline'
+                ? `<span class="net warn-line">${icon('warning-fill', 'icon-sm')}Sin señal</span>`
+                : '<span class="net"><span class="dot ok"></span>En línea</span>'}
             <span class="spacer"></span>
-            <button type="button" class="sos" data-sos aria-label="SOS de emergencia: mantenga presionado 1,5 segundos">${icon('siren')}SOS</button>
+            <button type="button" class="sos" data-sos aria-label="SOS de emergencia: mantenga presionado 1,5 segundos"><span class="sos-face">${icon('siren')}SOS</span></button>
             <button type="button" class="icon-btn" aria-label="Cerrar sesión">${icon('sign-out')}</button>
         </header>`;
 
@@ -40,7 +43,8 @@
             <p>Mantenga la calma. Si hay heridos o peligro inmediato, llame a la línea de emergencias.</p>
             <span class="sent"><span class="dot"></span>Torre de control avisada · SOS #42, 9:14 p. m.</span>
             <dl>
-                <dt>Posición</dt><dd>4,64860, −74,14810 ±9 m</dd>
+                <dt>Posición</dt><dd>4,35988, −74,43699 ±9 m</dd>
+                <dt>Lectura GPS</dt><dd>hace 40 s</dd>
                 <dt>Vehículo</dt><dd>TDK 410</dd>
                 <dt>Carga</dt><dd>CARGA-88</dd>
             </dl>

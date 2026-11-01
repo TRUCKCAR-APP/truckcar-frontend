@@ -94,6 +94,18 @@ Cada carpeta tiene las 10 pantallas en los 4 tamaños.
 - **Mapa oscuro: CARTO Dark Matter ya exige clave de API** (devuelve una imagen "API KEY REQUIRED" con código 200).
   El prototipo usa Stadia Maps *Alidade Smooth Dark*: teselas raster oscuras reales, sin clave en `localhost`; en
   producción requiere una cuenta (gratuita para uso no comercial) con el dominio registrado. Alternativa: Esri Dark Gray
-  Canvas. Es una decisión de proveedor que necesita tu aprobación antes de la fase 2.
+  Canvas. **Aprobado: Stadia.**
+- **Stadia y el caché del modo Offline** (Términos de servicio, versión del 18 de marzo de 2026, §8 y §13):
+  - Se permite guardar "pequeñas cantidades" para uso sin conexión en una aplicación móvil, **máximo 100 MB por
+    dispositivo**, y solo con una **suscripción activa** que cubra esas teselas.
+  - Fuera de eso, el caché permitido es el estándar del cliente: **local al dispositivo**, nunca en servidor, y
+    **sin guardar las teselas más tiempo del que indican sus cabeceras HTTP** (7 días si no envían ninguna).
+  - El plan gratuito es solo para uso no comercial o evaluación; TruckCar en producción necesita un plan pago.
+  - La atribución es obligatoria y no puede ocultarse.
+  - Consecuencia para la fase 2: el Service Worker guarda hoy hasta 1.500 teselas "caché primero" sin vencimiento.
+    Al cambiar a Stadia debe respetar `Cache-Control`/`Expires` (o 7 días), quedarse bajo 100 MB y no precargar
+    zonas en bloque. Si una PWA en el navegador cuenta como "aplicación móvil" para la excepción de 100 MB no lo dicen
+    los términos: hay que confirmarlo con Stadia. Además, publicaron una versión nueva vigente desde el 9 de noviembre
+    de 2026 que conviene revisar.
 - **Fondo oscuro**: decidido por la escena (cabina de noche, sol directo sobre una pantalla oscura con texto claro de
   alto contraste), no por la categoría.

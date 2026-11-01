@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0C0E12">
+    <title>Alertas · prototipo TruckCar</title>
+    <link rel="preload" href="fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="proto.css">
+</head>
+<body data-screen="alertas">
+<div class="app">
+    <div data-header></div>
+
+    <main class="screen">
+        <h1 class="large-title">Alertas</h1>
+        <div class="secondary">Reportes de otros conductores a 50 km de su posición.</div>
+
+        <div class="filters" role="group" aria-label="Filtrar alertas">
+            <button type="button" class="filter" aria-pressed="true">Todas</button>
+            <button type="button" class="filter" aria-pressed="false">Básculas</button>
+            <button type="button" class="filter" aria-pressed="false">Gálibos bajos</button>
+            <button type="button" class="filter" aria-pressed="false">Retenes</button>
+            <button type="button" class="filter" aria-pressed="false">Paradores</button>
+            <button type="button" class="filter" aria-pressed="false">Incidentes</button>
+        </div>
+
+        <section class="empty" aria-labelledby="empty-title">
+            <div class="empty-mark"><svg class="icon" aria-hidden="true"><use href="icons.svg#shield-check"></use></svg></div>
+            <h2 id="empty-title">Sin alertas en su zona</h2>
+            <p>Nadie ha reportado novedades en la vía a 50 km de su posición. Si ve algo, avise a los demás.</p>
+            <button type="button" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#megaphone"></use></svg>Reportar novedad</button>
+            <p class="meta">Actualizado hace 1 min</p>
+        </section>
+    </main>
+
+    <div data-tabbar></div>
+</div>
+<script src="proto.js"></script>
+</body>
+</html>
