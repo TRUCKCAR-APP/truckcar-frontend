@@ -447,6 +447,7 @@ window.DriverApp = {
                             <div><div class="k">Peso bruto</div><div class="v">${esc(vehicle ? this.number(vehicle.grossWeight, 1, 't') : 'Sin información')}</div></div>
                         </div>
                         <div class="hud-row" data-nav-offroute ${s.offRoute ? '' : 'hidden'}>${this.warnLine('Fuera de la ruta', '· recalculando desde su posición')}</div>
+                        <div class="hud-row" data-nav-clearance role="status" ${s.clearance ? '' : 'hidden'}><div class="warn-line">${this.icon('warning-fill')}<span><span data-nav-clearance-text>${esc(s.clearance ? s.clearance.text : '')}</span> <span class="warn-sub" data-nav-clearance-sub>${esc(s.clearance ? '· ' + s.clearance.sub : '')}</span></span></div></div>
                         <div class="hud-row hud-gps" id="driver-telemetry-badge" aria-live="polite"></div>
                     </section>
 
