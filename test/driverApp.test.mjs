@@ -36,3 +36,33 @@ test("el perfil rotula el peso bruto como el actual (tara + carga a bordo), no c
   assert.match(text, /Carga a bordo\s*0,0 t/);
   assert.doesNotMatch(text, /Peso Bruto Máx|Carga Útil/);
 });
+
+test("el riesgo por defecto de Route-AI no se muestra: Rutas dice «Sin información»", () => {
+  const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
+  w.ui = { escape: (v) => String(v ?? "") };
+  w.mapCtrl = { routeFiguresHtml: () => "" };
+  w.TruckCarData = {
+    activeLoadOrder: { status: "IN_TRANSIT", origin: { city: "Bogotá" }, destination: { city: "Ibagué" } },
+    currentDriver: { vehicle: { plate: "TDK-410" } },
+    routes: { optimal: { title: "Bogotá - Ibagué (Troncal Principal)", riskLevel: "BAJO", warnings: [], waypoints: [] } }
+  };
+  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
+  const text = new JSDOM(w.DriverApp.renderRouteOverviewScreen({ dataStatus: {} })).window.document.body.textContent.replace(/\s+/g, " ");
+  assert.match(text, /Riesgo de la ruta\s*Sin información/);
+  assert.doesNotMatch(text, /Bajo|BAJO/);
+});
+
+test("las acciones guardadas sin señal se cuentan sobre la pestaña Offline, con texto para lectores de pantalla", () => {
+  const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
+  let pending = 2;
+  w.OfflineQueue = { status: () => ({ pending }) };
+  w.TruckCarData = {};
+  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
+  const tab = new JSDOM(w.DriverApp.tabButton("profile", "offline", "Offline", "cloud-arrow-down")).window.document;
+  assert.equal(tab.querySelector(".driver-tab-count").textContent, "2");
+  assert.equal(tab.querySelector(".driver-tab-count").getAttribute("aria-hidden"), "true");
+  assert.match(tab.querySelector(".sr-only").textContent, /2 acciones guardadas sin enviar/);
+  pending = 0;
+  const empty = new JSDOM(w.DriverApp.tabButton("profile", "offline", "Offline", "cloud-arrow-down")).window.document;
+  assert.equal(empty.querySelector(".driver-tab-count"), null);
+});

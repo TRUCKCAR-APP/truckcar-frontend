@@ -10,7 +10,7 @@ Auditoría inicial: [AUDITORIA.md](AUDITORIA.md). Dirección visual aprobada: **
 | — | Prototipo de dirección (A y B) y pantallas de la dirección B | Aprobado; ajustes de la ronda 4 en revisión |
 | 2 | Mapa oscuro, caché de teselas, barra inferior, botón y modal SOS | Hecha, en revisión |
 | 3A | Cabecera, Vehículo, Carga (en tránsito y sin carga) y Rutas (con su vacío) con la estructura del prototipo | Hecha, en revisión |
-| 3B | Navegar (HUD, marcador del camión, zoom inicial) y escritorio en columna de 480 px | Pendiente |
+| 3B | Navegar (HUD, marcador del camión, zoom inicial), "Centrar en mi posición" y escritorio en columna de 480 px | Hecha, en revisión |
 | 4 | Vehículo, Alertas (vacío, cargando y error), Offline con fecha real, POD con botón fijo, hoja de reportar e inicio de sesión | Pendiente |
 
 ## 1. Paleta: antes y después
@@ -57,10 +57,33 @@ que la nombra ("Fuera de la ruta", "Sin señal").
 
 ## 2. Tarjeta unificada del HUD
 
-Pendiente (fase 3). Diseño aprobado en el prototipo:
-- Una sola tarjeta superior de vidrio con la maniobra y su distancia, la altura del vehículo y el peso bruto.
-- El límite de velocidad queda fuera hasta que exista una fuente real.
-- Un panel vertical derecho con la velocidad, la voz y el botón de reportar.
+Hecha en la fase 3B ([`css/navigation.css`](../../css/navigation.css), `renderNavigationScreen` en
+[`js/views/driverApp.js`](../../js/views/driverApp.js)). El mismo HUD sirve para vertical y horizontal.
+
+- **Tarjeta superior de vidrio** (`--color-glass` con desenfoque de 16 px).
+  - Fondo sólido de la misma paleta donde no hay `backdrop-filter` o se pide menos transparencia.
+  - **Maniobra:** un ícono de Phosphor por tipo (giro, giro leve, retorno, glorieta, llegada), la distancia a 34 px, la
+    instrucción a 17 px y la calle en gris. Tocarla repite la instrucción en voz alta.
+  - **Datos del vehículo:** la altura y el peso bruto.
+  - **Avisos dentro de la tarjeta,** con triángulo y texto: "Fuera de la ruta · recalculando desde su posición" y el
+    estado del GPS ("Sin posición", "Sin transmitir"). La fila del GPS solo aparece si hay algo que advertir.
+  - Ya no están la franja ámbar ni el chip flotante de la telemetría.
+- **Sin límite de velocidad** hasta que exista una fuente real.
+- **Panel vertical derecho:**
+  - Velocidad, "Centrar en mi posición", voz (con su estado) y reportar.
+  - En pantallas bajas los botones bajan de 56 a 48 px y la velocidad de 72 a 64 px, para no tocar la tarjeta.
+- **Barra del viaje:**
+  - "Faltan 133 km", y debajo "2 h 16 min · estimado para auto": el tiempo de OSRM proporcional a lo que falta.
+  - La ruta con su distancia por carretera, y el botón "Llegué".
+- **Marcador del camión:**
+  - Una flecha sin círculo con el rumbo real, el del GPS o el calculado entre dos lecturas. Gira sin recrearse.
+  - Sin rumbo conocido, un punto: no se inventa una dirección.
+- **Encuadre inicial:**
+  - Encuadra la posición y la próxima maniobra, fuera de lo que tapan la tarjeta y el panel, con zoom máximo 14. Más
+    cerca, el mapa se llena de nombres de calles.
+  - Se repite al llegar la ruta paso a paso.
+  - En el seguimiento, la posición queda bajo el centro para ver más vía por delante.
+- **Sin botones de zoom** en Navegar: chocaban con la tarjeta y se puede pellizcar el mapa.
 
 ## 3. Barra inferior
 
@@ -154,6 +177,23 @@ Rutas, con las diferencias y mi criterio sobre cada una. Todas me parecen acepta
 - Modal SOS confirmado ([sos-390x844.jpg](fase-3a/sos-390x844.jpg)) y sin señal
   ([sos-sin-senal-390x844.jpg](fase-3a/sos-sin-senal-390x844.jpg)).
 
+**Fase 3B: app real vs prototipo (390×844).**
+[comparativa-app-vs-prototipo-390x844.png](fase-3b/comparativa-app-vs-prototipo-390x844.png) compara Navegar en ruta,
+sus avisos y Rutas con "Centrar en mi posición". Todas las diferencias me parecen aceptables:
+- El cuarto botón "Centrar", que pediste.
+- La calle bajo la instrucción.
+- El punto en lugar de la flecha cuando no hay rumbo.
+- [navegar-rumbo-390x844.jpg](fase-3b/navegar-rumbo-390x844.jpg) muestra la flecha con rumbo. Se tomó con la
+  herramienta de prueba "Simular GPS", porque el GPS emulado del navegador de captura no informa rumbo.
+- Escritorio: [navegar-1440x900.jpg](fase-3b/navegar-1440x900.jpg) y el resto de `*-1440x900` muestran la columna de
+  480 px sin marco.
+
+**Verificación de la fase 3B:**
+- POD: [pod-390x844.jpg](fase-3b/pod-390x844.jpg).
+- Cola offline: [cola-390x844.jpg](fase-3b/cola-390x844.jpg). El SOS guardado sin red se ve como un "1" sobre la
+  pestaña Offline.
+- Modal SOS: [sos-390x844.jpg](fase-3b/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-3b/sos-sin-senal-390x844.jpg).
+
 ## 6. Inconsistencias de datos encontradas
 
 1. **Vehículo: "Peso Bruto Máx." igual a la tara y "Carga Útil" en 0,0 t.** fleets-drivers calcula
@@ -170,7 +210,7 @@ Rutas, con las diferencias y mi criterio sobre cada una. Todas me parecen acepta
    prototipo lo rotula "estimado para auto".
    - *Desde la fase 3A,* Rutas y Carga muestran la distancia y el tiempo de la misma línea que se dibuja (OSRM, 195 km,
      "Tiempo estimado para auto"). Los 450 km de Route-AI ya no se muestran.
-   - El plan de Route-AI sigue siendo la fuente del riesgo ("Riesgo según Route-AI").
+   - Desde la fase 3B tampoco se muestra el riesgo de Route-AI: ver el punto 9.
    - La diferencia entre Route-AI y OSRM sigue en el backend: no corregido.
 5. **Datos de demostración incoherentes:** un turbo con una carga de 24 t, "Disponible" mientras llevaba una carga en
    tránsito, y 0 t a bordo. *Corregido en los datos locales*: tractocamión 3S3, tara 16 t, 24 t a bordo, 40 t brutas,
@@ -199,6 +239,14 @@ Rutas, con las diferencias y mi criterio sobre cada una. Todas me parecen acepta
    - Los filtros dicen `AVAILABLE`, `PROPOSED`, `NOTIFIED`, `ASSIGNED`, `IN_TRANSIT`, `DELIVERED` y `CANCELLED`.
    - La carga 88 dice `IN_TRANSIT`.
    - La corrección de `fix/telemetry-stationary` solo cubre la app del conductor. No corregido.
+9. **"Riesgo: Bajo" de Route-AI es un valor por defecto, no un cálculo con datos reales.**
+   - Bogotá → Ibagué no está en la red de corredores de Route-AI (`ColombianCorridorNetwork`), así que el plan usa el
+     corredor de respaldo: "Troncal Principal", 450 km y 10 h, con un "Checkpoint Intermedio".
+   - El riesgo empieza en `BAJO` (`RouteOptimizationAgent`) y solo cambia en dos casos:
+     - si Routing-Restrictions declara intransitable ese corredor inventado;
+     - si llegan alertas, que son todas las activas del país y no las de la ruta. Hoy la API devuelve 0.
+   - *Desde la fase 3B* la app no lo muestra: Rutas dice "Riesgo de la ruta: Sin información".
+   - El backend no se tocó.
 
 ## 7. Decisiones de diseño
 
@@ -350,10 +398,25 @@ Rutas, con las diferencias y mi criterio sobre cada una. Todas me parecen acepta
   - **Rutas.**
     - Hoja inferior fija sin manija, porque no se arrastra.
     - El mapa reserva el alto de la hoja: la atribución, el encuadre y el zoom quedan siempre por encima de ella.
-    - El chip "Riesgo BAJO", que se solapaba con el zoom, se convirtió en una fila de la hoja.
+    - El chip "Riesgo BAJO", que se solapaba con el zoom, se quitó. Desde la fase 3B, la fila "Riesgo de la ruta" dice
+      "Sin información": era un valor por defecto (§6, punto 9).
     - Lo que no tiene fuente fiable dice "Sin información": la aptitud para el vehículo, las restricciones si Route-AI
       no envía ninguna, y las alertas en la ruta (la API de alertas devuelve 0 mientras la base tiene 3 activas).
   - **Vehículo.** La placa se muestra como en el camión ("TDK 410"); su nombre accesible conserva el valor registrado.
+
+- **Fase 3B: decisiones**
+  - **Escritorio: columna centrada de 480 px sin marco** en la app del conductor y el inicio de sesión. Ocupa toda la
+    altura, con un micro-borde a cada lado.
+    - El modo horizontal de la demostración ("Rotar") conserva un contorno, porque simula el teléfono girado.
+    - La Torre de control y "Mis envíos" siguen a todo el ancho: son tableros de escritorio y una columna de 480 px los
+      rompería.
+  - **Acciones guardadas sin señal:**
+    - Un número sobre el ícono de la pestaña Offline (en el teléfono no hay tooltip), en ámbar con texto oscuro.
+    - Los lectores de pantalla oyen ", 2 acciones guardadas sin enviar" junto al nombre de la pestaña.
+    - Se actualiza en sitio con cada cambio de la cola.
+    - La cabecera se queda con "⚠ Sin señal".
+  - **"Centrar en mi posición"** en Rutas y Navegar. Usa la última lectura real del GPS o la de la telemetría. Sin
+    ninguna, avisa "Sin posición GPS" en lugar de mover el mapa a un lugar inventado.
 
 **Pendientes antes del despliegue**
 - Registrar el dominio de la demo en Stadia (cuenta y dominio). En `localhost` no hace falta.

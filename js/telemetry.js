@@ -391,6 +391,7 @@
         const p = driver.lastPoint;
         if (driver.mode === 'waiting' || !driver.mode) {
             const reason = window.DeviceLocation.error || 'Esperando la señal GPS del dispositivo…';
+            el.dataset.state = 'warn';
             el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Sin posición</span>
                 <span class="telemetry-sub">· ${window.ui.escape(reason)}</span>`;
             return;
@@ -398,7 +399,9 @@
         const source = driver.mode === 'gps'
             ? 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '')
             : '<b>Simulación de prueba</b>';
-        // Transmitiendo: punto verde. Sin transmitir es una advertencia: triángulo y texto.
+        // Transmitiendo: punto verde. Sin transmitir es una advertencia: triángulo y texto. El HUD de navegación
+        // solo muestra esta fila cuando hay algo que advertir (data-state="warn").
+        el.dataset.state = live ? 'ok' : 'warn';
         el.innerHTML = `
             ${live ? '<span class="dot ok" aria-hidden="true"></span><span class="telemetry-main">Transmitiendo</span>'
                 : '<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Sin transmitir</span>'}

@@ -100,3 +100,15 @@ test("fuera de la ruta avisa y recalcula desde la posición actual hasta el dest
   assert.equal(fetches.length, 2);
   assert.match(fetches[1], /-74\.05,4\.65;-73\.99,4\.61/);
 });
+
+test("el HUD usa un ícono por tipo de maniobra (giro, giro leve, retorno, glorieta, llegada)", () => {
+  const { w } = browser();
+  const g = (type, modifier) => w.RouteGuidance.glyph({ maneuver: { type, modifier } });
+  assert.equal(g("turn", "left"), "arrow-bend-up-left");
+  assert.equal(g("turn", "slight right"), "arrow-up-right");
+  assert.equal(g("continue", "uturn"), "arrow-u-up-left");
+  assert.equal(g("roundabout", "right"), "arrows-counter-clockwise");
+  assert.equal(g("arrive"), "flag-checkered-fill");
+  assert.equal(g("new name", "straight"), "arrow-up");
+  assert.equal(w.RouteGuidance.formatDuration(8160), "2 h 16 min");
+});

@@ -47,6 +47,8 @@ class MapController {
             this.sheetObserver = null;
         }
         this.bottomInset = 0;
+        this.navFramed = false;
+        this.navGuidanceFramed = false;
         if (this.map) {
             try {
                 // Detener animaciones pendientes evita el error "_leaflet_pos" al destruir el mapa.
@@ -167,6 +169,8 @@ class MapController {
     /** Navegación: ruta, alertas, la línea de la guía paso a paso y el camión en la posición actual (si la hay). */
     drawLiveNavigation(position) {
         if (!this.map) return;
+        // Sin botones de zoom en navegación: chocan con la tarjeta del HUD y se puede pellizcar el mapa.
+        if (this.map.zoomControl) this.map.removeControl(this.map.zoomControl);
         this.renderRoutes();
         this.renderAlerts();
         this.guidanceLayer = null;
@@ -174,11 +178,60 @@ class MapController {
         if (guided) this.drawGuidanceLine(guided.geometry);
         if (position) {
             this.createTruckMarker(position);
-            this.map.setView(position, 15);
+            this.frameNextLeg(position);
         } else {
             this.truckMarker = null;
             this.fitAllRoute();
         }
+    }
+
+    /** Lo que tapa el HUD de navegación: arriba la tarjeta, a la derecha el panel vertical. */
+    navInsets() {
+        const card = document.querySelector('.nav-screen .hud-card');
+        const panel = document.querySelector('.nav-screen .hud-panel');
+        const landscape = !!document.querySelector('.nav-screen.is-landscape');
+        return {
+            top: card && !landscape ? card.offsetHeight + 16 : 16,
+            left: card && landscape ? card.offsetWidth + 16 : 0,
+            right: panel ? panel.offsetWidth + 16 : 0
+        };
+    }
+
+    /**
+     * Encuadre inicial de la navegación: la posición y la próxima maniobra, fuera de lo que tapa el HUD. El zoom se
+     * limita a 14: más cerca, el mapa se llena de nombres de calles que no se leen de reojo.
+     */
+    frameNextLeg(position) {
+        if (!this.map || !position) return;
+        const snapshot = window.RouteGuidance ? window.RouteGuidance.snapshot() : {};
+        const next = snapshot.nextLocation;
+        const inset = this.navInsets();
+        const near = next && L.latLng(position).distanceTo(L.latLng(next)) < 40000;
+        const bounds = L.latLngBounds(near ? [position, next] : [position]);
+        this.map.fitBounds(bounds.pad(near ? 0.15 : 0), {
+            paddingTopLeft: [24 + inset.left, inset.top + 24],
+            paddingBottomRight: [24 + inset.right, 40 + (this.bottomInset || 0)],
+            maxZoom: 14,
+            animate: false
+        });
+        if (!near) this.map.setZoom(Math.min(this.map.getZoom(), 14), { animate: false });
+        this.navFramed = true;
+    }
+
+    /** "Centrar en mi posición": la última lectura real del GPS (o la de la telemetría); sin ninguna, lo dice. */
+    centerOnPosition() {
+        if (!this.map) return;
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        const fix = window.DeviceLocation && window.DeviceLocation.last();
+        const position = point ? point.coords : fix ? fix.coords : null;
+        if (!position) {
+            window.ui.toast('Sin posición GPS', 'warning', { description: 'Active la ubicación del teléfono o espere la señal.' });
+            return;
+        }
+        if (this.truckMarker) this.truckMarker.setLatLng(position);
+        else this.createTruckMarker(position);
+        if (document.getElementById('live-nav-map-container')) this.frameNextLeg(position);
+        else this.map.setView(position, Math.max(this.map.getZoom(), 12), { animate: true });
     }
 
     /** Línea de la ruta que sigue la guía (la del plan o la recalculada desde la posición actual). */
@@ -189,6 +242,10 @@ class MapController {
         }
         this.guidanceLines = this.routeLines(geometry);
         this.guidanceLayer = L.layerGroup(this.guidanceLines.layers).addTo(this.map);
+        if (this.truckMarker && !this.navGuidanceFramed) {
+            this.navGuidanceFramed = true;
+            this.frameNextLeg(this.truckMarker.getLatLng());
+        }
     }
 
     /** Posición del conductor para separar lo recorrido de lo que falta (solo en la app del conductor). */
@@ -427,23 +484,41 @@ class MapController {
         marker._truckcarAnimation = requestAnimationFrame(step);
     }
 
+    /** Rumbo real del camión (GPS o el calculado entre dos lecturas); null si no se conoce. */
+    truckHeading() {
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        return point && typeof point.heading === 'number' ? point.heading : null;
+    }
+
+    truckIcon(heading) {
+        const html = heading == null
+            ? '<span class="truck-dot" role="img" aria-label="Su posición"></span>'
+            : '<span class="truck-arrow" role="img" aria-label="Su posición y rumbo" style="--heading:' + Math.round(heading)
+                + 'deg"><svg aria-hidden="true"><use href="assets/icons.svg#heading"></use></svg></span>';
+        return L.divIcon({ html, className: 'truck-pin', iconSize: [44, 44], iconAnchor: [22, 22] });
+    }
+
     createTruckMarker(coords = this.currentCoords) {
         if (!this.map) return;
         if (this.truckMarker) {
-            try { this.map.removeLayer(this.truckMarker); } catch(e) {}
+            try { this.map.removeLayer(this.truckMarker); } catch(e) { /* capa ya removida */ }
         }
 
         const latLng = Array.isArray(coords) ? coords : [coords.lat, coords.lng];
         this.currentCoords = latLng;
+        this.truckMarkerHeading = this.truckHeading();
+        this.truckMarker = L.marker(latLng, { icon: this.truckIcon(this.truckMarkerHeading), zIndexOffset: 1000, keyboard: false }).addTo(this.map);
+    }
 
-        const truckIcon = L.divIcon({
-            html: '<div class="w-9 h-9 bg-slate-900 border-2 border-emerald-400 rounded-full shadow-xl flex items-center justify-center text-emerald-400 text-sm animate-pulse"><i class="fas fa-truck-moving"></i></div>',
-            className: 'truck-pin',
-            iconSize: [36, 36],
-            iconAnchor: [18, 18]
-        });
-
-        this.truckMarker = L.marker(latLng, { icon: truckIcon, zIndexOffset: 1000 }).addTo(this.map);
+    /** Gira la flecha con el rumbo nuevo sin recrear el marcador (o cambia entre punto y flecha). */
+    updateTruckHeading() {
+        if (!this.truckMarker) return;
+        const heading = this.truckHeading();
+        const el = this.truckMarker.getElement && this.truckMarker.getElement();
+        const arrow = el && el.querySelector('.truck-arrow');
+        if (heading != null && arrow) arrow.style.setProperty('--heading', Math.round(heading) + 'deg');
+        else if ((heading == null) !== (this.truckMarkerHeading == null)) this.truckMarker.setIcon(this.truckIcon(heading));
+        this.truckMarkerHeading = heading;
     }
 
     updateTruckPosition(arg1, arg2) {
@@ -467,10 +542,14 @@ class MapController {
         } else if (this.map) {
             this.createTruckMarker([lat, lng]);
         }
+        this.updateTruckHeading();
         this.refreshRouteProgress();
 
         if (this.map) {
-            this.map.panTo([lat, lng], { animate: true, duration: 0.8 });
+            // En navegación, la posición queda bajo el centro: se ve más vía por delante, por debajo de la tarjeta.
+            const inset = document.getElementById('live-nav-map-container') ? this.navInsets() : { top: 0, left: 0 };
+            const target = this.map.project([lat, lng]).subtract([inset.left / 2, inset.top / 2]);
+            this.map.panTo(this.map.unproject(target), { animate: true, duration: 0.8 });
         }
     }
 

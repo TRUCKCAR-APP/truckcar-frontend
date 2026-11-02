@@ -68,12 +68,29 @@ window.DriverApp = {
 
     tabButton(currentScreen, screen, label, icon) {
         const active = currentScreen === screen;
-        const badge = screen === 'assigned_load' && this.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>' : '';
+        const badge = screen === 'assigned_load' && this.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>'
+            : screen === 'offline' ? this.offlineBadgeHtml() : '';
         return `
             <button onclick="window.store.setState({ driverScreen: '${screen}' })" ${active ? 'aria-current="page"' : ''} class="driver-tab ${active ? 'is-active' : ''}">
                 <svg aria-hidden="true"><use href="assets/icons.svg#${icon}${active ? '-fill' : ''}"></use></svg>
                 <span>${label}</span>${badge}
             </button>`;
+    },
+
+    /**
+     * Acciones guardadas sin señal: número sobre el ícono de Offline (en el teléfono no hay tooltip). El número es
+     * visual; los lectores de pantalla oyen el texto completo junto al nombre de la pestaña.
+     */
+    offlineBadgeHtml() {
+        const pending = window.OfflineQueue ? window.OfflineQueue.status().pending || 0 : 0;
+        if (!pending) return '<span data-offline-badge hidden></span>';
+        const text = pending + (pending === 1 ? ' acción guardada sin enviar' : ' acciones guardadas sin enviar');
+        return `<span data-offline-badge><span class="driver-tab-count" aria-hidden="true">${pending > 99 ? '99+' : pending}</span><span class="sr-only">, ${text}</span></span>`;
+    },
+
+    /** Actualiza el contador de la pestaña Offline en sitio (la cola cambia sin que se repinte la pantalla). */
+    renderOfflineBadge() {
+        document.querySelectorAll('[data-offline-badge]').forEach(el => { el.outerHTML = this.offlineBadgeHtml(); });
     },
 
     hasPendingLoad() {
@@ -342,13 +359,13 @@ window.DriverApp = {
         const rej = routes.rejectedAlternate;
         const vehicle = window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle;
         const title = load ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) : opt.title;
-        const risk = opt.riskLevel ? this.statusLabel(String(opt.riskLevel).toUpperCase()) : 'Sin información';
         const inTransit = load && load.status === 'IN_TRANSIT';
 
         return `
             <div class="route-screen">
                 <div id="overview-map-container" class="route-map" aria-label="Mapa de la ruta ${esc(title)}"></div>
                 <div class="map-tools">
+                    <button type="button" onclick="window.mapCtrl.centerOnPosition()" class="map-tool" aria-label="Centrar en mi posición">${this.icon('crosshair')}</button>
                     <button type="button" onclick="window.mapCtrl.fitAllRoute()" class="map-tool" aria-label="Ver la ruta completa">${this.icon('corners-out')}</button>
                 </div>
 
@@ -358,7 +375,7 @@ window.DriverApp = {
                     <p class="secondary">Tiempo estimado para auto</p>
                     <p class="status-line">${this.dotText('Aptitud para ' + (vehicle ? this.plateText(vehicle.plate) : 'su vehículo'))}<span class="status-sub"> · sin información</span></p>
                     <div class="list">
-                        ${this.listRow('Riesgo según Route-AI', esc(risk))}
+                        ${this.listRow('Riesgo de la ruta', 'Sin información')}
                         ${this.listRow('Restricciones', (opt.warnings || []).length ? esc(opt.warnings.join(' · ')) : 'Sin información')}
                         ${this.listRow('Alertas en la ruta', 'Sin información')}
                     </div>
@@ -380,117 +397,53 @@ window.DriverApp = {
         const esc = window.ui.escape;
         const s = window.RouteGuidance.snapshot();
         const hud = window.RouteGuidance.hudText(s);
-        const speed = s.speed == null ? '—' : s.speed;
-        const offRoute = `<div data-nav-offroute ${s.offRoute ? '' : 'hidden'} class="mt-2 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[11px] font-semibold flex items-center gap-1.5">
-            <i class="fas fa-triangle-exclamation"></i> Fuera de la ruta: recalculando desde su posición.</div>`;
+        const vehicle = window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle;
+        const load = window.TruckCarData.activeLoadOrder;
+        const km = this.roadDistanceKm();
+        const routeLine = load
+            ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) + (km != null ? ' · ' + km + ' km' : '')
+            : 'Sin carga en tránsito';
+        const voice = state.voiceEnabled;
 
-        if (isLandscape) {
-            return `
-                <div class="h-full w-full relative bg-slate-950 overflow-hidden">
-                    <div id="live-nav-map-container" class="w-full h-full absolute inset-0"></div>
-
-                    <div class="landscape-overlay-left pointer-events-none">
-                        <div class="hud-pill rounded-2xl p-3.5 shadow-2xl border border-slate-700/60 pointer-events-auto">
-                            <div class="flex items-center gap-3">
-                                <div class="w-12 h-12 rounded-xl bg-brand-600 text-white flex items-center justify-center text-xl shadow-lg shrink-0">
-                                    <i data-nav-icon class="fas ${s.icon}"></i>
-                                </div>
-                                <div class="min-w-0">
-                                    <div data-nav-distance class="text-2xl font-black text-white font-mono">${esc(hud.distance)}</div>
-                                    <div data-nav-instruction class="text-xs text-slate-200 font-semibold line-clamp-2 leading-tight">${esc(hud.instruction)}</div>
-                                    <div data-nav-street class="text-[10px] text-slate-400 truncate">${esc(hud.street)}</div>
-                                </div>
-                            </div>
-                            ${offRoute}
-                        </div>
-
-                        <div class="flex items-center gap-3 pointer-events-auto">
-                            <div class="hud-pill rounded-2xl p-3 flex items-center gap-3 border border-slate-700/60 shadow-xl">
-                                <div class="text-center">
-                                    <div data-nav-speed class="text-3xl font-black text-emerald-400 font-mono">${speed}</div>
-                                    <div class="text-[9px] uppercase font-bold text-slate-400">km/h</div>
-                                </div>
-                            </div>
-
-                            <button onclick="window.app.toggleVoice()" class="hud-pill p-3.5 rounded-2xl border border-slate-700/60 text-white shadow-xl flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}" aria-label="Activar o silenciar la voz">
-                                <i class="fas ${state.voiceEnabled ? 'fa-volume-up text-lg' : 'fa-volume-mute text-lg'}"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="landscape-overlay-right pointer-events-none">
-                        <div class="flex flex-col gap-2 pointer-events-auto items-end">
-                            <button onclick="window.app.openReportModal('scale')" class="w-11 h-11 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-2xl flex items-center justify-center text-sm border-2 border-white/40 transition transform hover:scale-110 active:scale-90" title="Reportar Báscula">
-                                <i class="fas fa-weight-hanging"></i>
-                            </button>
-                            <button onclick="window.app.openReportModal('bridge')" class="w-11 h-11 bg-rose-600 hover:bg-rose-500 text-white rounded-full shadow-2xl flex items-center justify-center text-sm border-2 border-white/40 transition transform hover:scale-110 active:scale-90" title="Alerta Gálibo">
-                                <i class="fas fa-ruler-vertical"></i>
-                            </button>
-                            <button onclick="window.app.openReportModal('police')" class="w-11 h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-2xl flex items-center justify-center text-sm border-2 border-white/40 transition transform hover:scale-110 active:scale-90" title="Retén Policial">
-                                <i class="fas fa-shield-alt"></i>
-                            </button>
-                        </div>
-
-                        <div class="hud-pill rounded-2xl p-3 border border-slate-700/60 shadow-xl pointer-events-auto w-full">
-                            <div class="text-right font-mono mb-2">
-                                <span class="text-xs text-slate-400 block font-sans">Destino: ${esc(window.DriverApp.destinationLabel())}</span>
-                                <span class="text-sm font-bold text-white">Faltan <span data-nav-remaining class="text-emerald-400">${esc(s.remaining)}</span></span>
-                            </div>
-                            <button onclick="window.app.finishTrip()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
-                                <i class="fas fa-flag-checkered"></i> Llegué
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
+        // Un solo HUD para vertical y horizontal: tarjeta superior de vidrio (maniobra, altura y peso bruto, avisos),
+        // panel vertical derecho y barra del viaje. Sin límite de velocidad: no hay fuente para ese dato.
         return `
-            <div class="h-full flex flex-col relative bg-slate-950">
-                <div class="bg-gradient-to-b from-slate-900 to-slate-900/90 border-b border-slate-800 p-3.5 z-20 shadow-xl">
-                    <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center text-xl shadow-lg shadow-brand-900/50 shrink-0">
-                            <i data-nav-icon class="fas ${s.icon}"></i>
+            <div class="nav-screen${isLandscape ? ' is-landscape' : ''}">
+                <div class="nav-map-area">
+                    <div id="live-nav-map-container" class="route-map" aria-label="Mapa de navegación"></div>
+
+                    <section class="hud-card" aria-label="Próxima maniobra">
+                        <button type="button" class="hud-turn" onclick="window.app.repeatInstruction()" aria-label="Repetir la instrucción en voz alta">
+                            <span class="hud-arrow"><svg class="ui-icon" aria-hidden="true"><use data-nav-glyph href="assets/icons.svg#${esc(s.glyph)}"></use></svg></span>
+                            <span class="hud-text" aria-live="polite">
+                                <span data-nav-distance class="hud-distance">${esc(hud.distance)}</span>
+                                <span data-nav-instruction class="hud-instruction">${esc(hud.instruction)}</span>
+                                <span data-nav-street class="hud-street">${esc(hud.street)}</span>
+                            </span>
+                        </button>
+                        <div class="hud-meta">
+                            <div><div class="k">Altura del vehículo</div><div class="v">${esc(vehicle ? this.number(vehicle.height, 2, 'm') : 'Sin información')}</div></div>
+                            <div><div class="k">Peso bruto</div><div class="v">${esc(vehicle ? this.number(vehicle.grossWeight, 1, 't') : 'Sin información')}</div></div>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <div data-nav-distance class="text-xl font-black text-white font-mono">${esc(hud.distance)}</div>
-                            <p data-nav-instruction class="text-xs text-slate-200 font-medium leading-tight line-clamp-2">${esc(hud.instruction)}</p>
-                            <span data-nav-street class="text-[10px] text-slate-400 block truncate">${esc(hud.street)}</span>
-                        </div>
-                        <button onclick="window.app.repeatInstruction()" class="w-10 h-10 shrink-0 rounded-xl bg-slate-800/80 border border-slate-700/50 text-slate-300 flex items-center justify-center" aria-label="Repetir la instrucción">
-                            <i class="fas fa-volume-up"></i>
-                        </button>
-                    </div>
-                    ${offRoute}
-                </div>
+                        <div class="hud-row" data-nav-offroute ${s.offRoute ? '' : 'hidden'}>${this.warnLine('Fuera de la ruta', '· recalculando desde su posición')}</div>
+                        <div class="hud-row hud-gps" id="driver-telemetry-badge" aria-live="polite"></div>
+                    </section>
 
-                <div class="flex-1 relative">
-                    <div id="driver-telemetry-badge" class="absolute top-2 left-2 right-2 z-[500] flex flex-wrap items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl text-[10px] text-slate-200 shadow-lg" aria-live="polite"></div>
-                    <div id="live-nav-map-container" class="w-full h-full"></div>
-
-                    <div class="absolute map-above-attribution left-4 z-[400] speed-gauge rounded-2xl p-2.5 shadow-2xl border border-slate-700 text-center min-w-[75px]">
-                        <div data-nav-speed class="text-2xl font-black text-emerald-400 font-mono">${speed}</div>
-                        <div class="text-[9px] font-bold uppercase text-slate-400">km/h</div>
-                    </div>
-
-                    <div class="absolute map-above-attribution right-4 z-[400] flex flex-col items-center gap-2">
-                        <button onclick="window.app.toggleVoice()" class="w-11 h-11 bg-slate-900/90 text-white rounded-full shadow-xl border border-slate-700 flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}" aria-label="Activar o silenciar la voz">
-                            <i class="fas ${state.voiceEnabled ? 'fa-volume-up' : 'fa-volume-mute'}"></i>
-                        </button>
-                        <button onclick="window.app.openReportModal()" class="w-14 h-14 bg-amber-500 text-slate-950 font-bold rounded-full shadow-2xl shadow-amber-900/50 flex items-center justify-center text-xl border-2 border-white/80" aria-label="Reportar novedad en la vía">
-                            <i class="fas fa-bullhorn"></i>
-                        </button>
+                    <div class="hud-panel">
+                        <div class="hud-speed" aria-label="Velocidad actual"><b data-nav-speed>${s.speed == null ? '—' : s.speed}</b><span>km/h</span></div>
+                        <button type="button" class="hud-btn" onclick="window.mapCtrl.centerOnPosition()" aria-label="Centrar en mi posición">${this.icon('crosshair')}</button>
+                        <button type="button" class="hud-btn${voice ? '' : ' is-off'}" onclick="window.app.toggleVoice()" aria-pressed="${voice ? 'true' : 'false'}" aria-label="${voice ? 'Silenciar la voz de navegación' : 'Activar la voz de navegación'}">${this.icon(voice ? 'speaker-high' : 'speaker-slash')}</button>
+                        <button type="button" class="hud-btn" onclick="window.app.openReportModal()" aria-label="Reportar novedad en la vía">${this.icon('megaphone')}</button>
                     </div>
                 </div>
 
-                <div class="p-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-2 z-20">
-                    <div class="text-xs font-mono text-slate-300 min-w-0">
-                        <span data-nav-step class="text-slate-400 text-[10px] block font-sans">${s.stepCount ? 'Paso ' + s.stepNumber + ' de ' + s.stepCount : 'Ruta real'}</span>
-                        <b class="block truncate">${esc(window.DriverApp.destinationLabel())}: <span data-nav-remaining>${esc(s.remaining)}</span></b>
+                <div class="trip-bar">
+                    <div class="trip-remaining">
+                        <b>Faltan <span data-nav-remaining>${esc(s.remaining)}</span></b>
+                        <span data-nav-eta>${esc(s.remainingTime === '—' ? 'Tiempo sin información' : s.remainingTime + ' · estimado para auto')}</span>
+                        <span>${esc(routeLine)}</span>
                     </div>
-                    <button onclick="window.app.finishTrip()" class="shrink-0 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg shadow-emerald-900/40">
-                        <i class="fas fa-flag-checkered"></i> Llegué
-                    </button>
+                    <button type="button" onclick="window.app.finishTrip()" class="btn-trip">${this.icon('flag-checkered')}Llegué</button>
                 </div>
             </div>
         `;

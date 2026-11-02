@@ -611,6 +611,7 @@ window.app = {
         refreshTileCount();
         window.OfflineQueue.onChange(() => {
             const state = window.store.state;
+            if (window.DriverApp) window.DriverApp.renderOfflineBadge();
             if (state.activeRole === 'driver' && state.driverScreen === 'offline') {
                 refreshTileCount();
                 this.renderCurrentView(state);
