@@ -391,17 +391,18 @@
         const p = driver.lastPoint;
         if (driver.mode === 'waiting' || !driver.mode) {
             const reason = window.DeviceLocation.error || 'Esperando la señal GPS del dispositivo…';
-            el.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-amber-400"></span>
-                <span class="font-bold">Sin posición</span><span class="opacity-80">· ${window.ui.escape(reason)}</span>`;
+            el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Sin posición</span>
+                <span class="telemetry-sub">· ${window.ui.escape(reason)}</span>`;
             return;
         }
         const source = driver.mode === 'gps'
             ? 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '')
-            : '<b class="text-amber-300">Simulación de prueba</b>';
+            : '<b>Simulación de prueba</b>';
+        // Transmitiendo: punto verde. Sin transmitir es una advertencia: triángulo y texto.
         el.innerHTML = `
-            <span class="inline-block w-2 h-2 rounded-full ${live ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}"></span>
-            <span class="font-bold">${live ? 'Transmitiendo' : 'Sin transmitir'}</span>
-            <span class="opacity-80">· ${source}${p ? ' · ' + p.speed + ' km/h' : ''}</span>`;
+            ${live ? '<span class="dot ok" aria-hidden="true"></span><span class="telemetry-main">Transmitiendo</span>'
+                : '<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Sin transmitir</span>'}
+            <span class="telemetry-sub">· ${source}${p ? ' · ' + p.speed + ' km/h' : ''}</span>`;
     }
 
     function renderSimulationToggle() {

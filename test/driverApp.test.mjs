@@ -31,8 +31,8 @@ test("el perfil rotula el peso bruto como el actual (tara + carga a bordo), no c
   w.eval(readFileSync("js/views/driverApp.js", "utf8"));
   const text = new JSDOM(w.DriverApp.renderProfileScreen({ dataStatus: {} })).window.document.body.textContent.replace(/\s+/g, " ");
 
-  assert.match(text, /Peso bruto actual 8\.5/);
-  assert.match(text, /Tara 8\.5 \+ carga 0\.0 Ton/);
-  assert.match(text, /Carga a bordo 0\.0 Ton/);
+  assert.match(text, /Peso bruto actual \(tara \+ carga\)\s*8,5 t/);
+  assert.match(text, /Tara\s*8,5 t/);
+  assert.match(text, /Carga a bordo\s*0,0 t/);
   assert.doesNotMatch(text, /Peso Bruto Máx|Carga Útil/);
 });

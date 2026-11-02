@@ -318,42 +318,28 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .stepper-line { flex: 1; height: 3px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .stepper-line > span { display: block; height: 100%; background: var(--success); transform-origin: left; transition: transform 500ms var(--ease-out); }
 
-/* Indicador de red, cola offline y telemetría */
-.net-pill {
+/* Indicador de red: punto pequeño y texto, sin píldora ni fondo tintado. Sin señal o reconectando es una advertencia
+   (triángulo y texto, nunca solo color). */
+.net-status {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    min-height: 32px;
-    padding: 0 var(--space-3) 0 var(--space-2);
-    border-radius: var(--radius-pill);
+    gap: var(--space-2);
+    min-width: 0;
     font-size: var(--text-caption);
-    font-weight: var(--weight-semibold);
-    letter-spacing: -0.005em;
-    border: 1px solid transparent;
+    font-weight: var(--weight-medium);
+    color: var(--color-text-secondary);
     white-space: nowrap;
-    transition: background-color var(--dur-ui) var(--ease-out), color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out);
 }
-.net-pill[data-state="online"] { background: var(--color-ok-soft); color: var(--color-ok); }
-.net-pill[data-state="syncing"] { background: var(--color-accent-soft); color: var(--color-accent); }
-.net-pill[data-state="offline"],
-.net-pill[data-state="reconnecting"] { background: var(--color-warn-soft); color: var(--color-warn); }
-.net-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: currentColor; position: relative; flex: none; }
-.net-pill[data-state="online"] .net-dot::after,
-.net-pill[data-state="syncing"] .net-dot::after {
-    content: '';
-    position: absolute;
-    inset: -4px;
-    border-radius: var(--radius-pill);
-    border: 2px solid currentColor;
-    opacity: 0;
-    animation: net-ping 2.2s var(--ease-out) infinite;
-}
-@keyframes net-ping {
-    0% { transform: scale(0.6); opacity: 0.55; }
-    80%, 100% { transform: scale(1.5); opacity: 0; }
-}
-.net-spin { animation: net-spin 900ms linear infinite; }
-@keyframes net-spin { to { transform: rotate(360deg); } }
+.net-status > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.net-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--color-text-secondary); flex: none; }
+.net-status[data-state="online"] .net-dot { background: var(--color-ok); }
+.net-status[data-state="syncing"] .net-dot { background: var(--color-accent); }
+.net-dot.is-busy { animation: net-blink 1.2s ease-in-out infinite; }
+@keyframes net-blink { 50% { opacity: 0.35; } }
+.net-status[data-state="offline"],
+.net-status[data-state="reconnecting"] { color: var(--color-warn); font-weight: var(--weight-semibold); }
+.net-warn { width: 18px; height: 18px; fill: currentColor; flex: none; }
+@media (prefers-reduced-motion: reduce) { .net-dot.is-busy { animation: none; } }
 
 /* ------------------------------------------------------------------ transiciones de pantalla */
 /* Solo al cambiar de pantalla (app.js marca la vista nueva): los re-render del refresco automático no animan. */
@@ -501,7 +487,7 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
    izquierda a derecha durante 1,5 s. */
 .sos-fab {
     position: absolute;
-    top: calc(var(--safe-top) + 2px);
+    top: calc(var(--safe-top) + 6px);            /* centrado en la cabecera de 56 px */
     right: calc(52px + var(--safe-right));
     z-index: 600;
     height: var(--touch-min);
@@ -544,7 +530,7 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .sos-fab:focus-visible .sos-face { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .sos-hint {
     position: absolute;
-    top: calc(var(--safe-top) + 52px);
+    top: calc(var(--safe-top) + 60px);
     right: calc(12px + var(--safe-right));
     z-index: 600;
     padding: var(--space-2) var(--space-3);
@@ -850,3 +836,263 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     button:not(:disabled):active, [role="button"]:active, .tappable:active { scale: 1; }
     .sheet, .toast, .install-banner, .stepper-line > span { transition-duration: 1ms !important; }
 }
+
+/* ================================================================== fase 3A: cabecera, Vehículo, Carga y Rutas */
+/* Estructura del prototipo B: listas agrupadas sin tarjetas anidadas, cifras grandes, estado como texto con punto. */
+
+.app-header {
+    flex: none;
+    z-index: 50;
+    height: calc(var(--header-height) + var(--safe-top));
+    padding: var(--safe-top) calc(4px + var(--safe-right)) 0 calc(var(--gutter) + var(--safe-left));
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    background: var(--color-bg);
+    border-bottom: var(--border-subtle);
+}
+.wordmark { font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: -0.01em; color: var(--color-text); flex: none; }
+.app-header-spacer { flex: 1; min-width: 96px; }                 /* deja el sitio del botón SOS (montado aparte) */
+.header-icon-btn {
+    width: var(--touch-min); height: var(--touch-min); flex: none;
+    display: grid; place-items: center; border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+}
+.header-icon-btn:active { background: var(--color-elevated); }
+
+.ui-icon { width: 24px; height: 24px; fill: currentColor; flex: none; }
+
+.screen-scroll {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-6) calc(var(--gutter) + var(--safe-right)) var(--space-8) calc(var(--gutter) + var(--safe-left));
+}
+.large-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+}
+.secondary { color: var(--color-text-secondary); font-size: var(--text-footnote); }
+
+/* Lista agrupada (Ajustes de iOS): una superficie, filas con línea fina con sangría. */
+.list-title {
+    margin: var(--space-8) 0 var(--space-2) var(--space-4);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-secondary);
+}
+.list { background: var(--color-surface); border-radius: var(--radius-md); }
+.list-row {
+    position: relative;
+    min-height: var(--row-min);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-body);
+    line-height: 1.3;
+}
+.list-row + .list-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--space-4);
+    right: 0;
+    border-top: var(--border-subtle);
+}
+.list-label { flex: 1; min-width: 0; color: var(--color-text); }
+.list-value {
+    min-width: 0;
+    max-width: 62%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    text-align: right;
+    color: var(--color-text-secondary);
+}
+.list-value.is-strong { color: var(--color-text); font-weight: var(--weight-semibold); }
+.list-value .warn-line { font-size: var(--text-body); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; background: var(--color-text-secondary); }
+.dot.ok { background: var(--color-ok); }
+
+.warn-line { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--color-warn); font-weight: var(--weight-semibold); font-size: var(--text-footnote); text-align: left; }
+.warn-line svg { width: 20px; height: 20px; fill: currentColor; flex: none; margin-top: 1px; }
+.warn-sub { color: var(--color-text-secondary); font-weight: var(--weight-medium); }
+.notice { margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-surface); }
+.notice p { margin: var(--space-1) 0 0 28px; color: var(--color-text-secondary); font-size: var(--text-footnote); }
+
+.status-line {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 var(--space-2);
+    font-size: var(--text-footnote);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text);
+}
+.status-sub { color: var(--color-text-secondary); font-weight: var(--weight-medium); }
+
+/* Placa colombiana de carga: amarilla, texto negro, nunca partida en dos líneas. */
+.vehicle-id { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-5); }
+.plate {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 132px;
+    height: 46px;
+    padding: 0 var(--space-4);
+    border-radius: 6px;
+    background: #F2C200;
+    color: #111111;
+    border: 2px solid #111111;
+    box-shadow: inset 0 0 0 2px #F2C200, inset 0 0 0 3px rgba(17, 17, 17, 0.55);
+    font-size: 1.625rem;
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.06em;
+    line-height: 1;
+    white-space: nowrap;
+}
+.vehicle-model { font-size: var(--text-body); font-weight: var(--weight-bold); }
+
+/* Carga: origen y destino grandes con un riel, el flete como número protagonista. */
+.trip { display: grid; grid-template-columns: 20px 1fr; column-gap: var(--space-3); margin-top: var(--space-6); }
+.trip-rail { display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+.trip-stop { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--color-text); flex: none; }
+.trip-stop.is-end { background: var(--color-text); }
+.trip-line { width: 2px; flex: 1; min-height: 32px; margin: 6px 0; background: var(--color-border-elevated); }
+.trip-leg { padding-bottom: var(--space-6); min-width: 0; }
+.trip-leg:last-child { padding-bottom: 0; }
+.place-label { font-size: var(--text-caption); font-weight: var(--weight-semibold); color: var(--color-text-secondary); }
+.place {
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+    overflow-wrap: anywhere;
+}
+.place-sub { font-size: var(--text-footnote); color: var(--color-text-secondary); }
+.fare { margin-top: var(--space-8); padding-top: var(--space-6); border-top: var(--border-subtle); }
+.fare-amount {
+    font-size: var(--text-display);
+    font-weight: var(--weight-bold);
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+}
+.fare-amount small { margin-left: var(--space-1); font-size: var(--text-body); font-weight: var(--weight-semibold); letter-spacing: 0; color: var(--color-text-secondary); }
+
+/* Acción principal fija sobre la barra inferior, con un degradado que indica que hay más contenido debajo. */
+.screen-actions {
+    position: sticky;
+    z-index: 2;
+    bottom: calc(-1 * var(--space-8));
+    margin: var(--space-6) calc(-1 * var(--gutter)) calc(-1 * var(--space-8));
+    padding: var(--space-3) var(--gutter) var(--space-4);
+    display: grid;
+    gap: var(--space-1);
+    background: var(--color-bg);
+    border-top: var(--border-subtle);
+}
+.screen-actions::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 32px;
+    background: linear-gradient(to bottom, rgb(var(--graphite-950) / 0), var(--color-bg));
+    pointer-events: none;
+}
+.btn-accent, .btn-quiet {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border-radius: var(--radius-md);
+    font-size: var(--text-body);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-press) var(--ease-out);
+}
+.btn-accent { min-height: 56px; background: var(--color-accent); color: var(--color-on-accent); font-weight: var(--weight-bold); }
+.btn-accent:active { background: var(--color-accent-pressed); transform: scale(var(--press-scale)); }
+.btn-quiet { min-height: 48px; color: var(--color-text); font-weight: var(--weight-semibold); }
+.btn-quiet:active { background: var(--color-elevated); transform: scale(var(--press-scale)); }
+.btn-accent:disabled, .btn-quiet:disabled { opacity: 0.55; transform: none; }
+.btn-accent .ui-icon, .btn-quiet .ui-icon { width: 22px; height: 22px; }
+.btn-accent:focus-visible, .btn-quiet:focus-visible, .header-icon-btn:focus-visible, .map-tool:focus-visible {
+    outline: 2px solid var(--color-focus); outline-offset: 2px;
+}
+
+.spinner {
+    width: 20px; height: 20px; flex: none; border-radius: 50%;
+    border: 2px solid currentColor; border-right-color: transparent;
+    animation: net-spin 800ms linear infinite;
+}
+@keyframes net-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+
+/* Estado vacío: anclado arriba, ícono neutro en un círculo, qué pasa y qué hacer. */
+.empty-state { margin-top: var(--space-4); padding: var(--space-8) var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); text-align: center; }
+.empty-mark { width: 64px; height: 64px; margin: 0 auto var(--space-4); border-radius: 50%; display: grid; place-items: center; background: var(--color-elevated); color: var(--color-text); }
+.empty-mark .ui-icon { width: 32px; height: 32px; }
+.empty-state h2 { margin: 0 0 var(--space-2); font-size: var(--text-headline); font-weight: var(--weight-bold); letter-spacing: -0.01em; }
+.empty-state p { max-width: 32ch; margin: 0 auto var(--space-4); color: var(--color-text-secondary); font-size: var(--text-footnote); }
+.empty-state .btn-quiet { width: auto; display: inline-flex; padding: 0 var(--space-5); background: var(--color-elevated); }
+
+/* Telemetría como texto: punto verde al transmitir; sin posición o sin transmitir, triángulo y texto. */
+.telemetry-inline { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0 var(--space-2); }
+.telemetry-main { color: var(--color-text); }
+.telemetry-warn { display: inline-flex; align-items: center; gap: 6px; color: var(--color-warn); font-weight: var(--weight-semibold); }
+.telemetry-warn svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
+.telemetry-sub { color: var(--color-text-secondary); }
+
+/* Rutas: mapa a pantalla completa con una hoja inferior fija. */
+.route-screen { position: relative; height: 100%; overflow: hidden; }
+.route-map { position: absolute; inset: 0; }
+.route-map .leaflet-bottom { bottom: var(--map-bottom-inset, 0px); }
+.map-tools { position: absolute; top: var(--space-4); right: calc(var(--space-4) + var(--safe-right)); z-index: 500; display: grid; gap: var(--space-2); }
+.map-tool {
+    width: var(--touch-min); height: var(--touch-min);
+    display: grid; place-items: center;
+    border-radius: var(--radius-md);
+    background: var(--color-elevated);
+    border: var(--border-elevated);
+    color: var(--color-text);
+    box-shadow: var(--elev-2);
+}
+.map-tool:active { background: var(--color-pressed); }
+.map-tool .ui-icon { width: 22px; height: 22px; }
+.route-sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 600;
+    max-height: 72%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-5) calc(var(--gutter) + var(--safe-right)) var(--space-4) calc(var(--gutter) + var(--safe-left));
+    background: var(--color-surface);
+    border-top: var(--border-elevated);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: 0 -12px 32px -12px rgba(0, 0, 0, 0.7);
+}
+.route-title { margin: 0; font-size: var(--text-headline); font-weight: var(--weight-bold); letter-spacing: -0.01em; }
+.route-figures { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1) var(--space-6); margin: var(--space-3) 0 var(--space-1); }
+.figure { font-size: var(--text-title); font-weight: var(--weight-bold); letter-spacing: var(--tracking-display); line-height: var(--leading-tight); }
+.figure small { margin-left: 2px; font-size: var(--text-footnote); font-weight: var(--weight-semibold); letter-spacing: 0; color: var(--color-text-secondary); }
+.figure.is-none { font-size: var(--text-body); color: var(--color-text-secondary); font-weight: var(--weight-semibold); }
+.route-sheet .secondary { margin: 0 0 var(--space-3); }
+.route-sheet .list { margin-top: var(--space-3); background: var(--color-elevated); }
+.route-sheet .notice { background: var(--color-elevated); }
+.sheet-actions-row { margin-top: var(--space-4); }

@@ -396,6 +396,8 @@ window.app = {
             if (state.driverScreen === 'route_overview') {
                 if (!document.getElementById('overview-map-container')) return;
                 window.mapCtrl.initMap('overview-map-container', [4.6097, -74.0817], 7);
+                // La hoja inferior de Rutas tapa la parte baja del mapa: atribución y encuadre van por encima de ella.
+                window.mapCtrl.observeBottomSheet(document.querySelector('[data-route-sheet]'));
                 window.mapCtrl.drawOverviewRoutes();
             } else if (state.driverScreen === 'navigation') {
                 if (!document.getElementById('live-nav-map-container')) return;

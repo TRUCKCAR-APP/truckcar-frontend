@@ -30,9 +30,10 @@ window.Native = (function () {
             const pending = queue.pending || 0;
             if (offline) {
                 return {
-                    state: 'offline', icon: 'fa-signal',
-                    label: pending ? `Sin señal · ${pending} guardado${pending === 1 ? '' : 's'}` : 'Modo sin señal',
-                    detail: 'Las acciones se guardan en el teléfono y se envían solas al recuperar la señal.'
+                    state: 'offline', icon: 'fa-signal', short: 'Sin señal',
+                    label: pending ? `Sin señal · ${pending} guardado${pending === 1 ? '' : 's'}` : 'Sin señal',
+                    detail: (pending ? pending + ' guardado' + (pending === 1 ? '' : 's') + '. ' : '')
+                        + 'Las acciones se guardan en el teléfono y se envían solas al recuperar la señal.'
                 };
             }
             if (pending > 0) {
@@ -49,7 +50,7 @@ window.Native = (function () {
             }
             return {
                 state: 'online', icon: 'fa-signal',
-                label: telemetry === 'online' ? 'En línea · en vivo' : 'En línea',
+                label: 'En línea',
                 detail: queue.lastSyncAt ? 'Última sincronización: ' + new Date(queue.lastSyncAt).toLocaleTimeString('es-CO') : 'Conectado al servidor.'
             };
         },
@@ -57,12 +58,17 @@ window.Native = (function () {
         render() {
             const s = this.snapshot();
             document.querySelectorAll('[data-network-status]').forEach((el) => {
+                // En la cabecera, sin señal dice solo "Sin señal" (no cabe junto al SOS); los pendientes van en el título
+                // del indicador y en la pantalla Offline.
                 if (el.dataset.renderedState === s.state && el.dataset.renderedLabel === s.label) return;
                 el.dataset.renderedState = s.state;
                 el.dataset.renderedLabel = s.label;
-                el.innerHTML = `<span class="net-pill" data-state="${s.state}" role="status" title="${esc(s.detail)}">
-                    ${s.spin ? `<i class="fas ${s.icon} net-spin text-[10px]"></i>` : '<span class="net-dot"></span>'}
-                    <span>${esc(s.label)}</span></span>`;
+                // Punto + texto, sin píldora ni fondo. Sin señal o reconectando es una advertencia: triángulo y texto.
+                const warn = s.state === 'offline' || s.state === 'reconnecting';
+                const mark = warn
+                    ? '<svg class="net-warn" aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>'
+                    : `<span class="net-dot${s.spin ? ' is-busy' : ''}" aria-hidden="true"></span>`;
+                el.innerHTML = `<span class="net-status" data-state="${s.state}" role="status" title="${esc(s.detail)}">${mark}<span>${esc(s.short || s.label)}</span></span>`;
             });
         },
 

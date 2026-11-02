@@ -73,15 +73,22 @@ test("401, 403 y 409 se explican en un diálogo; un 500 queda para el toast", as
 
 test("el indicador de red distingue sin señal, sincronizando, reconectando y en línea", () => {
   assert.deepEqual(pick(browser({ online: false, pending: 3 })), ["offline", "Sin señal · 3 guardados"]);
-  assert.deepEqual(pick(browser({ isOffline: true })), ["offline", "Modo sin señal"]);
+  assert.deepEqual(pick(browser({ isOffline: true })), ["offline", "Sin señal"]);
   assert.deepEqual(pick(browser({ pending: 1 })), ["syncing", "Sincronizando 1 pendiente…"]);
   assert.deepEqual(pick(browser({ telemetry: "reconnecting" })), ["reconnecting", "Reconectando telemática…"]);
-  assert.deepEqual(pick(browser({ telemetry: "online" })), ["online", "En línea · en vivo"]);
+  assert.deepEqual(pick(browser({ telemetry: "online" })), ["online", "En línea"]);
 
   const w = browser({ pending: 2 });
   w.document.body.innerHTML = "<span data-network-status></span>";
   w.Native.NetworkStatus.render();
-  assert.equal(w.document.querySelector(".net-pill").dataset.state, "syncing");
+  assert.equal(w.document.querySelector(".net-status").dataset.state, "syncing");
+
+  // Sin señal es una advertencia: triángulo y texto, no solo un color.
+  const off = browser({ online: false });
+  off.document.body.innerHTML = "<span data-network-status></span>";
+  off.Native.NetworkStatus.render();
+  assert.ok(off.document.querySelector(".net-status svg use").getAttribute("href").endsWith("#warning-fill"));
+  assert.match(off.document.querySelector(".net-status").textContent, /Sin señal/);
 
   function pick(win) {
     const s = win.Native.NetworkStatus.snapshot();

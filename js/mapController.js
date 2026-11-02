@@ -31,6 +31,10 @@ class MapController {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
         this.isFetchingRoute = false;
+        // Distancia y duración por carretera de la misma línea que se dibuja (OSRM, perfil de auto).
+        this.routeSummary = null;
+        this.routeSummaryFailed = false;
+        this.bottomInset = 0;
     }
 
     initMap(containerId, center = [4.6097, -74.0817], zoom = 8) {
@@ -38,6 +42,11 @@ class MapController {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
         }
+        if (this.sheetObserver) {
+            this.sheetObserver.disconnect();
+            this.sheetObserver = null;
+        }
+        this.bottomInset = 0;
         if (this.map) {
             try {
                 // Detener animaciones pendientes evita el error "_leaflet_pos" al destruir el mapa.
@@ -101,6 +110,44 @@ class MapController {
     resetRouteCache() {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
+        this.routeSummary = null;
+        this.routeSummaryFailed = false;
+    }
+
+    /**
+     * Una hoja inferior tapa la parte baja del mapa: la atribución y los controles de abajo suben por encima de ella y
+     * el encuadre de la ruta la descuenta. Se vuelve a medir cuando la hoja cambia de alto.
+     */
+    observeBottomSheet(sheet) {
+        if (!this.map || !sheet) return;
+        const container = this.map.getContainer();
+        const apply = () => {
+            this.bottomInset = sheet.offsetHeight;
+            container.style.setProperty('--map-bottom-inset', this.bottomInset + 'px');
+        };
+        apply();
+        if (typeof ResizeObserver === 'function') {
+            this.sheetObserver = new ResizeObserver(apply);
+            this.sheetObserver.observe(sheet);
+        }
+    }
+
+    /** Cifras de la hoja de Rutas: kilómetros y tiempo de la línea dibujada, o "Sin información" si no se pudo calcular. */
+    routeFiguresHtml() {
+        const s = this.routeSummary;
+        if (s) {
+            const minutes = Math.round(s.durationMin);
+            const hours = Math.floor(minutes / 60);
+            return '<span class="figure">' + Math.round(s.distanceKm) + '<small>km</small></span>'
+                + '<span class="figure">' + (hours ? hours + '<small>h</small> ' : '') + (minutes % 60) + '<small>min</small></span>';
+        }
+        return this.routeSummaryFailed
+            ? '<span class="figure is-none">Sin información</span>'
+            : '<span class="figure is-none">Calculando…</span>';
+    }
+
+    renderRouteFigures() {
+        document.querySelectorAll('[data-route-figures]').forEach(el => { el.innerHTML = this.routeFiguresHtml(); });
     }
 
     currentRoute() {
@@ -216,6 +263,8 @@ class MapController {
         if (this.cachedRouteKey !== routeKey) {
             this.cachedOptimalRoadGeometry = null;
             this.cachedRouteKey = routeKey;
+            this.routeSummary = null;
+            this.routeSummaryFailed = false;
         }
         const polylineCoords = this.cachedOptimalRoadGeometry || waypoints.map(w => w.coords);
 
@@ -241,16 +290,24 @@ class MapController {
             const url = 'https://router.project-osrm.org/route/v1/driving/' + coordString + '?overview=full&geometries=geojson';
 
             const res = await fetch(url);
-            if (!res.ok) return;
+            if (!res.ok) {
+                this.routeSummaryFailed = true;
+                this.renderRouteFigures();
+                return;
+            }
             const data = await res.json();
 
             if (data.routes && data.routes[0] && data.routes[0].geometry && this.cachedRouteKey === routeKey) {
                 const roadCoords = data.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
                 this.cachedOptimalRoadGeometry = roadCoords;
+                this.routeSummary = { distanceKm: data.routes[0].distance / 1000, durationMin: data.routes[0].duration / 60 };
                 if (this.optimalRouteLayer && this.map) this.renderRoutes();
+                this.renderRouteFigures();
             }
         } catch (err) {
-            // Sin conexión a OSRM: se conservan los tramos rectos.
+            // Sin conexión a OSRM: se conservan los tramos rectos y la hoja dice "Sin información".
+            this.routeSummaryFailed = true;
+            this.renderRouteFigures();
         } finally {
             this.isFetchingRoute = false;
         }
@@ -432,7 +489,7 @@ class MapController {
         if (points.length === 1) {
             this.map.setView(points[0], 11, { animate: false });
         } else if (points.length > 1) {
-            this.map.fitBounds(L.latLngBounds(points), { padding: [40, 40], animate: false });
+            this.map.fitBounds(L.latLngBounds(points), { paddingTopLeft: [40, 40], paddingBottomRight: [40, 40 + this.bottomInset], animate: false });
         }
     }
 

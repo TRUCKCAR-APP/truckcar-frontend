@@ -9,7 +9,8 @@ Auditoría inicial: [AUDITORIA.md](AUDITORIA.md). Dirección visual aprobada: **
 | 1 | Auditoría y design tokens | Hecha; tokens actualizados a la dirección B |
 | — | Prototipo de dirección (A y B) y pantallas de la dirección B | Aprobado; ajustes de la ronda 4 en revisión |
 | 2 | Mapa oscuro, caché de teselas, barra inferior, botón y modal SOS | Hecha, en revisión |
-| 3 | Recorrido de la demo: Carga, Rutas y Navegar (HUD) y columna de escritorio de 480 px | Pendiente: espera el merge del PR #1 en `main` |
+| 3A | Cabecera, Vehículo, Carga (en tránsito y sin carga) y Rutas (con su vacío) con la estructura del prototipo | Hecha, en revisión |
+| 3B | Navegar (HUD, marcador del camión, zoom inicial) y escritorio en columna de 480 px | Pendiente |
 | 4 | Vehículo, Alertas (vacío, cargando y error), Offline con fecha real, POD con botón fijo, hoja de reportar e inicio de sesión | Pendiente |
 
 ## 1. Paleta: antes y después
@@ -103,14 +104,17 @@ estado):
 
 **App real**
 
-| Pantalla | Antes | Fase 1 | Fase 2 |
-|---|---|---|---|
-| Carga (barra inferior y SOS) | [antes](antes/carga-390x844.jpg) | [fase 1](fase-1/carga-390x844.jpg) | [fase 2](fase-2/carga-390x844.jpg) |
-| Rutas (mapa oscuro) | [antes](antes/rutas-390x844.jpg) | [fase 1](fase-1/rutas-390x844.jpg) | [fase 2](fase-2/rutas-390x844.jpg) |
-| Navegar (mapa oscuro) | [antes](antes/navegar-390x844.jpg) | [fase 1](fase-1/navegar-390x844.jpg) | [fase 2](fase-2/navegar-390x844.jpg) |
-| SOS confirmado | [antes](antes/sos-390x844.jpg) | [fase 1](fase-1/sos-390x844.jpg) | [fase 2](fase-2/sos-390x844.jpg) |
-| SOS sin señal | — | — | [fase 2](fase-2/sos-sin-senal-390x844.jpg) |
-| Inicio de sesión (escritorio) | [antes](antes/login-1440x900.jpg) | [fase 1](fase-1/login-1440x900.jpg) | [fase 2](fase-2/login-1440x900.jpg) |
+| Pantalla | Antes | Fase 1 | Fase 2 | Fase 3A |
+|---|---|---|---|---|
+| Vehículo | [antes](antes/vehiculo-390x844.jpg) | [fase 1](fase-1/vehiculo-390x844.jpg) | [fase 2](fase-2/vehiculo-390x844.jpg) | [fase 3A](fase-3a/vehiculo-390x844.jpg) |
+| Carga | [antes](antes/carga-390x844.jpg) | [fase 1](fase-1/carga-390x844.jpg) | [fase 2](fase-2/carga-390x844.jpg) | [fase 3A](fase-3a/carga-390x844.jpg) |
+| Carga sin carga | — | — | [fase 2](fase-2/vacio-carga-390x844.jpg) | [fase 3A](fase-3a/vacio-carga-390x844.jpg) |
+| Rutas | [antes](antes/rutas-390x844.jpg) | [fase 1](fase-1/rutas-390x844.jpg) | [fase 2](fase-2/rutas-390x844.jpg) | [fase 3A](fase-3a/rutas-390x844.jpg) |
+| Ruta no disponible | — | — | [fase 2](fase-2/vacio-rutas-390x844.jpg) | [fase 3A](fase-3a/vacio-rutas-390x844.jpg) |
+| Navegar | [antes](antes/navegar-390x844.jpg) | [fase 1](fase-1/navegar-390x844.jpg) | [fase 2](fase-2/navegar-390x844.jpg) | [fase 3A](fase-3a/navegar-390x844.jpg) |
+| SOS confirmado | [antes](antes/sos-390x844.jpg) | [fase 1](fase-1/sos-390x844.jpg) | [fase 2](fase-2/sos-390x844.jpg) | [fase 3A](fase-3a/sos-390x844.jpg) |
+| SOS sin señal | — | — | [fase 2](fase-2/sos-sin-senal-390x844.jpg) | [fase 3A](fase-3a/sos-sin-senal-390x844.jpg) |
+| Inicio de sesión (escritorio) | [antes](antes/login-1440x900.jpg) | [fase 1](fase-1/login-1440x900.jpg) | [fase 2](fase-2/login-1440x900.jpg) | [fase 3A](fase-3a/login-1440x900.jpg) |
 
 - Cada carpeta tiene todas sus pantallas en los 4 tamaños (390×844, 360×800, 768×1024 y 1440×900).
 - [`fase-2/`](fase-2/) suma la Torre de control (`torre-*`), "Mis envíos" (`envios-*`) y los estados vacíos.
@@ -136,6 +140,20 @@ diferencias visuales:
     ([offline-zona-no-vista-390x844.jpg](fase-2/offline-zona-no-vista-390x844.jpg)).
   - La ruta ya vista se sirve desde la caché ([offline-zona-vista-390x844.jpg](fase-2/offline-zona-vista-390x844.jpg)).
 
+**Fase 3A: app real vs prototipo (390×844).**
+[comparativa-app-vs-prototipo-390x844.png](fase-3a/comparativa-app-vs-prototipo-390x844.png) compara Vehículo, Carga y
+Rutas, con las diferencias y mi criterio sobre cada una. Todas me parecen aceptables:
+- Rótulo "Peso bruto actual (tara + carga)", pedido así.
+- Hora real de salida y "195 km por carretera".
+- En Rutas: sin la manija de la hoja (no se puede arrastrar), con la fila "Riesgo según Route-AI", el zoom de Leaflet y
+  la atribución abajo, encima de la hoja.
+
+**Verificación de la fase 3A** (sin regresiones en el flujo):
+- POD: el formulario abre desde "Llegué: registrar entrega" ([pod-390x844.jpg](fase-3a/pod-390x844.jpg)).
+- Cola offline: el SOS enviado sin red queda guardado ([cola-390x844.jpg](fase-3a/cola-390x844.jpg)).
+- Modal SOS confirmado ([sos-390x844.jpg](fase-3a/sos-390x844.jpg)) y sin señal
+  ([sos-sin-senal-390x844.jpg](fase-3a/sos-sin-senal-390x844.jpg)).
+
 ## 6. Inconsistencias de datos encontradas
 
 1. **Vehículo: "Peso Bruto Máx." igual a la tara y "Carga Útil" en 0,0 t.** fleets-drivers calcula
@@ -146,10 +164,14 @@ diferencias visuales:
    ocupaba un tercio del ancho; el prototipo solo muestra datos que existen.
 3. **Estado `IN_TRANSIT`** con el nombre interno del backend en lugar de "En tránsito". *Corregido en
    `fix/telemetry-stationary`.*
-4. **Distancia de la ruta.** La app muestra 450 km y 10 h (plan de Route-AI); OSRM da 195 km y 3 h 20 min por
+4. **Distancia de la ruta.** La app mostraba 450 km y 10 h (plan de Route-AI); OSRM da 195 km y 3 h 20 min por
    carretera para Bogotá → Ibagué. El plan de Route-AI parece una estimación de respaldo (dos tramos iguales de
    225 km con un "Checkpoint Intermedio"). El tiempo de OSRM es de perfil de auto y subestima el de un camión: el
    prototipo lo rotula "estimado para auto".
+   - *Desde la fase 3A,* Rutas y Carga muestran la distancia y el tiempo de la misma línea que se dibuja (OSRM, 195 km,
+     "Tiempo estimado para auto"). Los 450 km de Route-AI ya no se muestran.
+   - El plan de Route-AI sigue siendo la fuente del riesgo ("Riesgo según Route-AI").
+   - La diferencia entre Route-AI y OSRM sigue en el backend: no corregido.
 5. **Datos de demostración incoherentes:** un turbo con una carga de 24 t, "Disponible" mientras llevaba una carga en
    tránsito, y 0 t a bordo. *Corregido en los datos locales*: tractocamión 3S3, tara 16 t, 24 t a bordo, 40 t brutas,
    en tránsito.
@@ -307,6 +329,31 @@ diferencias visuales:
   - Marcadores azules y verdes de la flota.
   - Etiquetas en mayúsculas y un halo ámbar bajo "Siguiente".
   - No están en las fases 2 a 4: necesitan una fase propia si se quieren rediseñar.
+
+- **Fase 3A: decisiones**
+  - **Cabecera de 56 px** en toda la app del conductor.
+    - "TruckCar" en texto y el estado de red como punto y texto ("● En línea"), sin píldora, sin fondo y sin "en
+      vivo".
+    - Sin señal o reconectando: triángulo y texto.
+    - El mismo indicador cambia también en la barra de demostración de escritorio, la Torre de control y "Mis envíos",
+      porque es un solo componente.
+  - **Telemetría como texto.** "Transmitiendo" lleva un punto verde. "Sin posición" y "Sin transmitir" llevan
+    triángulo y texto, en Carga y en Navegar.
+  - **Carga.**
+    - Las acciones siguen el estado real de la carga.
+      - Propuesta: "Aceptar carga y ver ruta" y "Rechazar".
+      - Aceptada: "Iniciar viaje" y "Ver ruta planeada".
+      - En tránsito: "Continuar navegación" y "Llegué: registrar entrega".
+      - Una propuesta aún sin notificar: triángulo y "Consultar estado".
+    - La lógica de cada botón no cambió.
+    - El stepper de círculos de colores ya no se usa en Carga.
+  - **Rutas.**
+    - Hoja inferior fija sin manija, porque no se arrastra.
+    - El mapa reserva el alto de la hoja: la atribución, el encuadre y el zoom quedan siempre por encima de ella.
+    - El chip "Riesgo BAJO", que se solapaba con el zoom, se convirtió en una fila de la hoja.
+    - Lo que no tiene fuente fiable dice "Sin información": la aptitud para el vehículo, las restricciones si Route-AI
+      no envía ninguna, y las alertas en la ruta (la API de alertas devuelve 0 mientras la base tiene 3 activas).
+  - **Vehículo.** La placa se muestra como en el camión ("TDK 410"); su nombre accesible conserva el valor registrado.
 
 **Pendientes antes del despliegue**
 - Registrar el dominio de la demo en Stadia (cuenta y dominio). En `localhost` no hace falta.

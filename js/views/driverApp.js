@@ -32,17 +32,14 @@ window.DriverApp = {
 
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative select-none">
-                <div class="safe-top bg-slate-900/95 border-b border-slate-800 z-50 shrink-0">
-                    <div class="h-12 pl-3 pr-1.5 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2 min-w-0">
-                            <img src="assets/icon.svg" alt="" class="w-7 h-7 rounded-lg shrink-0">
-                            <span data-network-status aria-live="polite" class="min-w-0"></span>
-                        </div>
-                        <button onclick="window.app.logout()" class="w-10 h-10 rounded-xl grid place-items-center text-slate-400 hover:text-rose-300" title="Cerrar sesión" aria-label="Cerrar sesión">
-                            <i class="fas fa-right-from-bracket"></i>
-                        </button>
-                    </div>
-                </div>
+                <header class="app-header">
+                    <span class="wordmark">TruckCar</span>
+                    <span data-network-status aria-live="polite" class="min-w-0"></span>
+                    <span class="app-header-spacer"></span>
+                    <button onclick="window.app.logout()" class="header-icon-btn" title="Cerrar sesión" aria-label="Cerrar sesión">
+                        ${this.icon('sign-out')}
+                    </button>
+                </header>
 
                 ${window.ui.syncBanner(state)}
 
@@ -99,15 +96,62 @@ window.DriverApp = {
         return routes && routes.optimal ? routes.optimal.distance : '—';
     },
 
+    /** Tipos de camión del backend con su nombre corriente en Colombia. */
+    TRUCK_TYPES: {
+        TRACTOMULA_3S3: 'Tractocamión 3S3', TRACTOMULA_3S2: 'Tractocamión 3S2', MINIMULA: 'Minimula',
+        DOBLETROQUE: 'Doble troque', CUATRO_MANOS: 'Cuatro manos', SENCILLO: 'Sencillo', TURBO: 'Turbo',
+        REFRIGERADO: 'Refrigerado'
+    },
+
+    truckTypeLabel(code) {
+        if (!code || code === '—') return 'Sin información';
+        return this.TRUCK_TYPES[code] || this.statusLabel(code);
+    },
+
+    icon(name, cls = '') {
+        return `<svg class="ui-icon ${cls}" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
+    },
+
+    /** Número con coma decimal (es-CO) y unidad; sin dato, "Sin información". */
+    number(value, digits, unit) {
+        if (typeof value !== 'number' || Number.isNaN(value)) return 'Sin información';
+        return value.toLocaleString('es-CO', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + (unit ? ' ' + unit : '');
+    },
+
+    /** Placa colombiana como se lee en el camión: "TDK 410". */
+    plateText(plate) {
+        return String(plate || '').replace(/[-\s]+/g, ' ').trim();
+    },
+
+    /** Fila de una lista agrupada: rótulo a la izquierda, valor a la derecha. valueHtml ya viene escapado. */
+    listRow(label, valueHtml, strong = false) {
+        return `<div class="list-row"><span class="list-label">${window.ui.escape(label)}</span><span class="list-value${strong ? ' is-strong' : ''}">${valueHtml}</span></div>`;
+    },
+
+    /** Estado como texto con un punto: verde solo para lo que está en curso y bien; gris para lo demás. */
+    dotText(text, tone = '') {
+        return `<span class="dot${tone ? ' ' + tone : ''}" aria-hidden="true"></span>${window.ui.escape(text)}`;
+    },
+
+    /** Advertencia: siempre triángulo y texto, nunca solo color. */
+    warnLine(text, sub = '') {
+        return `<div class="warn-line">${this.icon('warning-fill')}<span>${window.ui.escape(text)}${sub ? ` <span class="warn-sub">${window.ui.escape(sub)}</span>` : ''}</span></div>`;
+    },
+
+    spinner() {
+        return '<span class="spinner" aria-hidden="true"></span>';
+    },
+
+    /** Estado vacío anclado arriba, con un ícono neutro, qué pasa y qué hacer. */
     renderEmptyState(icon, title, text, actionHtml = '') {
         return `
-            <div class="h-full flex flex-col items-center justify-center text-center p-6 gap-3">
-                <div class="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 text-xl">
-                    <i class="fas ${icon}"></i>
+            <div class="screen-scroll">
+                <div class="empty-state">
+                    <div class="empty-mark">${icon === 'loading' ? this.spinner() : this.icon(icon)}</div>
+                    <h2>${title}</h2>
+                    <p>${text}</p>
+                    ${actionHtml}
                 </div>
-                <h3 class="font-bold text-white text-sm">${title}</h3>
-                <p class="text-xs text-slate-400 max-w-xs">${text}</p>
-                ${actionHtml}
             </div>
         `;
     },
@@ -117,113 +161,70 @@ window.DriverApp = {
         const driver = window.TruckCarData.currentDriver;
         if (!driver) {
             return state.dataStatus.loading
-                ? this.renderEmptyState('fa-spinner fa-spin', 'Cargando perfil', 'Consultando User-Identity y fleets-drivers...')
-                : this.renderEmptyState('fa-user-slash', 'Perfil no disponible', 'No se pudo cargar el perfil del conductor.',
-                    '<button onclick="window.app.reloadData()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold">Reintentar</button>');
+                ? this.renderEmptyState('loading', 'Cargando el perfil', 'Consultando sus datos y los del vehículo.')
+                : this.renderEmptyState('warning', 'No se pudo cargar el perfil', 'Revise la señal e intente de nuevo.',
+                    `<button onclick="window.app.reloadData()" class="btn-quiet">${this.icon('arrows-clockwise')}Reintentar</button>`);
         }
         const v = driver.vehicle;
-        const fixed = (value, digits) => (typeof value === 'number' ? value.toFixed(digits) : '—');
-        const initials = (driver.name || 'C').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+        const load = window.TruckCarData.activeLoadOrder;
+        const status = this.statusLabel(driver.status) + (load && load.status === 'IN_TRANSIT' ? ' · ' + load.id : '');
+        const rating = typeof driver.rating === 'number' ? this.number(driver.rating, 1) + ' de 5' : 'Sin información';
+        const yes = (on, onText, offText) => this.dotText(on ? onText : offText, on ? 'ok' : '');
 
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4 pb-24">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
-                            <i class="fas fa-truck text-emerald-400"></i> Perfil del Vehículo y Conductor
-                        </h2>
-                        <p class="text-xs text-slate-400">Parámetros técnicos para el cálculo seguro de ruteo y gálibo</p>
-                    </div>
-                    ${v ? `<span class="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold font-mono">${esc(v.plate)}</span>` : ''}
-                </div>
+            <div class="screen-scroll">
+                <h1 class="large-title">Vehículo</h1>
+                ${v ? `
+                    <div class="vehicle-id">
+                        <span class="plate" aria-label="Placa ${esc(v.plate)}">${esc(this.plateText(v.plate))}</span>
+                        <div class="min-w-0">
+                            <div class="vehicle-model">${esc(v.brand && v.brand !== '—' ? v.brand : 'Modelo sin información')}</div>
+                            <div class="secondary">${esc(this.truckTypeLabel(v.category))}</div>
+                        </div>
+                    </div>` : `
+                    <div class="notice">
+                        ${this.warnLine('Sin vehículo registrado')}
+                        <p>La torre de control debe registrar su vehículo para planear rutas compatibles con su altura y peso.</p>
+                    </div>`}
 
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-4">
-                    <div class="w-14 h-14 rounded-full bg-emerald-600/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-300 font-black">${esc(initials)}</div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center justify-between">
-                            <h3 class="font-bold text-white text-base truncate">${esc(driver.name)}</h3>
-                            <span class="text-xs text-amber-400 font-bold"><i class="fas fa-star"></i> ${esc(driver.rating)}</span>
-                        </div>
-                        <p class="text-xs text-slate-400 truncate">${esc(driver.email || '')} · Licencia: <span class="font-mono text-slate-300">${esc(driver.licenseNumber)}</span></p>
-                        <div class="mt-2 flex items-center gap-2 flex-wrap">
-                            <span class="text-[11px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono">
-                                Horas hoy: <b class="${driver.hoursDrivenToday > 6 ? 'text-amber-400' : 'text-emerald-400'}">${esc(driver.hoursDrivenToday)}h / ${esc(driver.maxDailyHours)}h</b>
-                            </span>
-                            ${driver.restRequired
-                                ? '<span class="text-[10px] text-amber-400 font-bold"><i class="fas fa-bed"></i> Descanso requerido</span>'
-                                : `<span class="text-[10px] text-emerald-400 font-bold"><i class="fas fa-check-circle"></i> ${esc(window.DriverApp.statusLabel(driver.status))}</span>`}
-                        </div>
-                    </div>
+                <h2 class="list-title">Conductor</h2>
+                <div class="list">
+                    ${this.listRow('Nombre', esc(driver.name), true)}
+                    ${this.listRow('Licencia', esc(driver.licenseNumber && driver.licenseNumber !== '—' ? driver.licenseNumber : 'Sin información'))}
+                    ${this.listRow('Calificación', esc(rating))}
+                    ${this.listRow('Viajes completados', esc(driver.tripsCompleted))}
+                    ${this.listRow('Horas de conducción hoy', esc(this.number(driver.hoursDrivenToday, 1, 'h') + ' de ' + this.number(driver.maxDailyHours, 0, 'h')))}
+                    ${driver.restRequired ? this.listRow('Descanso', this.warnLine('Descanso requerido')) : ''}
+                    ${this.listRow('Estado', this.dotText(status, driver.status === 'EN_TRANSITO' ? 'ok' : ''))}
                 </div>
 
                 ${v ? `
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-                            <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Gálibo Máximo (Altura)</span>
-                                <i class="fas fa-ruler-vertical text-indigo-400"></i>
-                            </div>
-                            <div class="mt-2 flex items-baseline gap-1">
-                                <span class="text-2xl font-extrabold text-white font-mono">${fixed(v.height, 2)}</span>
-                                <span class="text-xs text-slate-400">metros</span>
-                            </div>
-                        </div>
-
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-                            <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Peso bruto actual</span>
-                                <i class="fas fa-weight-hanging text-amber-400"></i>
-                            </div>
-                            <div class="mt-2 flex items-baseline gap-1">
-                                <span class="text-2xl font-extrabold text-white font-mono">${fixed(v.grossWeight, 1)}</span>
-                                <span class="text-xs text-slate-400">Toneladas</span>
-                            </div>
-                            <span class="text-[10px] text-amber-400 mt-1 font-medium"><i class="fas fa-balance-scale"></i> Tara ${fixed(v.tareWeight, 1)} + carga ${fixed(v.netCargoWeight, 1)} Ton</span>
-                        </div>
-
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-                            <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Tipo de Vehículo</span>
-                                <i class="fas fa-road text-blue-400"></i>
-                            </div>
-                            <div class="mt-2">
-                                <span class="text-sm font-bold text-white">${esc(v.category)}</span>
-                            </div>
-                            <span class="text-[10px] text-slate-400 mt-1">${esc(v.brand)}</span>
-                        </div>
-
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-                            <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Carga a bordo</span>
-                                <i class="fas fa-boxes-stacked text-purple-400"></i>
-                            </div>
-                            <div class="mt-2">
-                                <span class="text-sm font-bold text-white font-mono">${fixed(v.netCargoWeight, 1)} Ton</span>
-                            </div>
-                            <span class="text-[10px] text-slate-400 mt-1">${esc(driver.tripsCompleted)} viajes completados</span>
-                        </div>
+                    <h2 class="list-title">Dimensiones y peso</h2>
+                    <div class="list">
+                        ${this.listRow('Gálibo (altura)', esc(this.number(v.height, 2, 'm')), true)}
+                        ${this.listRow('Tara', esc(this.number(v.tareWeight, 1, 't')))}
+                        ${this.listRow('Carga a bordo', esc(this.number(v.netCargoWeight, 1, 't')))}
+                        ${this.listRow('Peso bruto actual (tara + carga)', esc(this.number(v.grossWeight, 1, 't')), true)}
                     </div>
 
-                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                        <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">Certificaciones & Permisos</h4>
-                        <div class="flex flex-wrap gap-2">
-                            ${v.hazmatAuthorized ? '<span class="px-2.5 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5"><i class="fas fa-certificate"></i> Mercancías Peligrosas (HAZMAT)</span>' : ''}
-                            ${v.coldChainCertified ? '<span class="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5"><i class="fas fa-snowflake"></i> Cadena de Frío</span>' : ''}
-                            ${v.electronicTollTagActive ? '<span class="px-2.5 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5"><i class="fas fa-tag"></i> TAG Telepeaje</span>' : ''}
-                            ${v.runtValid ? '<span class="px-2.5 py-1 bg-slate-500/10 text-slate-300 border border-slate-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5"><i class="fas fa-id-card"></i> RUNT vigente</span>' : ''}
-                            ${(v.badges || []).map(b => `<span class="px-2.5 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-medium">${esc(b)}</span>`).join('')}
-                            ${!v.hazmatAuthorized && !v.coldChainCertified && !v.electronicTollTagActive && !v.runtValid && !(v.badges || []).length ? '<span class="text-xs text-slate-500">Sin certificaciones registradas</span>' : ''}
-                        </div>
-                    </div>
-                ` : `
-                    <div class="bg-slate-900 border border-dashed border-amber-500/40 rounded-2xl p-4 text-xs text-amber-300">
-                        <b>Sin vehículo registrado.</b> fleets-drivers no tiene estado para el conductor
-                        <span class="font-mono">${esc(driver.id)}</span>. Registre el vehículo con
-                        <span class="font-mono">POST /api/v1/fleets-drivers/state</span> usando ese driverId.
-                    </div>
-                `}
+                    <h2 class="list-title">Documentos y permisos</h2>
+                    <div class="list">
+                        ${this.listRow('RUNT', yes(v.runtValid, 'Vigente', 'No vigente'))}
+                        ${this.listRow('TAG de telepeaje', yes(v.electronicTollTagActive, 'Activo', 'Inactivo'))}
+                        ${this.listRow('Cadena de frío', yes(v.coldChainCertified, 'Certificado', 'No certificado'))}
+                        ${this.listRow('Mercancías peligrosas', yes(v.hazmatAuthorized, 'Autorizado', 'No autorizado'))}
+                        ${(v.badges || []).map(b => this.listRow(b, this.dotText('Activo', 'ok'))).join('')}
+                    </div>` : ''}
             </div>
         `;
+    },
+
+    /** Distancia por carretera de la ruta (OSRM, la misma línea del mapa), si ya se calculó. */
+    roadDistanceKm() {
+        const guided = window.RouteGuidance && window.RouteGuidance.route;
+        if (guided && guided.totalM) return Math.round(guided.totalM / 1000);
+        const summary = window.mapCtrl && window.mapCtrl.routeSummary;
+        return summary ? Math.round(summary.distanceKm) : null;
     },
 
     renderAssignedLoadScreen(state) {
@@ -236,136 +237,89 @@ window.DriverApp = {
                           driverName: lastDelivery.load.assignedDriverName, vehiclePlate: lastDelivery.load.assignedVehiclePlate,
                           tripStartedAt: lastDelivery.load.tripStartedAt };
             return `
-                <div class="h-full overflow-y-auto p-4 space-y-3">
-                    <div class="text-center space-y-1">
-                        <h3 class="font-extrabold text-white text-sm">Viaje finalizado</h3>
-                        <p class="text-xs text-slate-400">La carga quedó en DELIVERED. Cuando el motor le proponga otra aparecerá aquí.</p>
+                <div class="screen-scroll">
+                    <h1 class="large-title">Viaje finalizado</h1>
+                    <p class="secondary">La carga quedó entregada. Cuando el sistema le proponga otra aparecerá aquí.</p>
+                    ${lastDelivery.pendingSync ? `<div class="notice">${this.warnLine('Entrega guardada sin señal', '· la firma, la foto y el registro se enviarán al reconectar.')}</div>` : ''}
+                    <div class="mt-6">${window.PodUI.receiptHtml(pod, lastDelivery.load)}</div>
+                    <div class="screen-actions">
+                        <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Buscar nueva carga</button>
                     </div>
-                    ${lastDelivery.pendingSync ? `
-                        <div class="p-2.5 bg-amber-500/10 border border-amber-500/40 rounded-xl text-[11px] text-amber-200 flex items-center gap-2">
-                            <i class="fas fa-cloud-arrow-up"></i>
-                            Entrega guardada en el teléfono sin señal: la firma, la foto y el registro se enviarán al reconectar.
-                        </div>` : ''}
-                    ${window.PodUI.receiptHtml(pod, lastDelivery.load)}
-                    <button onclick="window.app.refreshAssignment()" class="btn-cta"><i class="fas fa-rotate"></i> Buscar nueva carga</button>
                 </div>
             `;
         }
         if (!load) {
-            return this.renderEmptyState('fa-clipboard-check', 'Sin carga asignada',
-                'Cuando el motor de asignación le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
-                '<button onclick="window.app.refreshAssignment()" class="btn-secondary px-5 mt-1"><i class="fas fa-rotate"></i> Consultar de nuevo</button>');
+            return this.renderEmptyState('package', 'Sin carga asignada',
+                'Cuando el sistema le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
+                `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`);
         }
+        const raw = load.raw || {};
         const pending = load.status === 'AVAILABLE'
             && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED');
         const inTransit = load.status === 'IN_TRANSIT';
         const busy = state.busyAction;
-        const badge = pending ? load.assignmentStatus : load.status;
-        const title = pending ? 'Nueva Carga Propuesta' : inTransit ? 'Viaje en Curso' : 'Carga Aceptada';
+        const statusCode = pending ? load.assignmentStatus : load.status;
+        const startedAt = inTransit && load.tripStartedAt
+            ? ' · salió ' + new Date(load.tripStartedAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) : '';
+        const km = this.roadDistanceKm();
+        const budget = Number(raw.offeredBudget);
+        const busyIcon = (action, icon) => (busy === action ? this.spinner() : this.icon(icon));
+
+        const actions = load.assignmentStatus === 'PROPOSED' && pending ? `
+                <div class="notice">${this.warnLine('Propuesta en proceso de notificación', '· podrá aceptarla o rechazarla cuando llegue la notificación.')}</div>
+                <div class="screen-actions">
+                    <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Consultar estado</button>
+                </div>`
+            : pending ? `
+                <div class="screen-actions">
+                    <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('accept', 'check-circle')}Aceptar carga y ver ruta</button>
+                    <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('reject', 'x-circle')}Rechazar</button>
+                </div>`
+            : inTransit ? `
+                <div class="screen-actions">
+                    <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${this.icon('navigation-arrow-fill')}Continuar navegación</button>
+                    <button onclick="window.app.finishTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('deliver', 'flag-checkered')}Llegué: registrar entrega</button>
+                </div>`
+            : `
+                <div class="screen-actions">
+                    <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('start-trip', 'navigation-arrow-fill')}Iniciar viaje</button>
+                    <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="btn-quiet">${this.icon('path')}Ver ruta planeada</button>
+                </div>`;
 
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4 pb-24" data-stagger>
-                ${window.DriverActions.tripProgressHtml(load)}
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="px-2 py-0.5 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-bold font-mono">
-                                ${esc(window.DriverApp.statusLabel(badge))}
-                            </span>
-                            <span class="text-xs text-slate-400">Orden #${esc(load.id)}</span>
-                        </div>
-                        <h2 class="text-lg font-extrabold text-white mt-1">${title}</h2>
-                        <p class="text-[11px] text-slate-400">${esc(load.customer || '')}</p>
+            <div class="screen-scroll">
+                <p class="status-line">${this.dotText(this.statusLabel(statusCode), inTransit ? 'ok' : '')}<span class="status-sub"> · ${esc(load.id)}${esc(startedAt)}</span></p>
+
+                <div class="trip">
+                    <div class="trip-rail"><span class="trip-stop"></span><span class="trip-line"></span></div>
+                    <div class="trip-leg">
+                        <div class="place-label">Origen</div>
+                        <div class="place">${esc(load.origin.city || load.origin.name || 'Sin información')}</div>
+                        <div class="place-sub">${esc(raw.originDepartment || '')}</div>
+                    </div>
+                    <div class="trip-rail"><span class="trip-stop is-end"></span></div>
+                    <div class="trip-leg">
+                        <div class="place-label">Destino</div>
+                        <div class="place">${esc(load.destination.city || load.destination.name || 'Sin información')}</div>
+                        <div class="place-sub">${esc([raw.destinationDepartment, km != null ? km + ' km por carretera' : ''].filter(Boolean).join(' · '))}</div>
                     </div>
                 </div>
 
-                <div class="card p-4 space-y-3">
-                    <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
-                        <div>
-                            <span class="text-[10px] text-slate-400 uppercase font-bold">Tipo de Carga</span>
-                            <div class="font-bold text-sm text-white">${esc(load.cargoType)}</div>
-                            <span class="text-[10px] text-slate-400 font-mono">${esc(load.requiredTruckType || '')}</span>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-[10px] text-slate-400 uppercase font-bold">Flete Ofrecido</span>
-                            <div class="font-black text-base text-emerald-400 font-mono">${esc(load.freightPayment)}</div>
-                        </div>
-                    </div>
-
-                    <div class="space-y-2 text-xs">
-                        <div class="flex items-start gap-2">
-                            <div class="w-5 text-emerald-400 text-center mt-0.5"><i class="fas fa-circle-dot"></i></div>
-                            <div class="flex-1">
-                                <div class="text-slate-400 text-[10px]">ORIGEN (publicada ${esc(load.scheduledDeparture)})</div>
-                                <div class="font-semibold text-slate-200">${esc(load.origin.name)}</div>
-                            </div>
-                        </div>
-                        <div class="border-l border-dashed border-slate-700 ml-2.5 h-3"></div>
-                        <div class="flex items-start gap-2">
-                            <div class="w-5 text-blue-400 text-center mt-0.5"><i class="fas fa-location-dot"></i></div>
-                            <div class="flex-1">
-                                <div class="text-slate-400 text-[10px]">DESTINO (${esc(load.estimatedDuration)} aprox)</div>
-                                <div class="font-semibold text-slate-200">${esc(load.destination.name)}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800 text-center">
-                        <div class="p-2 bg-slate-800/50 rounded-xl">
-                            <span class="text-[10px] text-slate-400 block">Peso Neto</span>
-                            <span class="font-mono font-bold text-xs text-slate-200">${esc(load.netWeight)} Ton</span>
-                        </div>
-                        <div class="p-2 bg-slate-800/50 rounded-xl">
-                            <span class="text-[10px] text-slate-400 block">Distancia</span>
-                            <span class="font-mono font-bold text-xs text-slate-200">${esc(load.totalDistance)}</span>
-                        </div>
-                        <div class="p-2 bg-slate-800/50 rounded-xl">
-                            <span class="text-[10px] text-slate-400 block">Volumen</span>
-                            <span class="font-mono font-bold text-xs text-slate-200">${load.volumeM3 != null ? esc(load.volumeM3) + ' m³' : '—'}</span>
-                        </div>
-                    </div>
+                <div class="fare">
+                    <div class="place-label">Flete</div>
+                    <div class="fare-amount">${Number.isFinite(budget) ? '$ ' + esc(budget.toLocaleString('es-CO', { maximumFractionDigits: 0 })) + '<small>COP</small>' : 'Sin información'}</div>
+                    <div class="place-sub">${esc(load.customer || '')}</div>
                 </div>
 
-                ${load.assignmentStatus === 'PROPOSED' ? `
-                    <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-300 flex items-start gap-2">
-                        <i class="fas fa-bell mt-0.5"></i>
-                        <div>
-                            <b>Propuesta en proceso de notificación.</b> Podrá aceptar o rechazar cuando el servicio
-                            de Notifications confirme el envío (estado NOTIFIED).
-                            <button onclick="window.app.refreshAssignment()" class="block mt-1 underline font-bold">Consultar estado</button>
-                        </div>
-                    </div>
-                ` : pending ? `
-                    <div class="space-y-2.5 pt-1">
-                        <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-cta">
-                            <i class="fas ${busy === 'accept' ? 'fa-circle-notch fa-spin' : 'fa-circle-check'} text-lg"></i> Aceptar carga y ver ruta
-                        </button>
-                        <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-secondary w-full !text-rose-300 !border-rose-500/30">
-                            <i class="fas ${busy === 'reject' ? 'fa-circle-notch fa-spin' : 'fa-circle-xmark'}"></i> Rechazar
-                        </button>
-                    </div>
-                ` : inTransit ? `
-                    <div id="driver-telemetry-badge" class="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-[11px] text-slate-200" aria-live="polite">
-                        <span class="inline-block w-2 h-2 rounded-full bg-slate-500"></span> Preparando telemetría…
-                    </div>
-                    <div class="space-y-2.5 pt-1">
-                        <button onclick="window.app.finishTrip()" ${busy ? 'disabled' : ''} class="btn-cta is-success">
-                            <i class="fas ${busy === 'deliver' ? 'fa-circle-notch fa-spin' : 'fa-flag-checkered'} text-lg"></i> Llegué a destino · registrar entrega
-                        </button>
-                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-secondary w-full">
-                            <i class="fas fa-location-arrow"></i> Continuar navegación
-                        </button>
-                    </div>
-                ` : `
-                    <div class="space-y-2.5 pt-1">
-                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-cta">
-                            <i class="fas ${busy === 'start-trip' ? 'fa-circle-notch fa-spin' : 'fa-truck-moving'} text-lg"></i> Iniciar viaje
-                        </button>
-                        <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="btn-secondary w-full">
-                            <i class="fas fa-route"></i> Ver ruta planeada
-                        </button>
-                    </div>
-                `}
+                <h2 class="list-title">Detalle de la carga</h2>
+                <div class="list">
+                    ${this.listRow('Mercancía', esc(load.cargoType || 'Sin información'))}
+                    ${this.listRow('Peso', esc(this.number(Number(load.netWeight), 1, 't')), true)}
+                    ${load.volumeM3 != null ? this.listRow('Volumen', esc(this.number(Number(load.volumeM3), 1, 'm³'))) : ''}
+                    ${this.listRow('Vehículo requerido', esc(this.truckTypeLabel(load.requiredTruckType)))}
+                    ${inTransit ? this.listRow('Posición', '<span id="driver-telemetry-badge" class="telemetry-inline" aria-live="polite">Preparando la telemetría…</span>') : ''}
+                </div>
+                ${actions}
             </div>
         `;
     },
@@ -374,103 +328,45 @@ window.DriverApp = {
         const esc = window.ui.escape;
         const routes = window.TruckCarData.routes;
         const errors = state.dataStatus.errors || {};
+        const load = window.TruckCarData.activeLoadOrder;
         if (!routes || !routes.optimal) {
-            const reason = !window.TruckCarData.activeLoadOrder
+            const reason = !load
                 ? 'Necesita una carga asignada para planear la ruta.'
                 : !(window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle)
-                    ? 'Registre su vehículo en fleets-drivers para que Route-AI calcule una ruta compatible.'
-                    : (errors.routes ? 'Route-AI respondió con error: ' + esc(errors.routes) : 'Calculando ruta con Route-AI...');
-            return this.renderEmptyState('fa-route', 'Ruta no disponible', reason,
-                window.TruckCarData.activeLoadOrder ? '<button onclick="window.TruckCarService.loadRoutePlan({ force: true }).then(() => window.store.setState({}))" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold">Planear ruta</button>' : '');
+                    ? 'Su vehículo no está registrado: sin altura ni peso no se puede planear una ruta segura.'
+                    : (errors.routes ? 'El servicio de rutas respondió con un error: ' + esc(errors.routes) : 'Calculando la ruta…');
+            return this.renderEmptyState('path', 'Ruta no disponible', reason,
+                load ? `<button onclick="window.TruckCarService.loadRoutePlan({ force: true }).then(() => window.store.setState({}))" class="btn-quiet">${this.icon('arrows-clockwise')}Planear ruta</button>` : '');
         }
         const opt = routes.optimal;
         const rej = routes.rejectedAlternate;
+        const vehicle = window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle;
+        const title = load ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) : opt.title;
+        const risk = opt.riskLevel ? this.statusLabel(String(opt.riskLevel).toUpperCase()) : 'Sin información';
+        const inTransit = load && load.status === 'IN_TRANSIT';
 
         return `
-            <div class="h-full flex flex-col relative">
-                <div class="h-44 w-full relative bg-slate-900">
-                    <div id="overview-map-container" class="w-full h-full"></div>
-                    <div class="absolute top-3 left-3 z-[400] flex gap-2">
-                        <span class="px-2.5 py-1 bg-slate-950/80 backdrop-blur text-emerald-400 font-mono text-[11px] font-bold rounded-lg border border-slate-700 shadow">
-                            <i class="fas fa-shield-halved"></i> ${esc(opt.name)}
-                        </span>
-                    </div>
-                    <button onclick="window.mapCtrl.fitAllRoute()" class="absolute map-above-attribution right-3 z-[400] p-2 bg-slate-900/90 text-white rounded-xl border border-slate-700 shadow text-xs">
-                        <i class="fas fa-expand"></i>
-                    </button>
+            <div class="route-screen">
+                <div id="overview-map-container" class="route-map" aria-label="Mapa de la ruta ${esc(title)}"></div>
+                <div class="map-tools">
+                    <button type="button" onclick="window.mapCtrl.fitAllRoute()" class="map-tool" aria-label="Ver la ruta completa">${this.icon('corners-out')}</button>
                 </div>
 
-                <div class="flex-1 overflow-y-auto p-4 space-y-3">
-                    <div class="bg-slate-900 border-2 border-emerald-500/50 rounded-2xl p-4 shadow-lg shadow-emerald-950/40 relative">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="flex items-center gap-2 min-w-0">
-                                <span class="w-3 h-3 shrink-0 rounded-full bg-emerald-500 animate-pulse"></span>
-                                <h3 class="font-bold text-white text-sm truncate">${esc(opt.title)}</h3>
-                            </div>
-                            <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 font-extrabold text-[10px] rounded uppercase font-mono">Recomendada</span>
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-2 py-2 my-1 border-y border-slate-800 text-center font-mono">
-                            <div>
-                                <span class="text-[10px] text-slate-400 block font-sans">Distancia</span>
-                                <span class="font-bold text-sm text-emerald-400">${esc(opt.distance)}</span>
-                            </div>
-                            <div>
-                                <span class="text-[10px] text-slate-400 block font-sans">Tiempo Est.</span>
-                                <span class="font-bold text-sm text-white">${esc(opt.eta)}</span>
-                            </div>
-                            <div>
-                                <span class="text-[10px] text-slate-400 block font-sans">Alertas</span>
-                                <span class="font-bold text-sm text-white">${esc(opt.hazards)}</span>
-                            </div>
-                        </div>
-
-                        <div class="space-y-1.5 mt-3">
-                            ${opt.features.map(f => `
-                                <div class="flex items-center gap-2 text-xs text-slate-300">
-                                    <i class="fas fa-check-circle text-emerald-400 text-[11px]"></i>
-                                    <span>${esc(f)}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-
-                        ${(opt.warnings || []).map(w => `
-                            <div class="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300 flex items-center gap-2">
-                                <i class="fas fa-triangle-exclamation text-amber-400"></i><span>${esc(w)}</span>
-                            </div>
-                        `).join('')}
-
-                        ${opt.aiRecommendation ? `
-                            <div class="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-[11px] text-emerald-300 flex items-start gap-2">
-                                <i class="fas fa-robot text-emerald-400 mt-0.5"></i>
-                                <span>${esc(opt.aiRecommendation)}</span>
-                            </div>
-                        ` : ''}
+                <section class="route-sheet" data-route-sheet aria-label="Ruta de la carga">
+                    <h1 class="route-title">${esc(title)}</h1>
+                    <div class="route-figures" data-route-figures>${window.mapCtrl.routeFiguresHtml()}</div>
+                    <p class="secondary">Tiempo estimado para auto</p>
+                    <p class="status-line">${this.dotText('Aptitud para ' + (vehicle ? this.plateText(vehicle.plate) : 'su vehículo'))}<span class="status-sub"> · sin información</span></p>
+                    <div class="list">
+                        ${this.listRow('Riesgo según Route-AI', esc(risk))}
+                        ${this.listRow('Restricciones', (opt.warnings || []).length ? esc(opt.warnings.join(' · ')) : 'Sin información')}
+                        ${this.listRow('Alertas en la ruta', 'Sin información')}
                     </div>
-
-                    ${rej ? `
-                        <div class="bg-slate-900/60 border border-rose-900/40 rounded-2xl p-3.5">
-                            <div class="flex items-center justify-between mb-2">
-                                <h4 class="text-xs font-bold text-rose-400 flex items-center gap-1.5">
-                                    <i class="fas fa-ban"></i> ${esc(rej.title)}
-                                </h4>
-                                <span class="text-[10px] text-rose-400 font-mono font-bold">Ruta Descartada</span>
-                            </div>
-                            <div class="space-y-1 text-xs text-slate-400">
-                                ${rej.rejectionReasons.map(r => `
-                                    <div class="flex items-start gap-1.5 text-rose-300/80 text-[11px]">
-                                        <i class="fas fa-times-circle text-rose-500 mt-0.5 shrink-0"></i>
-                                        <span>${esc(r)}</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-
-                    <button onclick="window.app.startNavigation()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/40 transition transform active:scale-98">
-                        <i class="fas fa-play"></i> ${window.TruckCarData.activeLoadOrder && window.TruckCarData.activeLoadOrder.status === 'IN_TRANSIT' ? 'Continuar navegación' : 'Iniciar viaje y navegación'}
-                    </button>
-                </div>
+                    ${rej ? `<div class="notice">${this.warnLine('Corredor descartado: ' + rej.title, '· ' + rej.rejectionReasons.join(' · '))}</div>` : ''}
+                    <div class="sheet-actions-row">
+                        <button onclick="window.app.startNavigation()" class="btn-accent">${this.icon('navigation-arrow-fill')}${inTransit ? 'Continuar navegación' : 'Iniciar viaje y navegación'}</button>
+                    </div>
+                </section>
             </div>
         `;
     },
