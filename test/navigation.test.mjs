@@ -112,3 +112,15 @@ test("el HUD usa un ícono por tipo de maniobra (giro, giro leve, retorno, glori
   assert.equal(g("new name", "straight"), "arrow-up");
   assert.equal(w.RouteGuidance.formatDuration(8160), "2 h 16 min");
 });
+
+test("la línea gris del HUD muestra la calle actual solo si no repite la de la instrucción", () => {
+  const { w } = browser();
+  const street = (instruction, current, extra = {}) => w.RouteGuidance.hudText({
+    status: "ready", hasPosition: true, offRoute: false, distance: "830 m", instruction, street: current, ...extra
+  }).street;
+  assert.equal(street("En la glorieta, tome la 3.ª salida hacia Avenida Calle 59 Sur", "Avenida Calle 59 Sur"), "");
+  assert.equal(street("Gire a la derecha por Avenida Boyacá", "Calle 13"), "Calle 13");
+  assert.equal(street("Continúe por la Autopista Sur", "autopista sur"), "", "sin distinguir mayúsculas ni tildes");
+  assert.equal(street("Gire a la izquierda", ""), "");
+  assert.equal(street("Gire a la izquierda", "Calle 13", { offRoute: true }), "", "fuera de ruta el aviso va en la tarjeta");
+});

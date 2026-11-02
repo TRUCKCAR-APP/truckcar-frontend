@@ -313,12 +313,24 @@ window.RouteGuidance = (function () {
     }
 
     /** Textos del HUD según el estado (el mismo marcado sirve para el render inicial y para las actualizaciones). */
+    /**
+     * Calle por la que va el camión, bajo la instrucción. Si no se conoce o es la misma que ya nombra la instrucción
+     * ("…hacia Avenida Calle 59 Sur"), no se muestra nada: repetirla no informa.
+     */
+    function currentStreet(s) {
+        const street = (s.street || '').trim();
+        if (!street) return '';
+        const plain = (text) => text.toLocaleLowerCase('es-CO').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return plain(s.instruction || '').includes(plain(street)) ? '' : street;
+    }
+
     function hudText(s) {
-        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: 'OSRM sobre el plan de Route-AI' };
+        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: 'Ruta por carretera de OSRM' };
         if (s.status === 'unavailable') return { distance: '—', instruction: 'Guía paso a paso no disponible', street: 'Sin conexión con el servicio de rutas: siga el mapa.' };
         if (s.status === 'idle') return { distance: '—', instruction: 'Preparando la navegación…', street: '' };
-        if (!s.hasPosition) return { distance: s.distance, instruction: s.instruction, street: 'Esperando la señal GPS del dispositivo…' };
-        return { distance: s.distance, instruction: s.instruction, street: s.offRoute ? 'Fuera de ruta: recalculando…' : s.street };
+        // Sin GPS o fuera de ruta, el aviso ya está dentro de la tarjeta (triángulo y texto): la línea gris no lo repite.
+        if (!s.hasPosition || s.offRoute) return { distance: s.distance, instruction: s.instruction, street: '' };
+        return { distance: s.distance, instruction: s.instruction, street: currentStreet(s) };
     }
 
     function renderHud() {

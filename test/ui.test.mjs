@@ -119,3 +119,19 @@ test("el formulario del generador valida en vivo y reconoce ciudades sin tildes"
   const bad = validate({ ...ok, cargoDescription: " ", weightTons: "75", destinationCity: "bogota", offeredBudget: "10" });
   assert.deepEqual(Object.keys(bad).sort(), ["cargoDescription", "destinationCity", "offeredBudget", "weightTons"]);
 });
+
+test("el formulario de entrega tiene un solo botón fijo «Confirmar entrega» y la X cierra sin registrar", async () => {
+  const w = browser();
+  w.PodEvidence = { sha256Hex: async () => "0".repeat(64), dataUrlToBlob: async () => new w.Blob(["x"]) };
+  // Lienzo sin dibujo real: cualquier método del contexto 2D es un no-op.
+  w.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, { get: () => () => {}, set: () => true });
+  w.eval(readFileSync("js/views/podModals.js", "utf8"));
+  const result = w.PodUI.openDeliveryForm({ id: "CARGA-88", destination: { name: "Ibagué, Tolima" } }, async () => {});
+  const form = w.document.getElementById("pod-form");
+  const buttons = [...form.querySelectorAll("button")];
+  assert.equal(buttons.filter((b) => b.type === "submit").length, 1);
+  assert.match(form.querySelector(".pod-footer").textContent, /Confirmar entrega/);
+  assert.equal(buttons.filter((b) => /Cancelar/.test(b.textContent)).length, 0, "sin el botón «Cancelar»");
+  form.querySelector('[data-action="cancel"]').click();
+  assert.equal(await result, false);
+});

@@ -1,0 +1,101 @@
+{
+  "_comentario": "Estado conocido de la demo local. Lo aplica scripts/demo/reset-demo.mjs. Solo ids de demo: nada más se toca.",
+  "coordinatorEmail": "torre@truckcar.demo",
+  "load": {
+    "id": 88,
+    "status": "IN_TRANSIT",
+    "driverId": "abc27ef4-1e64-4b94-809a-9605ddc3d2e5",
+    "driverName": "Carlos Conductor",
+    "vehiclePlate": "TDK-410"
+  },
+  "mockDriverIds": ["drv-e2e-1", "drv-e2e-2", "drv-e2e-3"],
+  "drivers": [
+    {
+      "key": "carlos",
+      "email": "conductor@truckcar.demo",
+      "expect": "en tránsito con la carga 88",
+      "state": {
+        "driverId": "abc27ef4-1e64-4b94-809a-9605ddc3d2e5",
+        "driverName": "Carlos Conductor",
+        "licenseCategory": "C3",
+        "rating": 4.8,
+        "totalTrips": 126,
+        "vehiclePlate": "TDK-410",
+        "vehicleModel": "Kenworth T800 2021",
+        "vehicleType": "TRACTOMULA_3S3",
+        "maxHeightMeters": 4.1,
+        "netCargoWeightTons": 24.0,
+        "tareWeightTons": 16.0,
+        "drivingHoursToday": 1.5,
+        "mandatoryRestLocation": null,
+        "hazmatAuthorized": false,
+        "coldChainCertified": false,
+        "runtValid": true,
+        "electronicTollTagActive": true,
+        "activeBadges": ["Conductor verificado"],
+        "currentLatitude": 4.6486,
+        "currentLongitude": -74.1481,
+        "currentSpeedKmH": 0.0,
+        "status": "EN_TRANSITO"
+      }
+    },
+    {
+      "key": "diana",
+      "email": "conductora.nueva@truckcar.demo",
+      "expect": "sin carga",
+      "state": {
+        "driverId": "4462bf82-702a-4745-b231-ae0b4ea4b24d",
+        "driverName": "Diana Rios",
+        "licenseCategory": "C2",
+        "rating": 4.6,
+        "totalTrips": 38,
+        "vehiclePlate": "SNT-238",
+        "vehicleModel": "Chevrolet NPR 2019",
+        "vehicleType": "SENCILLO",
+        "maxHeightMeters": 3.4,
+        "netCargoWeightTons": 0.0,
+        "tareWeightTons": 4.2,
+        "drivingHoursToday": 0.0,
+        "mandatoryRestLocation": null,
+        "hazmatAuthorized": false,
+        "coldChainCertified": false,
+        "runtValid": true,
+        "electronicTollTagActive": false,
+        "activeBadges": null,
+        "currentLatitude": 4.6097,
+        "currentLongitude": -74.0817,
+        "currentSpeedKmH": 0.0,
+        "status": "DISPONIBLE"
+      }
+    },
+    {
+      "key": "ana",
+      "email": null,
+      "expect": "placa propia TKR-527",
+      "state": {
+        "driverId": "207a8e39-990e-48da-9b85-10178c83a8cb",
+        "driverName": "Ana Torres",
+        "licenseCategory": "C3",
+        "rating": 4.9,
+        "totalTrips": 210,
+        "vehiclePlate": "TKR-527",
+        "vehicleModel": "Kenworth T800",
+        "vehicleType": "TRACTOMULA_3S3",
+        "maxHeightMeters": 4.2,
+        "netCargoWeightTons": 0.0,
+        "tareWeightTons": 16.0,
+        "drivingHoursToday": 2.0,
+        "mandatoryRestLocation": null,
+        "hazmatAuthorized": true,
+        "coldChainCertified": false,
+        "runtValid": true,
+        "electronicTollTagActive": true,
+        "activeBadges": null,
+        "currentLatitude": 4.579684,
+        "currentLongitude": -74.247393,
+        "currentSpeedKmH": 0.0,
+        "status": "DISPONIBLE"
+      }
+    }
+  ]
+}

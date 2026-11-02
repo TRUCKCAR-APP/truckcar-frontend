@@ -32,17 +32,34 @@ window.ui = {
     },
 
     /** Banner con el estado de sincronización con el backend, reutilizado por ambas vistas. */
+    /** Qué no se pudo actualizar, en palabras del conductor (el detalle técnico queda en el título). */
+    SYNC_SECTIONS: {
+        alerts: 'las alertas', routes: 'la ruta', fleet: 'la flota', user: 'su perfil', profile: 'el perfil',
+        driver: 'el perfil', assignment: 'la carga', load: 'la carga', loads: 'las cargas', shipments: 'los envíos',
+        deliveries: 'las entregas', evaluation: 'la evaluación de despacho'
+    },
+
+    /**
+     * Franja bajo la cabecera mientras se actualizan los datos o si algo falló. Sin colores de fondo: actualizando es
+     * texto gris; un fallo es una advertencia (triángulo y texto, nunca rojo, que es solo del SOS). Una pantalla que ya
+     * explica su propio error (Alertas, Rutas) no lo repite aquí.
+     */
     syncBanner(state) {
         const status = state.dataStatus || {};
-        const errors = Object.entries(status.errors || {});
+        const own = state.activeRole === 'driver'
+            ? { alerts: 'alerts', route_overview: 'routes' }[state.driverScreen] : null;
+        const errors = Object.entries(status.errors || {}).filter(([key]) => key !== own);
+        const icon = (name) => '<svg aria-hidden="true"><use href="assets/icons.svg#' + name + '"></use></svg>';
         if (status.loading) {
-            return `<div class="px-3 py-1.5 bg-indigo-500/10 border-b border-indigo-500/30 text-[11px] text-indigo-300 flex items-center gap-2 shrink-0">
-                <i class="fas fa-spinner fa-spin"></i> Sincronizando con el API Gateway...</div>`;
+            return '<div class="sync-banner" role="status"><span class="spinner" aria-hidden="true"></span>Actualizando…</div>';
         }
         if (errors.length) {
-            return `<div class="px-3 py-1.5 bg-rose-500/10 border-b border-rose-500/30 text-[11px] text-rose-300 flex items-center justify-between gap-2 shrink-0">
-                <span class="truncate"><i class="fas fa-triangle-exclamation"></i> ${errors.map(([k, v]) => this.escape(k + ': ' + v)).join(' · ')}</span>
-                <button onclick="window.app.reloadData()" class="shrink-0 underline font-bold">Reintentar</button></div>`;
+            const what = [...new Set(errors.map(([key]) => this.SYNC_SECTIONS[key] || key))];
+            const list = what.length > 1 ? what.slice(0, -1).join(', ') + ' y ' + what[what.length - 1] : what[0];
+            const detail = errors.map(([k, v]) => k + ': ' + v).join(' · ');
+            return `<div class="sync-banner is-warn" role="status" title="${this.escape(detail)}">
+                <span class="sync-text">${icon('warning-fill')}No se pudo actualizar ${this.escape(list)}</span>
+                <button onclick="window.app.reloadData()" class="sync-retry">Reintentar</button></div>`;
         }
         return '';
     }
@@ -609,6 +626,19 @@ window.app = {
             }).catch(() => {});
         };
         refreshTileCount();
+        // Al entrar en la pantalla Offline se vuelve a leer el índice: la fecha "guardado hasta" es la real del momento.
+        let lastScreen = null;
+        window.store.subscribe((state) => {
+            if (state.driverScreen === 'offline' && lastScreen !== 'offline' && window.TileStore) {
+                window.TileStore.summary().then(summary => {
+                    data.offlineSyncData.cachedTiles = summary.count;
+                    data.offlineSyncData.cachedTilesBytes = summary.bytes;
+                    data.offlineSyncData.cachedTilesExpiry = summary.firstExpiry;
+                    if (window.store.state.driverScreen === 'offline') this.renderCurrentView(window.store.state);
+                }).catch(() => {});
+            }
+            lastScreen = state.driverScreen;
+        });
         window.OfflineQueue.onChange(() => {
             const state = window.store.state;
             if (window.DriverApp) window.DriverApp.renderOfflineBadge();

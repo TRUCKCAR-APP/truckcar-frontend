@@ -37,7 +37,7 @@ test("el perfil rotula el peso bruto como el actual (tara + carga a bordo), no c
   assert.doesNotMatch(text, /Peso Bruto Máx|Carga Útil/);
 });
 
-test("el riesgo por defecto de Route-AI no se muestra: Rutas dice «Sin información»", () => {
+test("sin fuente de datos, restricciones, alertas y riesgo van en una sola fila; un dato real sale en su propia fila", () => {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
   w.ui = { escape: (v) => String(v ?? "") };
   w.mapCtrl = { routeFiguresHtml: () => "" };
@@ -48,8 +48,14 @@ test("el riesgo por defecto de Route-AI no se muestra: Rutas dice «Sin informac
   };
   w.eval(readFileSync("js/views/driverApp.js", "utf8"));
   const text = new JSDOM(w.DriverApp.renderRouteOverviewScreen({ dataStatus: {} })).window.document.body.textContent.replace(/\s+/g, " ");
-  assert.match(text, /Riesgo de la ruta\s*Sin información/);
-  assert.doesNotMatch(text, /Bajo|BAJO/);
+  assert.match(text, /Restricciones, alertas y riesgo · sin fuente de datos todavía/);
+  assert.doesNotMatch(text, /Sin información/, "no se repite «Sin información» fila por fila");
+  assert.doesNotMatch(text, /Bajo|BAJO/, "el riesgo por defecto de Route-AI no se muestra");
+
+  w.TruckCarData.routes.optimal.warnings = ["Gálibo de 4,0 m en el km 32"];
+  const withData = new JSDOM(w.DriverApp.renderRouteOverviewScreen({ dataStatus: {} })).window.document.body.textContent.replace(/\s+/g, " ");
+  assert.match(withData, /Restricciones\s*Gálibo de 4,0 m en el km 32/);
+  assert.match(withData, /Alertas y riesgo · sin fuente de datos todavía/);
 });
 
 test("las acciones guardadas sin señal se cuentan sobre la pestaña Offline, con texto para lectores de pantalla", () => {
@@ -65,4 +71,52 @@ test("las acciones guardadas sin señal se cuentan sobre la pestaña Offline, co
   pending = 0;
   const empty = new JSDOM(w.DriverApp.tabButton("profile", "offline", "Offline", "cloud-arrow-down")).window.document;
   assert.equal(empty.querySelector(".driver-tab-count"), null);
+});
+
+function screens({ alerts = [], dataStatus = {}, queue = { pending: 0, byKind: {}, rejected: [] }, search = "", offlineData = {} } = {}) {
+  const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only", url: "http://localhost:5500/" + search }).window;
+  w.ui = { escape: (v) => String(v ?? "") };
+  w.OfflineQueue = { status: () => queue };
+  w.TruckCarData = { communityAlerts: alerts, offlineSyncData: offlineData };
+  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
+  const text = (html) => new JSDOM(html).window.document.body.textContent.replace(/\s+/g, " ");
+  return { w, text, state: { alertFilter: "all", dataStatus: { errors: {}, ...dataStatus }, isOffline: false } };
+}
+
+test("Alertas distingue cargando, error y vacío; el vacío no afirma que la vía sea segura", () => {
+  const loading = screens({ dataStatus: { loading: true } });
+  assert.match(loading.text(loading.w.DriverApp.renderAlertsScreen(loading.state)), /Buscando reportes cerca de usted/);
+
+  const failed = screens({ dataStatus: { errors: { alerts: "Error HTTP 503" } } });
+  const errorText = failed.text(failed.w.DriverApp.renderAlertsScreen(failed.state));
+  assert.match(errorText, /No se pudieron cargar las alertas/);
+  assert.match(errorText, /Reintentar/);
+  assert.doesNotMatch(errorText, /Sin reportes recientes/);
+
+  const empty = screens();
+  const emptyText = empty.text(empty.w.DriverApp.renderAlertsScreen(empty.state));
+  assert.match(emptyText, /Sin reportes recientes/);
+  assert.match(emptyText, /Reportar novedad/);
+  assert.doesNotMatch(emptyText, /segura|sin riesgo/i);
+
+  const list = screens({ alerts: [{ id: 7, type: "scale", badge: "Báscula", title: "Báscula abierta en Fusagasugá", timeAgo: "hace 5 min", upvotes: 3 }] });
+  const listText = list.text(list.w.DriverApp.renderAlertsScreen(list.state));
+  assert.match(listText, /Báscula abierta en Fusagasugá/);
+  assert.match(listText, /Báscula · hace 5 min · 3 confirmaciones/);
+});
+
+test("Offline muestra lo pendiente por tipo, la fecha real del mapa guardado y la simulación solo con ?demo=1", () => {
+  const until = new Date(2026, 10, 2, 3, 40).getTime();
+  const s = screens({ queue: { pending: 3, byKind: { "alert.sos": 1, position: 2 }, rejected: [] }, offlineData: { cachedTiles: 4, cachedTilesExpiry: until } });
+  const html = s.w.DriverApp.renderOfflineScreen(s.state);
+  const text = s.text(html);
+  assert.match(text, /SOS\s*1/);
+  assert.match(text, /Posiciones del viaje\s*2/);
+  assert.match(text, /Entregas\s*Ninguna/);
+  assert.match(text, /Mapa de la zona del viaje\s*Guardado hasta .*3:40/);
+  assert.doesNotMatch(text, /Simular pérdida de señal/);
+  assert.match(text, /Enviar ahora/);
+
+  const demo = screens({ search: "?demo=1" });
+  assert.match(demo.text(demo.w.DriverApp.renderOfflineScreen(demo.state)), /Simular pérdida de señal/);
 });

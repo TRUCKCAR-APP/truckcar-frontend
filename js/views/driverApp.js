@@ -341,6 +341,26 @@ window.DriverApp = {
         `;
     },
 
+    /**
+     * Restricciones, alertas en la ruta y riesgo (que decide la aptitud para el vehículo). Hoy ninguno tiene una fuente
+     * fiable: una sola fila lo dice, sin repetir "Sin información". Un dato real sale en su propia fila; lo que siga sin
+     * fuente queda agrupado.
+     */
+    routeFactsHtml(opt) {
+        const esc = window.ui.escape;
+        const facts = [];
+        const missing = [];
+        const warnings = opt.warnings || [];
+        if (warnings.length) facts.push(this.listRow('Restricciones', esc(warnings.join(' · '))));
+        else missing.push('restricciones');
+        missing.push('alertas', 'riesgo');   // la API de alertas no filtra por ruta y el riesgo de Route-AI es un valor por defecto
+        if (missing.length) {
+            const label = missing.join(', ').replace(/, ([^,]*)$/, ' y $1');
+            facts.push(`<div class="list-row"><span class="list-label">${esc(label.charAt(0).toUpperCase() + label.slice(1))}<span class="list-note"> · sin fuente de datos todavía</span></span></div>`);
+        }
+        return facts.join('');
+    },
+
     renderRouteOverviewScreen(state) {
         const esc = window.ui.escape;
         const routes = window.TruckCarData.routes;
@@ -357,7 +377,6 @@ window.DriverApp = {
         }
         const opt = routes.optimal;
         const rej = routes.rejectedAlternate;
-        const vehicle = window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle;
         const title = load ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) : opt.title;
         const inTransit = load && load.status === 'IN_TRANSIT';
 
@@ -373,12 +392,7 @@ window.DriverApp = {
                     <h1 class="route-title">${esc(title)}</h1>
                     <div class="route-figures" data-route-figures>${window.mapCtrl.routeFiguresHtml()}</div>
                     <p class="secondary">Tiempo estimado para auto</p>
-                    <p class="status-line">${this.dotText('Aptitud para ' + (vehicle ? this.plateText(vehicle.plate) : 'su vehículo'))}<span class="status-sub"> · sin información</span></p>
-                    <div class="list">
-                        ${this.listRow('Riesgo de la ruta', 'Sin información')}
-                        ${this.listRow('Restricciones', (opt.warnings || []).length ? esc(opt.warnings.join(' · ')) : 'Sin información')}
-                        ${this.listRow('Alertas en la ruta', 'Sin información')}
-                    </div>
+                    <div class="list">${this.routeFactsHtml(opt)}</div>
                     ${rej ? `<div class="notice">${this.warnLine('Corredor descartado: ' + rej.title, '· ' + rej.rejectionReasons.join(' · '))}</div>` : ''}
                     <div class="sheet-actions-row">
                         <button onclick="window.app.startNavigation()" class="btn-accent">${this.icon('navigation-arrow-fill')}${inTransit ? 'Continuar navegación' : 'Iniciar viaje y navegación'}</button>
@@ -449,160 +463,168 @@ window.DriverApp = {
         `;
     },
 
+    /** Filtros de Alertas: [tipo, etiqueta]. */
+    ALERT_FILTERS: [
+        ['all', 'Todas'], ['scale', 'Básculas'], ['bridge', 'Gálibos bajos'],
+        ['police', 'Retenes'], ['rest', 'Paradores'], ['danger', 'Incidentes']
+    ],
+
+    /** "Actualizado hace 1 min" a partir de la última sincronización. */
+    updatedAgo(iso) {
+        if (!iso) return '';
+        const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+        return 'Actualizado ' + (s < 60 ? 'hace un momento' : s < 3600 ? 'hace ' + Math.round(s / 60) + ' min' : 'hace ' + Math.round(s / 3600) + ' h');
+    },
+
     renderAlertsScreen(state) {
         const esc = window.ui.escape;
         const allAlerts = window.TruckCarData.communityAlerts || [];
         const filter = state.alertFilter || 'all';
         const alerts = filter === 'all' ? allAlerts : allAlerts.filter(a => a.type === filter);
-        const filters = [
-            ['all', 'Todos'], ['scale', 'Básculas'], ['bridge', 'Gálibos Bajos'],
-            ['police', 'Retenes'], ['rest', 'Paradores 24h'], ['danger', 'Incidentes']
-        ];
+        const errors = state.dataStatus.errors || {};
+        const loading = state.dataStatus.loading && !allAlerts.length && !errors.alerts;
+        const retry = `<button onclick="window.TruckCarService.loadAlerts().then(() => window.store.setState({}))" class="btn-accent">${this.icon('arrows-clockwise')}Reintentar</button>`;
+        const report = `<button onclick="window.app.openReportModal()" class="btn-accent">${this.icon('megaphone')}Reportar novedad</button>`;
+
+        let body;
+        if (loading) {
+            // Cargando: esqueleto de la lista, no el vacío (no se afirma que no haya reportes).
+            body = `
+                <section aria-busy="true" aria-label="Cargando alertas" class="alerts-loading">
+                    <p class="status-line">${this.spinner()}<span class="status-sub">Buscando reportes cerca de usted…</span></p>
+                    <div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
+                </section>`;
+        } else if (errors.alerts && !allAlerts.length) {
+            // Error: distinto del vacío, con la causa y cómo seguir.
+            body = `
+                <section class="empty-state" aria-labelledby="alerts-error-title">
+                    <div class="empty-mark">${this.icon('wifi-slash')}</div>
+                    <h2 id="alerts-error-title">No se pudieron cargar las alertas</h2>
+                    <p>El servidor no respondió. Puede que no haya señal; los reportes de otros conductores aparecerán al reconectar.</p>
+                    ${retry}
+                </section>`;
+        } else if (!alerts.length) {
+            // Vacío: no afirma que la vía sea segura, solo que no hay reportes.
+            body = `
+                <section class="empty-state" aria-labelledby="alerts-empty-title">
+                    <div class="empty-mark">${this.icon('megaphone')}</div>
+                    <h2 id="alerts-empty-title">${filter === 'all' ? 'Sin reportes recientes' : 'Sin reportes de este tipo'}</h2>
+                    <p>No hay reportes activos de otros conductores${filter === 'all' ? '' : ' de este tipo'}. Si ve algo en la vía, avise a los demás.</p>
+                    ${report}
+                    ${state.dataStatus.lastSync ? `<p class="empty-meta">${esc(this.updatedAgo(state.dataStatus.lastSync))}</p>` : ''}
+                </section>`;
+        } else {
+            body = `
+                ${errors.alerts ? `<div class="notice">${this.warnLine('No se pudieron actualizar', '· se muestran los últimos reportes recibidos.')}</div>` : ''}
+                <div class="alert-list">
+                    ${alerts.map(a => `
+                        <article class="alert-item">
+                            <h2>${esc(a.title)}</h2>
+                            <p class="alert-meta">${esc([a.badge, a.timeAgo, a.upvotes + (Number(a.upvotes) === 1 ? ' confirmación' : ' confirmaciones')].filter(Boolean).join(' · '))}${a.verified ? ` <span class="alert-verified">${this.dotText('Validada', 'ok')}</span>` : ''}</p>
+                            ${a.description ? `<p class="alert-text">${esc(a.description)}</p>` : ''}
+                            <div class="alert-foot">
+                                <span class="secondary">${esc(a.author || '')}</span>
+                                <button onclick="window.app.upvoteAlert(${Number(a.id)})" class="btn-quiet alert-confirm">${this.icon('check-circle')}Confirmar</button>
+                            </div>
+                        </article>`).join('')}
+                </div>
+                <div class="screen-actions">${report}</div>`;
+        }
+
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
-                            <i class="fas fa-bullhorn text-amber-400"></i> Alertas de Carretera
-                        </h2>
-                        <p class="text-xs text-slate-400">Reportes de Community-Alerts (validadas con 3 confirmaciones)</p>
-                    </div>
-                    <button onclick="window.app.openReportModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow transition">
-                        <i class="fas fa-plus"></i> Reportar
-                    </button>
+            <div class="screen-scroll">
+                <h1 class="large-title">Alertas</h1>
+                <p class="secondary">Reportes de otros conductores en la vía.</p>
+                <div class="filters" role="group" aria-label="Filtrar alertas">
+                    ${this.ALERT_FILTERS.map(([key, label]) => `
+                        <button type="button" onclick="window.store.setState({ alertFilter: '${key}' })" aria-pressed="${filter === key}" class="filter">${label}</button>`).join('')}
                 </div>
-
-                <div class="flex gap-1.5 overflow-x-auto pb-1 text-xs">
-                    ${filters.map(([key, label]) => `
-                        <button onclick="window.store.setState({ alertFilter: '${key}' })" class="px-3 py-1 rounded-lg shrink-0 ${filter === key ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
-                            ${label}${key === 'all' ? ' (' + allAlerts.length + ')' : ''}
-                        </button>
-                    `).join('')}
-                </div>
-
-                <div class="space-y-3">
-                    ${alerts.length ? alerts.map(a => `
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2">
-                            <div class="flex items-start justify-between">
-                                <div class="flex items-center gap-2">
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                        a.type === 'scale' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' :
-                                        a.type === 'bridge' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
-                                        a.type === 'police' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                                        a.type === 'danger' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
-                                        'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                    }">${esc(a.badge)}</span>
-                                    <span class="text-[11px] text-slate-400">${esc(a.timeAgo)}</span>
-                                    ${a.verified ? '<span class="text-[10px] text-emerald-400 font-bold"><i class="fas fa-circle-check"></i> Validada</span>' : ''}
-                                </div>
-                                <span class="text-xs text-emerald-400 font-bold flex items-center gap-1">
-                                    <i class="fas fa-thumbs-up"></i> ${esc(a.upvotes)}
-                                </span>
-                            </div>
-
-                            <h3 class="font-bold text-white text-sm">${esc(a.title)}</h3>
-                            <p class="text-xs text-slate-300 leading-relaxed">${esc(a.description)}</p>
-
-                            <div class="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
-                                <span><i class="fas fa-user-circle"></i> ${esc(a.author)}</span>
-                                <button onclick="window.app.upvoteAlert(${Number(a.id)})" class="text-emerald-400 hover:underline font-medium">
-                                    Confirmar Alerta
-                                </button>
-                            </div>
-                        </div>
-                    `).join('') : `
-                        <div class="p-6 text-center text-xs text-slate-400 bg-slate-900 border border-dashed border-slate-800 rounded-2xl">
-                            No hay alertas activas${filter === 'all' ? '' : ' de este tipo'}.
-                        </div>
-                    `}
-                </div>
+                ${body}
             </div>
         `;
     },
 
+    /** Lo que espera en la cola, agrupado como lo entiende el conductor. */
+    QUEUE_GROUPS: [
+        ['alert.sos', 'SOS', 'Ninguno'],
+        ['position', 'Posiciones del viaje', 'Ninguna'],
+        ['alert.reported alert.confirmed', 'Reportes de la vía', 'Ninguno'],
+        ['trip.started', 'Inicios de viaje', 'Ninguno'],
+        ['trip.delivered', 'Entregas', 'Ninguna']
+    ],
+    QUEUE_LABELS: {
+        'position': 'Posición del viaje', 'trip.started': 'Inicio de viaje', 'trip.delivered': 'Entrega',
+        'alert.reported': 'Reporte de la vía', 'alert.confirmed': 'Confirmación de reporte', 'alert.sos': 'SOS'
+    },
+
+    /** "hoy 3:40 a. m.", "mañana 4:30 a. m." o "8 nov, 3:40 a. m.": hasta cuándo dura el mapa guardado. */
+    shortDateTime(ms) {
+        const d = new Date(ms);
+        const time = d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+        const day = (offset) => { const x = new Date(); x.setDate(x.getDate() + offset); return x.toDateString(); };
+        if (d.toDateString() === day(0)) return 'hoy ' + time;
+        if (d.toDateString() === day(1)) return 'mañana ' + time;
+        if (d.toDateString() === day(-1)) return 'ayer ' + time;
+        const month = d.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '');
+        return d.getDate() + ' ' + month + ', ' + time;
+    },
+
     renderOfflineScreen(state) {
         const esc = window.ui.escape;
-        const off = window.TruckCarData.offlineSyncData;
+        const off = window.TruckCarData.offlineSyncData || {};
         // Estado real de la cola durable (IndexedDB); se vuelve a pintar en cada cambio (app.js).
         const queue = window.OfflineQueue ? window.OfflineQueue.status()
             : { pending: 0, byKind: {}, rejected: [], lastSyncAt: null, lastError: null, nextRetryAt: null };
+        const offline = !navigator.onLine || Boolean(state.isOffline);
+        const known = new Set(this.QUEUE_GROUPS.flatMap(([kinds]) => kinds.split(' ')));
+        const other = Object.entries(queue.byKind).filter(([kind]) => !known.has(kind)).reduce((sum, [, n]) => sum + n, 0);
+        const rows = this.QUEUE_GROUPS
+            .map(([kinds, label, none]) => [label, kinds.split(' ').reduce((sum, k) => sum + (queue.byKind[k] || 0), 0), none])
+            .filter(([label, count]) => count > 0 || label !== 'SOS' && label !== 'Inicios de viaje');
+        if (other) rows.push(['Otros', other, '']);
+        const mapUntil = off.cachedTiles > 0 && off.cachedTilesExpiry
+            ? 'Guardado hasta ' + this.shortDateTime(off.cachedTilesExpiry)
+            : off.cachedTiles === 0 ? 'Sin mapa guardado todavía' : 'Consultando…';
+        const app = navigator.serviceWorker && navigator.serviceWorker.controller
+            ? this.dotText('Disponible sin señal', 'ok') : this.dotText('Se guarda al abrirla con señal');
+        const demo = new URLSearchParams(window.location.search).get('demo') === '1';
+
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
-                            <i class="fas fa-download text-emerald-400"></i> Modo Offline & Sincronización
-                        </h2>
-                        <p class="text-xs text-slate-400">Navegación continua en zonas sin cobertura celular</p>
-                    </div>
-                </div>
+            <div class="screen-scroll">
+                <h1 class="large-title">${offline ? 'Sin señal' : 'En línea'}</h1>
+                ${offline
+                    ? this.warnLine('Sin conexión', '· lo que haga se guarda en el teléfono y se envía al recuperar la señal.')
+                    : `<p class="status-line">${this.dotText(queue.pending ? 'Enviando lo guardado' : 'Todo enviado', 'ok')}<span class="status-sub"> · lo que haga se envía al momento</span></p>`}
 
-                <div class="p-3.5 bg-slate-900 border ${state.isOffline ? 'border-amber-500/60 bg-amber-500/5' : 'border-slate-800'} rounded-2xl flex items-center justify-between">
-                    <div>
-                        <div class="font-bold text-sm text-white flex items-center gap-2">
-                            <i class="fas ${state.isOffline ? 'fa-plane-slash text-amber-400' : 'fa-signal text-emerald-400'}"></i>
-                            Estado de Conectividad
-                        </div>
-                        <p class="text-xs text-slate-400 mt-0.5">${state.isOffline ? 'Sin señal en carretera (Operando en Offline)' : 'Conectado a Red 4G LTE'}</p>
-                    </div>
-                    <button onclick="window.app.toggleOfflineSimulation()" class="px-3.5 py-2 rounded-xl text-xs font-bold transition ${state.isOffline ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/40'}">
-                        ${state.isOffline ? 'Reconectar Red' : 'Simular Pérdida de Señal'}
-                    </button>
+                <h2 class="list-title">${offline ? 'Por enviar al recuperar la señal' : 'Por enviar'}</h2>
+                <div class="list">
+                    ${rows.map(([label, count, none]) => this.listRow(label, count ? String(count) : esc(none), count > 0)).join('')}
                 </div>
+                ${queue.lastError ? `<div class="notice">${this.warnLine('El último envío falló', '· ' + queue.lastError + (queue.nextRetryAt ? '. Reintento a las ' + new Date(queue.nextRetryAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) : ''))}</div>` : ''}
+                ${queue.rejected.length ? `<div class="notice">${this.warnLine('El servidor rechazó ' + queue.rejected.length + (queue.rejected.length === 1 ? ' evento' : ' eventos'))}
+                    <p>${queue.rejected.map(r => esc((this.QUEUE_LABELS[r.kind] || r.kind) + ': ' + r.reason)).join('<br>')}</p></div>` : ''}
 
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
-                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                        <span>Mapas y aplicación disponibles sin señal</span>
-                        <span class="text-emerald-400 font-mono text-[11px]">${off.cachedTiles == null ? '…' : off.cachedTiles + ' teselas'}</span>
-                    </h3>
-                    <p class="text-[11px] text-slate-400">El Service Worker guarda la aplicación y las zonas del mapa que ya recorrió; se pueden consultar sin cobertura.</p>
+                <h2 class="list-title">Guardado en el teléfono</h2>
+                <div class="list">
+                    ${this.listRow('Aplicación', app)}
+                    ${this.listRow('Mapa de la zona del viaje', esc(mapUntil))}
+                    ${this.listRow('Última sincronización', esc(queue.lastSyncAt ? this.shortDateTime(new Date(queue.lastSyncAt).getTime()) : 'Sin sincronizar todavía'))}
                 </div>
+                <p class="list-foot">El mapa se guarda solo en las zonas que ya vio y vence cuando lo indica el proveedor del mapa.</p>
 
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Cola de sincronización (${queue.pending})</h3>
-                        <span class="text-[10px] ${queue.pending ? 'text-amber-400 animate-pulse' : 'text-emerald-400'} font-mono">
-                            ${queue.pending ? 'Se envía al reconectar' : 'Todo sincronizado'}
-                        </span>
-                    </div>
-                    <div class="space-y-2">
-                        ${Object.keys(queue.byKind).length ? Object.entries(queue.byKind).map(([kind, count]) => `
-                            <div class="p-2 bg-slate-800/40 border border-slate-700/30 rounded-xl flex items-center justify-between text-xs">
-                                <span class="text-slate-300"><i class="fas ${KIND_ICONS[kind] || 'fa-circle'} text-slate-500 mr-1"></i> ${esc(KIND_LABELS[kind] || kind)}</span>
-                                <span class="text-[10px] text-slate-400 font-mono">${count}</span>
-                            </div>
-                        `).join('') : '<p class="text-[11px] text-slate-500">No hay eventos pendientes.</p>'}
-                    </div>
-                    <div class="text-[10px] text-slate-500 font-mono space-y-0.5">
-                        <div>Última sincronización: ${queue.lastSyncAt ? esc(new Date(queue.lastSyncAt).toLocaleString('es-CO')) : '—'}</div>
-                        ${queue.nextRetryAt ? `<div>Próximo intento: ${esc(new Date(queue.nextRetryAt).toLocaleTimeString('es-CO'))}</div>` : ''}
-                        ${queue.lastError ? `<div class="text-amber-300">Último error: ${esc(queue.lastError)}</div>` : ''}
-                    </div>
-                    ${queue.rejected.length ? `
-                        <div class="p-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-[11px] text-rose-200 space-y-1">
-                            <div class="font-bold">Eventos rechazados por el servidor</div>
-                            ${queue.rejected.map(r => `<div>${esc(KIND_LABELS[r.kind] || r.kind)}: ${esc(r.reason)}</div>`).join('')}
-                        </div>` : ''}
-                    <button onclick="window.OfflineQueue.flush()" ${state.isOffline || !queue.pending ? 'disabled' : ''} class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition">
-                        <i class="fas fa-rotate"></i> Sincronizar ahora
-                    </button>
-                </div>
+                ${demo ? `
+                    <h2 class="list-title">Herramientas de prueba</h2>
+                    <div class="list">
+                        <button type="button" onclick="window.app.toggleOfflineSimulation()" class="list-row list-button">
+                            <span class="list-label">${state.isOffline ? 'Terminar la simulación sin señal' : 'Simular pérdida de señal'}</span>${this.icon('caret-right')}
+                        </button>
+                    </div>` : ''}
+
+                ${queue.pending ? `
+                    <div class="screen-actions">
+                        <button onclick="window.OfflineQueue.flush()" class="btn-accent">${this.icon('arrows-clockwise')}${offline ? 'Reintentar ahora' : 'Enviar ahora'}</button>
+                    </div>` : ''}
             </div>
         `;
     }
-};
-
-const KIND_LABELS = {
-    'position': 'Posiciones GPS',
-    'trip.started': 'Inicio de viaje',
-    'trip.delivered': 'Entrega con firma y foto',
-    'alert.reported': 'Alertas reportadas',
-    'alert.confirmed': 'Confirmaciones de alertas'
-};
-const KIND_ICONS = {
-    'position': 'fa-location-dot',
-    'trip.started': 'fa-truck-moving',
-    'trip.delivered': 'fa-file-signature',
-    'alert.reported': 'fa-triangle-exclamation',
-    'alert.confirmed': 'fa-thumbs-up'
 };

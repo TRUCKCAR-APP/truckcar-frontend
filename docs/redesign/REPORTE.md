@@ -11,7 +11,8 @@ Auditoría inicial: [AUDITORIA.md](AUDITORIA.md). Dirección visual aprobada: **
 | 2 | Mapa oscuro, caché de teselas, barra inferior, botón y modal SOS | Hecha, en revisión |
 | 3A | Cabecera, Vehículo, Carga (en tránsito y sin carga) y Rutas (con su vacío) con la estructura del prototipo | Hecha, en revisión |
 | 3B | Navegar (HUD, marcador del camión, zoom inicial), "Centrar en mi posición" y escritorio en columna de 480 px | Hecha, en revisión |
-| 4 | Vehículo, Alertas (vacío, cargando y error), Offline con fecha real, POD con botón fijo, hoja de reportar e inicio de sesión | Pendiente |
+| 4A | Entrega (POD) con botón fijo, Alertas con sus tres estados y Offline con la fecha real del mapa | Hecha, en revisión |
+| 4B | Inicio de sesión y hoja de reportar | Pendiente |
 
 ## 1. Paleta: antes y después
 
@@ -106,8 +107,21 @@ Hecha en la fase 2 ([`js/views/driverApp.js`](../../js/views/driverApp.js) `TABS
 
 ## 4. Estados vacíos
 
-Pendiente (fase 4). En el prototipo, Alertas tiene tres estados distintos: vacío ("Sin reportes recientes", sin
-afirmar que la vía sea segura), cargando y error ("No se pudieron cargar las alertas").
+Cada pantalla distingue "no hay", "cargando" y "falló", con un ícono neutro, qué pasa y qué hacer. Ninguna afirma lo
+que no sabe.
+
+| Pantalla | Vacío | Cargando | Error |
+|---|---|---|---|
+| Alertas | "Sin reportes recientes" con "Reportar novedad". No dice que la vía sea segura. | "Buscando reportes cerca de usted…" y un esqueleto de la lista | "No se pudieron cargar las alertas", la causa y "Reintentar" |
+| Carga | "Sin carga asignada" y "Consultar de nuevo" | "Cargando el perfil" | "No se pudo cargar el perfil" y "Reintentar" |
+| Rutas | "Ruta no disponible" con el motivo real (sin carga, sin vehículo, error del servicio) y "Planear ruta" | "Calculando…" en las cifras | "Sin información" en las cifras si OSRM falla |
+| Offline | "Ninguna" o "Ninguno" por tipo de pendiente | "Consultando…" en el mapa | El último envío fallido y los eventos rechazados, con triángulo |
+
+Además:
+- La franja de sincronización bajo la cabecera ya no es índigo ni roja.
+  - Mientras actualiza: "Actualizando…" en gris.
+  - Si algo falla: triángulo y "No se pudo actualizar la ruta", con el detalle técnico en el título.
+  - La pantalla que ya explica su propio error (Alertas, Rutas) no lo repite.
 
 ## 5. Capturas
 
@@ -194,6 +208,26 @@ sus avisos y Rutas con "Centrar en mi posición". Todas las diferencias me parec
   pestaña Offline.
 - Modal SOS: [sos-390x844.jpg](fase-3b/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-3b/sos-sin-senal-390x844.jpg).
 
+**Fase 4A: app real vs prototipo (390×844).**
+[comparativa-app-vs-prototipo-390x844.png](fase-4a/comparativa-app-vs-prototipo-390x844.png) compara la entrega (POD),
+Alertas en sus tres estados y Offline. Todas las diferencias me parecen aceptables:
+- **Entrega (POD):** sigue siendo una hoja y no una pantalla con barra inferior; el botón queda fijo al pie, siempre
+  visible.
+- **Alertas:** el subtítulo no dice "a 50 km", porque la API no filtra por distancia.
+- **Offline:** no dice "desde hace 6 min", porque no se registra cuándo se perdió la señal.
+- **"Simular foto"** sigue a la vista: es una herramienta de demostración y se puede llevar a `?demo=1`.
+
+**Capturas y verificación de la fase 4A:**
+- **Offline con el mapa guardado:** [offline-con-mapa-390x844.jpg](fase-4a/offline-con-mapa-390x844.jpg).
+  - Se tomó con el Service Worker activo y dice "Guardado hasta mañana 4:31 a. m.", la fecha real de
+    `TileStore.summary()`.
+  - En las demás capturas el Service Worker está bloqueado, por eso dicen "Sin mapa guardado todavía".
+- **Offline con `?demo=1`:** [offline-demo-390x844.jpg](fase-4a/offline-demo-390x844.jpg). Solo así aparece
+  "Simular pérdida de señal".
+- **POD:** [pod-390x844.jpg](fase-4a/pod-390x844.jpg).
+- **Cola offline:** [cola-390x844.jpg](fase-4a/cola-390x844.jpg).
+- **Modal SOS:** [sos-390x844.jpg](fase-4a/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-4a/sos-sin-senal-390x844.jpg).
+
 ## 6. Inconsistencias de datos encontradas
 
 1. **Vehículo: "Peso Bruto Máx." igual a la tara y "Carga Útil" en 0,0 t.** fleets-drivers calcula
@@ -245,8 +279,33 @@ sus avisos y Rutas con "Centrar en mi posición". Todas las diferencias me parec
    - El riesgo empieza en `BAJO` (`RouteOptimizationAgent`) y solo cambia en dos casos:
      - si Routing-Restrictions declara intransitable ese corredor inventado;
      - si llegan alertas, que son todas las activas del país y no las de la ruta. Hoy la API devuelve 0.
-   - *Desde la fase 3B* la app no lo muestra: Rutas dice "Riesgo de la ruta: Sin información".
+   - *Desde la fase 3B* la app no lo muestra.
+   - *Desde la fase 4A* restricciones, alertas y riesgo van en una sola fila: "Restricciones, alertas y riesgo · sin
+     fuente de datos todavía". Cuando Route-AI envíe restricciones reales, salen en su propia fila.
+   - La línea "Aptitud para TDK 410 · sin información" se quitó: la aptitud depende de esos mismos datos.
    - El backend no se tocó.
+10. **Ana Torres "Activo" a 68,8 km/h y con 35 t a bordo, sin ninguna carga.** Era la última lectura de una prueba
+    antigua. *Corregido con el script de datos de demo:* Ana queda disponible, detenida y sin carga a bordo.
+
+**Datos de demo reproducibles.** [`scripts/demo/reset-demo.mjs`](../../scripts/demo/README.md) deja la demo local en un
+estado conocido:
+- Carlos en tránsito con la carga 88.
+- Diana sin carga.
+- Ana con `TKR-527`.
+- 0 conductores Mock.
+- Cada uno en su posición inicial.
+
+Cómo usarlo:
+- **Cuándo:** antes de ensayar y antes de la sustentación, y después de correr el script e2e de Load-Allocation, que
+  recrea los Mock.
+- **Seguro por defecto:** sin `--apply` solo muestra qué cambiaría. Con `--apply` respalda Redis y SQL, aplica y
+  verifica.
+- **Modifica datos locales directamente: no es para producción.**
+  - Aborta si el gateway no es `localhost` o si los contenedores no son los del compose local.
+  - Toca solo los ids de demo.
+  - Detalles en su [README](../../scripts/demo/README.md).
+- **Probado** dañando a propósito los datos locales: se recreó un Mock por la API y se marcó la carga 88 como
+  entregada. El script lo reparó todo, la verificación salió en verde y una segunda corrida dijo "Nada que cambiar".
 
 ## 7. Decisiones de diseño
 
@@ -417,6 +476,32 @@ sus avisos y Rutas con "Centrar en mi posición". Todas las diferencias me parec
     - La cabecera se queda con "⚠ Sin señal".
   - **"Centrar en mi posición"** en Rutas y Navegar. Usa la última lectura real del GPS o la de la telemetría. Sin
     ninguna, avisa "Sin posición GPS" en lugar de mover el mapa a un lugar inventado.
+
+- **Ajustes previos a la fase 4A**
+  - **Línea gris del HUD:** muestra la calle actual solo si se conoce y no es la misma que nombra la instrucción. Se
+    compara sin mayúsculas ni tildes. Sin GPS o fuera de ruta queda vacía, porque el aviso ya está en la tarjeta.
+  - **Rutas:** una sola fila para lo que no tiene fuente, en lugar de cuatro "Sin información".
+- **Fase 4A: decisiones**
+  - **Entrega (POD):**
+    - La hoja es una columna: cabecera con cerrar (X), campos que se desplazan y "Confirmar entrega" fijo al pie, en
+      ámbar.
+    - Sin la pila de botones verdes ni "Cancelar".
+    - Errores con triángulo y título propio: "Falta un dato obligatorio", "No se pudo usar la foto" o "No se pudo
+      registrar la entrega". Si el servidor falla, el botón pasa a "Reintentar entrega" y la firma y la foto se
+      conservan.
+    - Los campos se leen con `form.elements`, el equivalente estándar del acceso por nombre; el comportamiento es
+      el mismo.
+  - **Alertas:**
+    - Filtros con desplazamiento horizontal, sin barra visible y con el borde derecho desvanecido.
+    - Con reportes, una lista plana: título, "tipo · hace X · N confirmaciones" y "Confirmar". Sin chips de colores.
+    - "Reportar novedad" en ámbar, fijo abajo.
+  - **Offline:**
+    - "Por enviar" agrupa la cola como la entiende el conductor: SOS, posiciones, reportes, inicios de viaje y
+      entregas.
+    - "Guardado en el teléfono" muestra la aplicación, el mapa con su fecha real y la última sincronización.
+    - El índice del mapa se vuelve a leer al entrar en la pantalla.
+    - "Simular pérdida de señal" solo aparece con `?demo=1`.
+    - "Reintentar ahora" va en ámbar, sin el degradado azul, y solo aparece si hay algo pendiente.
 
 **Pendientes antes del despliegue**
 - Registrar el dominio de la demo en Stadia (cuenta y dominio). En `localhost` no hace falta.

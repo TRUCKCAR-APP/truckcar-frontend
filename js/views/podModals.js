@@ -175,69 +175,70 @@ window.PodUI = (function () {
      */
     function openDeliveryForm(load, onSubmit) {
         return new Promise((resolve) => {
+            // Estructura del prototipo B: cabecera con cerrar, campos que se desplazan y "Confirmar entrega" fijo abajo
+            // (siempre visible). Los nombres, ids y data-action no cambian: la lógica de la entrega es la misma.
+            const icon = (name) => `<svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
             const overlay = mountOverlay('pod-delivery-modal', `
-                <form id="pod-form" class="overflow-y-auto px-5 pt-1 space-y-4 text-slate-200" novalidate>
-                    <div class="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
-                        <div>
-                            <h3 class="font-extrabold text-[17px] text-white flex items-center gap-2 tracking-tight"><i class="fas fa-file-signature text-brand-400"></i> Registrar entrega</h3>
-                            <p class="text-xs text-slate-400 mt-0.5">${esc(load.id)} · ${esc(load.destination && load.destination.name)}</p>
+                <form id="pod-form" class="pod-form" novalidate aria-labelledby="pod-title">
+                    <div class="pod-head">
+                        <div class="min-w-0">
+                            <h2 id="pod-title">Registrar entrega</h2>
+                            <p class="secondary">${esc(load.id)} · ${esc(load.destination && load.destination.name)}</p>
                         </div>
-                        <button type="button" data-action="cancel" class="w-9 h-9 rounded-full bg-slate-800 text-slate-300 grid place-items-center" aria-label="Cerrar"><i class="fas fa-xmark"></i></button>
+                        <button type="button" data-action="cancel" class="header-icon-btn" aria-label="Cerrar sin registrar">${icon('x')}</button>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <label class="text-xs space-y-1 sm:col-span-2">
-                            <span class="font-bold text-slate-300">Nombre de quien recibe <span class="text-rose-400">*</span></span>
-                            <input name="receiverName" maxlength="150" required autocomplete="off" class="login-input w-full text-sm" placeholder="Ej. Jefe de bodega">
+                    <div class="pod-fields">
+                        <div id="pod-error" class="pod-error hidden" role="alert">
+                            <div class="warn-line">${icon('warning-fill')}<span data-error-title>No se pudo registrar la entrega</span></div>
+                            <p data-error-text></p>
+                        </div>
+
+                        <label class="field">
+                            <span class="field-label">Nombre de quien recibe <span class="field-req">· obligatorio</span></span>
+                            <input name="receiverName" maxlength="150" required autocomplete="off" class="field-input" placeholder="Ej. jefe de bodega">
                         </label>
-                        <label class="text-xs space-y-1">
-                            <span class="font-bold text-slate-300">Documento</span>
-                            <input name="receiverDocument" maxlength="40" autocomplete="off" class="login-input w-full text-sm" placeholder="CC 1020304050">
+                        <label class="field">
+                            <span class="field-label">Documento</span>
+                            <input name="receiverDocument" maxlength="40" autocomplete="off" class="field-input" placeholder="CC 1020304050">
                         </label>
-                        <label class="text-xs space-y-1">
-                            <span class="font-bold text-slate-300">Observaciones</span>
-                            <input name="notes" maxlength="500" autocomplete="off" class="login-input w-full text-sm" placeholder="Sin novedades">
+                        <label class="field">
+                            <span class="field-label">Observaciones</span>
+                            <input name="notes" maxlength="500" autocomplete="off" class="field-input" placeholder="Sin novedades">
                         </label>
+
+                        <div class="field">
+                            <div class="field-row">
+                                <span class="field-label">Firma de quien recibe <span class="field-req">· obligatoria</span></span>
+                                <button type="button" data-action="clear-signature" class="field-link">${icon('eraser')}Borrar</button>
+                            </div>
+                            <canvas id="pod-signature" class="pod-signature" style="touch-action: none" aria-label="Lienzo de firma"></canvas>
+                            <div class="field-row">
+                                <span class="field-help">Firme con el dedo dentro del recuadro.</span>
+                                <span data-hash="signature" class="pod-hash hidden" title=""></span>
+                            </div>
+                        </div>
+
+                        <div class="field">
+                            <span class="field-label">Foto de la carga entregada</span>
+                            <div class="pod-photo-actions">
+                                <label class="pod-photo-slot">
+                                    ${icon('camera')}Tomar o adjuntar foto
+                                    <input type="file" name="photoFile" accept="image/*" capture="environment" class="hidden">
+                                </label>
+                                <button type="button" data-action="simulate-photo" class="field-link">Simular foto</button>
+                                <button type="button" data-action="remove-photo" class="field-link hidden">${icon('x')}Quitar</button>
+                            </div>
+                            <figure id="pod-photo-figure" class="pod-photo hidden">
+                                <img id="pod-photo-preview" alt="Vista previa de la foto de entrega">
+                                <figcaption><span data-hash="photo" class="pod-hash" title=""></span></figcaption>
+                            </figure>
+                        </div>
+                        <p class="field-help">La firma y la foto se envían cifradas. Sin señal se guardan en el teléfono y se envían al reconectar.</p>
                     </div>
 
-                    <div class="space-y-1.5">
-                        <div class="flex items-center justify-between text-xs">
-                            <span class="font-bold text-slate-300">Firma del receptor <span class="text-rose-400">*</span></span>
-                            <button type="button" data-action="clear-signature" class="text-slate-400 hover:text-amber-300"><i class="fas fa-eraser"></i> Borrar</button>
-                        </div>
-                        <canvas id="pod-signature" class="w-full h-44 rounded-2xl border-2 border-dashed border-slate-500 bg-white cursor-crosshair" style="touch-action: none" aria-label="Lienzo de firma"></canvas>
-                        <div class="flex items-center justify-between gap-2">
-                            <p class="text-[10px] text-slate-500">Firme con el dedo, lápiz o mouse dentro del recuadro.</p>
-                            <span data-hash="signature" class="hidden chip !text-[10.5px] !py-0.5 font-mono text-emerald-300" title=""></span>
-                        </div>
-                    </div>
-
-                    <div class="space-y-2">
-                        <span class="text-xs font-bold text-slate-300">Foto de la carga entregada</span>
-                        <div class="flex flex-wrap gap-2">
-                            <label class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold cursor-pointer">
-                                <i class="fas fa-camera"></i> Tomar o adjuntar foto
-                                <input type="file" name="photoFile" accept="image/*" capture="environment" class="hidden">
-                            </label>
-                            <button type="button" data-action="simulate-photo" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold"><i class="fas fa-wand-magic-sparkles"></i> Simular foto</button>
-                            <button type="button" data-action="remove-photo" class="px-3 py-1.5 text-xs text-slate-400 hover:text-rose-300 hidden"><i class="fas fa-trash"></i> Quitar</button>
-                        </div>
-                        <p class="text-[10px] text-slate-500">La firma y la foto se suben cifradas en tránsito al almacenamiento de evidencias. Sin señal se guardan en el teléfono y se envían al reconectar.</p>
-                        <figure id="pod-photo-figure" class="hidden relative">
-                            <img id="pod-photo-preview" alt="Vista previa de la foto de entrega" class="w-full max-h-56 object-cover rounded-2xl border border-slate-700">
-                            <figcaption class="absolute left-2 bottom-2 right-2 flex justify-between items-end gap-2">
-                                <span data-hash="photo" class="chip !bg-slate-950/80 font-mono !text-[10.5px] text-emerald-300" title=""></span>
-                            </figcaption>
-                        </figure>
-                    </div>
-
-                    <p id="pod-error" class="hidden text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-2.5"></p>
-
-                    <div class="grid gap-2.5 pt-1 pb-1">
-                        <button type="submit" class="btn-cta is-success">
-                            <i class="fas fa-check"></i> Confirmar entrega
-                        </button>
-                        <button type="button" data-action="cancel" class="btn-secondary w-full">Cancelar</button>
+                    <div class="pod-footer">
+                        <button type="submit" class="btn-accent">${icon('check-circle')}<span>Confirmar entrega</span></button>
                     </div>
                 </form>
             `);
@@ -253,7 +254,7 @@ window.PodUI = (function () {
                     return;
                 }
                 const hash = await window.PodEvidence.sha256Hex(await window.PodEvidence.dataUrlToBlob(dataUrl));
-                chip.innerHTML = '<i class="fas fa-fingerprint"></i> SHA-256 ' + hash.slice(0, 12) + '…';
+                chip.textContent = 'Huella SHA-256 ' + hash.slice(0, 12) + '…';
                 chip.title = 'SHA-256 ' + hash;
                 chip.classList.remove('hidden');
             };
@@ -267,9 +268,12 @@ window.PodUI = (function () {
             const submitBtn = form.querySelector('button[type="submit"]');
             let photoDataUrl = null;
 
-            const showError = (message) => {
-                errorBox.textContent = message;
+            // Error con triángulo y texto; la firma y la foto siguen en el formulario.
+            const showError = (message, title = 'Falta un dato obligatorio') => {
+                errorBox.querySelector('[data-error-title]').textContent = title;
+                errorBox.querySelector('[data-error-text]').textContent = message;
                 errorBox.classList.toggle('hidden', !message);
+                if (message) errorBox.scrollIntoView({ block: 'nearest' });
             };
             const setPhoto = (dataUrl) => {
                 photoDataUrl = dataUrl;
@@ -292,43 +296,44 @@ window.PodUI = (function () {
                 showHash('signature', null);
             });
             overlay.querySelector('[data-action="simulate-photo"]').addEventListener('click', () => setPhoto(simulatedPhoto(load)));
-            removeBtn.addEventListener('click', () => { setPhoto(null); form.photoFile.value = ''; });
-            form.photoFile.addEventListener('change', async () => {
-                const file = form.photoFile.files[0];
+            removeBtn.addEventListener('click', () => { setPhoto(null); form.elements.photoFile.value = ''; });
+            form.elements.photoFile.addEventListener('change', async () => {
+                const file = form.elements.photoFile.files[0];
                 if (!file) return;
                 try {
                     setPhoto(await compressPhoto(file));
                     showError('');
                 } catch (error) {
-                    showError(error.message);
+                    showError(error.message, 'No se pudo usar la foto');
                 }
             });
 
             form.addEventListener('submit', async (event) => {
                 event.preventDefault();
-                const receiverName = form.receiverName.value.trim();
+                const receiverName = form.elements.receiverName.value.trim();
                 if (!receiverName) return showError('Indique el nombre de quien recibe la carga.');
                 if (pad.isEmpty()) return showError('La entrega requiere la firma de quien recibe.');
                 showError('');
                 submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Registrando…';
+                submitBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Registrando…</span>';
                 try {
                     // Imágenes binarias (Blob): se suben al almacenamiento con URL prefirmada, nunca en Base64.
                     await onSubmit({
                         receiverName,
-                        receiverDocument: form.receiverDocument.value.trim() || null,
-                        notes: form.notes.value.trim() || null,
+                        receiverDocument: form.elements.receiverDocument.value.trim() || null,
+                        notes: form.elements.notes.value.trim() || null,
                         signatureBlob: await window.PodEvidence.dataUrlToBlob(pad.toDataUrl()),
                         photoBlob: photoDataUrl ? await window.PodEvidence.dataUrlToBlob(photoDataUrl) : null
                     });
                     finish(true);
                 } catch (error) {
                     submitBtn.disabled = false;
-                    submitBtn.innerHTML = '<i class="fas fa-check"></i> Confirmar entrega';
-                    showError('No se pudo registrar la entrega: ' + window.ui.errorMessage(error));
+                    submitBtn.innerHTML = icon('arrows-clockwise') + '<span>Reintentar entrega</span>';
+                    showError(window.ui.errorMessage(error) + '. La firma y la foto siguen en este formulario: revise la señal e intente de nuevo.',
+                        'No se pudo registrar la entrega');
                 }
             });
-            form.receiverName.focus();
+            form.elements.receiverName.focus();
         });
     }
 
