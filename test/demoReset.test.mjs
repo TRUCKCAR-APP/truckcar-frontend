@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { assertLocalGateway, assertLocalContainer, validateState, driverDiff, loadDiff, loadSql } from "../scripts/demo/reset-demo.mjs";
+import { assertLocalGateway, assertLocalContainer, validateState, driverDiff, loadDiff, loadSql, plateSql, transactionSql } from "../scripts/demo/reset-demo.mjs";
 
 const state = () => JSON.parse(readFileSync("scripts/demo/demo-state.json", "utf8"));
 
@@ -61,4 +61,20 @@ test("las horas de la carga van en la zona de Load-Allocation y una salida en el
   const row = { status: "IN_TRANSIT", assigned_driver_id: load.driverId, assigned_vehicle_plate: load.vehiclePlate };
   assert.deepEqual(loadDiff(load, { ...row, trip_started_at: "2026-11-01T21:40:00" }, [], "2026-11-01T22:40:00"), []);
   assert.match(loadDiff(load, { ...row, trip_started_at: "2026-11-02T02:19:16" }, [], "2026-11-01T22:40:00").join(" "), /futuro/);
+});
+
+test("la corrección de placa toca solo al conductor de demo y su placa vieja, en la misma transacción que la carga", () => {
+  const st = state();
+  const c = st.plateCorrections[0];
+  const sql = plateSql([c]);
+  assert.match(sql, /UPDATE fleet_allocation\.allocation_decisions SET selected_vehicle_plate = 'TKR-527'\s+WHERE selected_driver_id = '207a8e39-990e-48da-9b85-10178c83a8cb' AND selected_vehicle_plate = 'TDK-410';/);
+  assert.match(sql, /UPDATE load_allocation\.freight_loads SET assigned_vehicle_plate = 'TKR-527'\s+WHERE assigned_driver_id = '207a8e39-990e-48da-9b85-10178c83a8cb' AND assigned_vehicle_plate = 'TDK-410';/);
+  const tx = transactionSql({ load: st.load, corrections: [c] });
+  assert.equal((tx.match(/BEGIN;/g) || []).length, 1);
+  assert.equal((tx.match(/COMMIT;/g) || []).length, 1);
+  assert.match(tx, /WHERE id = 88;[\s\S]*allocation_decisions/);
+
+  const foreign = state();
+  foreign.plateCorrections[0].driverId = "11111111-2222-3333-4444-555555555555";
+  assert.throws(() => validateState(foreign), /conductores de demo/);
 });

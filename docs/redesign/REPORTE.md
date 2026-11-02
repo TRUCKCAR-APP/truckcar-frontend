@@ -1,19 +1,21 @@
 # Rediseño premium nativo · PWA del conductor
 
 Rama `refactor/ui-premium` · un commit por fase · capturas en 390×844, 360×800, 768×1024 y 1440×900.
-Auditoría inicial: [AUDITORIA.md](AUDITORIA.md). Dirección visual aprobada: **B** (prototipo en
-[`prototipo/`](prototipo/)).
+Auditoría inicial: [AUDITORIA.md](AUDITORIA.md) (10/20). Auditoría final: [AUDITORIA-FINAL.md](AUDITORIA-FINAL.md)
+(**15/20**). Dirección visual aprobada: **B** (prototipo en [`prototipo/`](prototipo/)). Guion de la demostración:
+[DEMO.md](DEMO.md).
 
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Auditoría y design tokens | Hecha; tokens actualizados a la dirección B |
-| — | Prototipo de dirección (A y B) y pantallas de la dirección B | Aprobado; ajustes de la ronda 4 en revisión |
-| 2 | Mapa oscuro, caché de teselas, barra inferior, botón y modal SOS | Hecha, en revisión |
-| 3A | Cabecera, Vehículo, Carga (en tránsito y sin carga) y Rutas (con su vacío) con la estructura del prototipo | Hecha, en revisión |
-| 3B | Navegar (HUD, marcador del camión, zoom inicial), "Centrar en mi posición" y escritorio en columna de 480 px | Hecha, en revisión |
-| 4A | Entrega (POD) con botón fijo, Alertas con sus tres estados y Offline con la fecha real del mapa | Hecha, en revisión |
+| — | Prototipo de dirección (A y B) y pantallas de la dirección B | Aprobado |
+| 2 | Mapa oscuro, caché de teselas, barra inferior, botón y modal SOS | Hecha |
+| 3A | Cabecera, Vehículo, Carga (en tránsito y sin carga) y Rutas (con su vacío) con la estructura del prototipo | Hecha |
+| 3B | Navegar (HUD, marcador del camión, zoom inicial), "Centrar en mi posición" y escritorio en columna de 480 px | Hecha |
+| 4A | Entrega (POD) con botón fijo, Alertas con sus tres estados y Offline con la fecha real del mapa | Hecha |
 | 4B | Inicio de sesión y hoja de reportar | Hecha |
-| 5 | Torre de control, "Mis envíos", hojas de confirmación y barra de demostración: paleta, mayúsculas y estados | Hecha, en revisión |
+| 5 | Torre de control, "Mis envíos", hojas de confirmación y barra de demostración: paleta, mayúsculas y estados | Hecha |
+| Cierre | Auditoría final, guion de la demostración y lista de verificación para el despliegue | Hecho |
 
 ## 1. Paleta: antes y después
 
@@ -50,12 +52,29 @@ que la nombra ("Fuera de la ruta", "Sin señal").
 - **Preferencias del sistema:** `prefers-reduced-motion`, `prefers-reduced-transparency` y `prefers-contrast` ajustan
   los tokens, no los componentes.
 
-**Estado de la app.**
-- Los neutros, el blanco, el acento y la tipografía ya usan estos tokens en toda la app.
-- Hojas, toasts, el indicador de red, el marco de escritorio y las tarjetas ya están en tokens.
-- La Torre de control y "Mis envíos" heredan los tokens sin rediseñar su estructura.
-- Los íconos de Font Awesome y los matices restantes (verde, índigo, rosa) se reemplazan pantalla por pantalla en las
-  fases 2 a 4.
+**Anillo de foco:** blanco `#ECEEF1` (`--color-focus`), separado 2 px del control.
+- Contraste: 16,6:1 sobre el fondo, 14,2:1 sobre la superficie elevada y 4,8:1 sobre el rojo del SOS.
+- Antes era el azul de la ruta.
+- No es ámbar, porque se confundiría con la acción principal.
+
+**La paleta en uso, medida en el código** (auditoría inicial y final):
+
+| Medida | Antes | Después |
+|---|---|---|
+| Matices usados como acento | 7 | 1 (ámbar) |
+| Clases de matices fuera de los tokens | ~370 | 0 sin control: las 23 que quedan pasan por la red de seguridad de Tailwind |
+| Sombras de color y halos | 7 | 0 |
+| Gradientes | 15 | 3, funcionales: el desvanecido sobre el botón fijo y la máscara de los filtros |
+| Rojo fuera del SOS | Rechazar, cancelar, gálibo, errores | Ninguno |
+| Colores fijos en `css/main.css` | 65 | 29, ninguno de matiz, frente a 593 usos de tokens |
+
+**Estado final de la app.**
+- **App del conductor** (inicio de sesión, Vehículo, Carga, Rutas, Navegar, Alertas, Offline, entrega, reportar y
+  SOS): por completo en tokens, Manrope y Phosphor.
+- **Torre de control, "Mis envíos", hojas de confirmación y barra de la demostración:** en la paleta, sin mayúsculas
+  y con estados en español. Conservan su estructura y Font Awesome, como se acordó en la fase 5.
+- **Seguimiento público:** quedó fuera del rediseño. Solo hereda la red de seguridad de colores. Es el primer
+  hallazgo P1 de la [auditoría final](AUDITORIA-FINAL.md).
 
 ## 2. Tarjeta unificada del HUD
 
@@ -86,6 +105,14 @@ Hecha en la fase 3B ([`css/navigation.css`](../../css/navigation.css), `renderNa
   - Se repite al llegar la ruta paso a paso.
   - En el seguimiento, la posición queda bajo el centro para ver más vía por delante.
 - **Sin botones de zoom** en Navegar: chocaban con la tarjeta y se puede pellizcar el mapa.
+- **En horizontal** (herramienta "Rotar" de la demostración): la tarjeta de 340 px a la izquierda, el panel a la
+  derecha y la barra del viaje como tarjeta bajo la de la maniobra.
+- **Accesibilidad:**
+  - La maniobra se anuncia a los lectores de pantalla.
+  - Cada botón del panel tiene su nombre, y la voz dice si está activa (`aria-pressed`).
+  - El foco es el anillo blanco del sistema.
+- **Capturas:** [navegar-390x844.jpg](fase-5/navegar-390x844.jpg) (sin GPS) y
+  [navegar-rumbo-390x844.jpg](fase-5/navegar-rumbo-390x844.jpg) (con rumbo).
 
 ## 3. Barra inferior
 
@@ -104,7 +131,12 @@ Hecha en la fase 2 ([`js/views/driverApp.js`](../../js/views/driverApp.js) `TABS
   al 7 %.
 - **Toques:** sin resaltado azul al tocar y sin `:hover` pegado en el teléfono. Al presionar, el texto pasa al color
   primario.
-- **Carga pendiente:** se marca con un punto ámbar sobre el ícono de Carga, con su texto para lectores de pantalla.
+- **Carga por aceptar:** un punto ámbar sobre el ícono de Carga, con su texto para lectores de pantalla.
+- **Acciones guardadas sin señal:** un número ámbar sobre el ícono de Offline, porque en el teléfono no hay tooltip.
+  Los lectores de pantalla oyen el texto completo (", 2 acciones guardadas sin enviar"), y el número se actualiza con
+  cada cambio de la cola.
+- **Foco:** el anillo blanco del sistema.
+- **Capturas:** [cola-390x844.jpg](fase-5/cola-390x844.jpg), con el número sobre Offline.
 
 ## 4. Estados vacíos
 
@@ -116,13 +148,22 @@ que no sabe.
 | Alertas | "Sin reportes recientes" con "Reportar novedad". No dice que la vía sea segura. | "Buscando reportes cerca de usted…" y un esqueleto de la lista | "No se pudieron cargar las alertas", la causa y "Reintentar" |
 | Carga | "Sin carga asignada" y "Consultar de nuevo" | "Cargando el perfil" | "No se pudo cargar el perfil" y "Reintentar" |
 | Rutas | "Ruta no disponible" con el motivo real (sin carga, sin vehículo, error del servicio) y "Planear ruta" | "Calculando…" en las cifras | "Sin información" en las cifras si OSRM falla |
-| Offline | "Ninguna" o "Ninguno" por tipo de pendiente | "Consultando…" en el mapa | El último envío fallido y los eventos rechazados, con triángulo |
+| Vehículo | "Sin vehículo registrado", con triángulo y qué hacer | "Cargando el perfil" | "No se pudo cargar el perfil" y "Reintentar" |
+| Navegar | Sin carga en tránsito, "Sin carga en tránsito" en la barra del viaje | "Calculando la ruta paso a paso…" | "Guía paso a paso no disponible · siga el mapa"; sin GPS, "Sin posición" en la tarjeta |
+| Offline | "Ninguna" o "Ninguno" por tipo de envío por hacer | "Consultando…" en el mapa | El último envío fallido y los eventos rechazados, con triángulo |
+| Mapa sin señal | Una zona no vista queda oscura y limpia, sin cuadros rotos | — | — |
 
 Además:
 - La franja de sincronización bajo la cabecera ya no es índigo ni roja.
   - Mientras actualiza: "Actualizando…" en gris.
   - Si algo falla: triángulo y "No se pudo actualizar la ruta", con el detalle técnico en el título.
   - La pantalla que ya explica su propio error (Alertas, Rutas) no lo repite.
+- **Torre de control y "Mis envíos":** sus vacíos ("El motor de asignación aún no registra decisiones para esta carga",
+  "Aún no ha publicado cargas") conservan la estructura anterior, con la paleta nueva.
+- **Capturas:** [vacio-carga-390x844.jpg](fase-5/vacio-carga-390x844.jpg),
+  [vacio-rutas-390x844.jpg](fase-5/vacio-rutas-390x844.jpg), [alertas-390x844.jpg](fase-5/alertas-390x844.jpg),
+  [alertas-cargando-390x844.jpg](fase-5/alertas-cargando-390x844.jpg) y
+  [alertas-error-390x844.jpg](fase-5/alertas-error-390x844.jpg).
 
 ## 5. Capturas
 
@@ -181,7 +222,7 @@ diferencias visuales:
 
 **Verificación de la fase 2** (sin regresiones en el flujo):
 - POD: el formulario de entrega abre y conserva sus campos ([pod-390x844.jpg](fase-2/pod-390x844.jpg)).
-- Cola offline: con la red caída, el SOS queda en la cola durable y la pantalla Offline lo muestra pendiente ("Sin
+- Cola offline: con la red caída, el SOS queda en la cola durable y la pantalla Offline lo muestra por enviar ("Sin
   señal · 1 guardado") ([cola-390x844.jpg](fase-2/cola-390x844.jpg)).
 - Modal SOS confirmado por el servidor ([sos-390x844.jpg](fase-2/sos-390x844.jpg)) y sin señal
   ([sos-sin-senal-390x844.jpg](fase-2/sos-sin-senal-390x844.jpg)).
@@ -351,7 +392,7 @@ Para probar en un teléfono hay dos caminos:
     "Ana Torres (TDK-410)": es una decisión guardada antes del cambio de placa a `TKR-527`. AI-powered-fleet-allocation
     copia la placa en cada decisión. Es historial: no se corrige.
 
-**Decisión de producto pendiente: reportar en la vía sin GPS.**
+**Decisión de producto abierta: reportar en la vía sin GPS.**
 - **Hoy:** sin una lectura de GPS de los últimos 2 minutos, la hoja de reportar pide una nueva. Mientras no llega,
   los 7 tipos están bloqueados, y si no llega lo dice con un triángulo.
 - **No es un cambio del rediseño:** es comportamiento previo, del commit `ee15d78` (31 de octubre, "one-tap road
@@ -577,7 +618,7 @@ Cómo usarlo:
     - "Guardado en el teléfono" muestra la aplicación, el mapa con su fecha real y la última sincronización.
     - El índice del mapa se vuelve a leer al entrar en la pantalla.
     - "Simular pérdida de señal" solo aparece con `?demo=1`.
-    - "Reintentar ahora" va en ámbar, sin el degradado azul, y solo aparece si hay algo pendiente.
+    - "Reintentar ahora" va en ámbar, sin el degradado azul, y solo aparece si hay algo por enviar.
 
 - **Ajustes previos a la fase 4B**
   - **Herramientas de simulación solo con `?demo=1`:** "Simular GPS", "Rotar", "Simular foto" y "Simular pérdida de
@@ -655,15 +696,64 @@ Cómo usarlo:
     - La app del conductor (`driverApp.js`, `telemetry.js`) ya no usa Font Awesome.
     - La vista pública de seguimiento no estaba en el alcance: solo hereda la red de seguridad de colores.
 
-**Pendientes antes del despliegue**
-- Registrar el dominio de la demo en Stadia (cuenta y dominio). En `localhost` no hace falta.
-- Leer la versión de los términos de Stadia vigente desde el 9 de noviembre de 2026 y anotar cualquier cambio sobre
-  caché.
-- Confirmar con Stadia si una PWA cuenta como "aplicación móvil" para la excepción de 100 MB (lo consulta el
-  responsable del proyecto).
-- Plan B: la clave de CARTO la pide el responsable del proyecto; la prueba está descrita arriba.
+**Mapa y caché, lo que queda abierto con Stadia**
 - El plan gratuito es solo para uso no comercial: alcanza para la demo académica, no para producción.
 - Consecuencia de la política de caché: si el conductor no abre la app, el mapa sin señal se vacía. Con las cabeceras
   actuales de Stadia esto pasa a las **6 horas**, no a la semana; con un proveedor sin cabeceras, a los 7 días.
 - **Fondo oscuro:** decidido por la escena (cabina de noche, sol directo sobre una pantalla oscura con texto claro de
   alto contraste), no por la categoría.
+
+## 8. Lista de verificación previa al despliegue
+
+Marque cada punto antes de publicar la app fuera de `localhost`. Ninguno cambia el código, salvo el punto 2 si se
+usa el plan B.
+
+**Mapa**
+- [ ] **1. Registrar el dominio en Stadia.** Cree la cuenta y agregue el dominio del despliegue en el panel de Stadia.
+  En `localhost` no hace falta, pero en cualquier otro dominio, sin registro, las teselas fallan.
+  - Lea los términos vigentes desde el 9 de noviembre de 2026 y anote cualquier cambio sobre la caché.
+  - Pregunte a Stadia si una PWA cuenta como "aplicación móvil" para la excepción de 100 MB.
+- [ ] **2. Tener la clave de CARTO como plan B.** Pídala en
+  [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey/) y haga la prueba de §7 ("Probar el cambio a CARTO").
+  - La clave va en la configuración del despliegue (`window.TRUCKCAR_MAP_API_KEY` o la etiqueta `<meta>` que lee
+    `js/config.js`), **nunca en el repositorio**.
+  - El cambio de proveedor es `MAP_PROVIDER = 'carto'` en `js/config.js`. No hay respaldo automático entre los dos.
+
+**Servidor**
+- [ ] **3. Servir con HTTPS.** Sin HTTPS no funcionan, fuera de `localhost`, ni el Service Worker (mapa sin señal y
+  cola durable) ni la geolocalización. Compruebe que `http://` redirige a `https://`.
+- [ ] **4. Respaldar Postgres y Redis** antes de tocar datos en el servidor:
+
+  ```bash
+  # Postgres: todas las bases, con el usuario del propio contenedor
+  docker exec truckcar-postgis sh -c 'pg_dumpall -U "$POSTGRES_USER"' > respaldo-postgres-$(date +%F).sql
+  # Redis: forzar un volcado y copiarlo (además del AOF que ya está activo)
+  docker exec truckcar-redis redis-cli SAVE
+  docker cp truckcar-redis:/data/dump.rdb respaldo-redis-$(date +%F).rdb
+  ```
+
+  Guarde los dos archivos fuera del servidor y compruebe que no están vacíos.
+- [ ] **5. Correr el script de datos de la demo** en el ambiente local donde se va a presentar:
+  `TRUCKCAR_DEMO_PASSWORD='…' node scripts/demo/reset-demo.mjs --apply`.
+  - Debe terminar con la verificación en verde: Carlos con la carga 88 en tránsito, Diana sin carga, Ana con
+    `TKR-527` (también en las decisiones del motor), 0 Mock y placas únicas.
+  - **Solo es para local:** se niega a correr si el gateway no es `localhost` ([scripts/demo/README.md](../../scripts/demo/README.md)).
+
+**Dispositivo**
+- [ ] **6. Probar en un teléfono real** (un Android de gama media de hace unos años, con HTTPS). Lo que no se pudo
+  probar está en §5b:
+  - Instalar como PWA y abrir sin señal (modo avión): mapa guardado, cola durable y SOS en cola.
+  - Brújula y rumbo en Navegar, GPS real y el teclado abierto en los campos de la entrega.
+  - Sol directo sobre la pantalla y la vibración del SOS.
+  - Sin despliegue, se puede probar con el teléfono conectado por USB y el reenvío de puertos de Chrome
+    (`chrome://inspect` → Port forwarding 5500 → `localhost:5500`): el teléfono lo ve como `localhost`.
+
+**Producto**
+- [ ] **7. Decidir qué pasa al reportar en la vía sin GPS.** Hoy, sin una lectura de GPS de los últimos 2 minutos,
+  los 7 tipos de reporte quedan bloqueados. Es comportamiento previo al rediseño (§6, "Decisión de producto
+  abierta"). La pregunta: ¿se permite reportar con la última posición conocida, marcada con su antigüedad, como ya
+  hace el SOS? Si se permite, Community-Alerts debe guardar esa antigüedad.
+
+**Recomendado, no bloqueante**
+- Generar el CSS de Tailwind en el despliegue en lugar del CDN (P1 de la [auditoría final](AUDITORIA-FINAL.md)).
+- Llevar el seguimiento público a la paleta y al mapa configurado (el otro P1).

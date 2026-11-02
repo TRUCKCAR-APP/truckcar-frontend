@@ -9,6 +9,14 @@
     "vehiclePlate": "TDK-410"
   },
   "mockDriverIds": ["drv-e2e-1", "drv-e2e-2", "drv-e2e-3"],
+  "plateCorrections": [
+    {
+      "_comentario": "Ana tuvo la placa de Carlos: sus decisiones del motor y sus cargas guardadas aún dicen TDK-410.",
+      "driverId": "207a8e39-990e-48da-9b85-10178c83a8cb",
+      "from": "TDK-410",
+      "to": "TKR-527"
+    }
+  ],
   "drivers": [
     {
       "key": "carlos",

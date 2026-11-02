@@ -93,7 +93,10 @@
     --border-elevated: 1px solid rgba(255, 255, 255, 0.10);
     --color-border: rgba(255, 255, 255, 0.07);
     --color-border-elevated: rgba(255, 255, 255, 0.10);
-    --color-focus: rgb(var(--route-500));
+    /* Anillo de foco: blanco (texto primario), separado 2 px del control. 16,6:1 sobre el fondo, 14,2:1 sobre la
+       superficie elevada y 4,8:1 sobre el rojo del SOS. No ámbar: es el color de la acción principal. */
+    --color-focus: rgb(var(--graphite-100));
+    --color-focus-soft: rgb(var(--graphite-100) / 0.18);
 
     /* Vidrio del HUD de navegación (con respaldo sólido donde no hay backdrop-filter). */
     --color-glass: rgb(var(--graphite-900) / 0.78);

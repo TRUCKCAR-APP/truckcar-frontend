@@ -4,7 +4,8 @@
 
 - **Carlos Conductor:** en tránsito con la carga 88 (Bogotá → Ibagué), tractocamión `TDK-410`, en el origen de la carga.
 - **Diana Rios:** sin carga, camión `SNT-238`, en Bogotá.
-- **Ana Torres:** con su placa propia `TKR-527`, disponible y sin carga a bordo.
+- **Ana Torres:** con su placa propia `TKR-527`, disponible y sin carga a bordo. Sus decisiones del motor de asignación y
+  sus cargas guardadas también dicen `TKR-527`, no la placa vieja `TDK-410`.
 - **Ningún conductor de prueba:** "Mock drv-e2e-1..3" no aparece.
 
 ## Cuándo correrlo
@@ -48,15 +49,17 @@ placas únicas.
 - **Seguro por defecto:** sin `--apply` solo muestra los cambios.
 - **Respaldo previo:** antes de modificar guarda en `scripts/demo/backups/<fecha>/` (ignorado por git):
   - `redis.json` con los registros, los índices y los conjuntos de lo que va a tocar.
-  - `sql.json` con la carga 88 y sus evidencias de entrega.
+  - `sql.json` con la carga 88, sus evidencias de entrega y las filas con la placa vieja.
   - Imprime la ruta del respaldo.
 - **Cambios acotados:**
   - **Conductores:** Carlos, Diana y Ana, por la API de fleets-drivers (`POST /fleets-drivers/state`, como
     coordinador), con su posición inicial.
   - **Conductores Mock:** `drv-e2e-1..3` en Redis, solo sus claves exactas, como las borraría el repositorio de
     fleets-drivers. No hay una API para borrar conductores.
+  - **Placa de Ana en lo guardado:** en SQL, `UPDATE … WHERE` el id exacto de Ana y la placa vieja exacta, en
+    `fleet_allocation.allocation_decisions` (lo que muestra la Torre) y `load_allocation.freight_loads`.
   - **Carga 88:** en SQL, un `UPDATE … WHERE id = 88` que la deja en tránsito con Carlos y sin datos de entrega, y un
-    `DELETE` de sus evidencias de entrega (`WHERE load_id = 88`), en una transacción.
+    `DELETE` de sus evidencias de entrega (`WHERE load_id = 88`). Va en la misma transacción que la placa.
   - Sin `FLUSHALL`, `DROP` ni borrados masivos. Los ids permitidos se validan con un formato estricto.
 - **Credenciales:**
   - La contraseña viene de `TRUCKCAR_DEMO_PASSWORD`.

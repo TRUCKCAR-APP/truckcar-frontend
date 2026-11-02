@@ -54,6 +54,11 @@ export function validateState(state) {
   state.drivers.forEach((d) => {
     if (!ID.test(d.state.driverId) || !PLATE.test(d.state.vehiclePlate)) throw new Error("Conductor con formato inesperado: " + d.key);
   });
+  const demoIds = new Set(state.drivers.map((d) => d.state.driverId));
+  (state.plateCorrections || []).forEach((c) => {
+    if (!demoIds.has(c.driverId)) throw new Error("La corrección de placa solo puede tocar conductores de demo");
+    if (!PLATE.test(c.from) || !PLATE.test(c.to) || c.from === c.to) throw new Error("Placas de la corrección con formato inesperado");
+  });
   return state;
 }
 
@@ -81,6 +86,25 @@ export function loadDiff(target, row, podRows, nowLocal = null) {
 }
 
 const TIME_ZONE = /^[A-Za-z]+(\/[A-Za-z_]+)+$/;
+
+/**
+ * Corrección de placa en lo guardado: decisiones del motor de asignación (fleet_allocation) y cargas asignadas
+ * (load_allocation). Por id exacto del conductor y la placa vieja exacta, para no tocar a nadie más.
+ */
+export function plateSql(corrections) {
+  const q = (v) => "'" + String(v).replace(/'/g, "''") + "'";
+  return corrections.map((c) => `UPDATE fleet_allocation.allocation_decisions SET selected_vehicle_plate = ${q(c.to)}
+WHERE selected_driver_id = ${q(c.driverId)} AND selected_vehicle_plate = ${q(c.from)};
+UPDATE load_allocation.freight_loads SET assigned_vehicle_plate = ${q(c.to)}
+WHERE assigned_driver_id = ${q(c.driverId)} AND assigned_vehicle_plate = ${q(c.from)};
+`).join("");
+}
+
+/** Una sola transacción con lo que haga falta: la carga de demo y las correcciones de placa. */
+export function transactionSql({ load = null, timeZone = "America/Bogota", corrections = [] }) {
+  const body = (load ? loadSql(load, timeZone).replace(/^BEGIN;\n/, "").replace(/COMMIT;\n$/, "") : "") + plateSql(corrections);
+  return `BEGIN;\n${body}COMMIT;\n`;
+}
 
 /**
  * SQL de la carga: un UPDATE y un DELETE por id exacto, en una transacción. Las horas van en la zona horaria de
@@ -172,6 +196,13 @@ async function main() {
   });
   const loadRow = sqlJson(pg, `SELECT row_to_json(f) FROM load_allocation.freight_loads f WHERE id = ${state.load.id}`);
   const podRows = sqlJson(pg, `SELECT COALESCE(json_agg(p), '[]'::json) FROM load_allocation.freight_load_pod_media p WHERE load_id = ${state.load.id}`) || [];
+  // Lo guardado con la placa vieja de cada corrección (para el plan y el respaldo).
+  const plateRows = (state.plateCorrections || []).map((c) => ({
+    ...c,
+    decisions: sqlJson(pg, `SELECT COALESCE(json_agg(d), '[]'::json) FROM fleet_allocation.allocation_decisions d WHERE selected_driver_id = '${c.driverId}' AND selected_vehicle_plate = '${c.from}'`) || [],
+    loads: sqlJson(pg, `SELECT COALESCE(json_agg(json_build_object('id', f.id, 'assigned_vehicle_plate', f.assigned_vehicle_plate)), '[]'::json) FROM load_allocation.freight_loads f WHERE assigned_driver_id = '${c.driverId}' AND assigned_vehicle_plate = '${c.from}'`) || []
+  }));
+  const plateFixes = plateRows.filter((p) => p.decisions.length || p.loads.length);
   const drivers = [];
   for (const d of state.drivers) {
     let current = null;
@@ -184,6 +215,7 @@ async function main() {
   mocks.filter((m) => m.present).forEach((m) => plan.push(`Redis: borrar ${m.id} (placa ${m.hash.vehiclePlate || "—"}) y sus índices`));
   const ld = loadDiff(state.load, loadRow, podRows, nowLocal);
   if (ld.length) plan.push(`SQL: carga ${state.load.id}: ${ld.join("; ")}`);
+  plateFixes.forEach((p) => plan.push(`SQL: placa ${p.from} → ${p.to} del conductor ${p.driverId}: ${p.decisions.length} decisión(es) del motor y ${p.loads.length} carga(s)`));
   drivers.filter((d) => d.diff.length).forEach((d) => plan.push(`API: ${d.state.driverName}: ${d.diff.join(", ")}`));
 
   console.log(`Demo local · gateway ${gateway} · compose ${COMPOSE_ROOT}`);
@@ -207,7 +239,7 @@ async function main() {
       plateSets,
       drivers: drivers.map((d) => ({ id: d.state.driverId, hash: redisHash(`${REDIS_PREFIX}:${d.state.driverId}`) }))
     }, null, 2));
-    writeFileSync(join(dir, "sql.json"), JSON.stringify({ load: loadRow, podMedia: podRows }, null, 2));
+    writeFileSync(join(dir, "sql.json"), JSON.stringify({ load: loadRow, podMedia: podRows, plateCorrections: plateFixes }, null, 2));
     console.log("\nRespaldo: " + dir);
 
     // Redis: solo las claves exactas de los Mock (como lo haría el repositorio de Spring Data al borrar).
@@ -216,9 +248,10 @@ async function main() {
       redis("SREM", REDIS_PREFIX, m.id);
       if (m.hash.vehiclePlate) redis("SREM", `${REDIS_PREFIX}:vehiclePlate:${m.hash.vehiclePlate}`, m.id);
     }
-    // SQL: la carga por id exacto, en una transacción.
-    if (ld.length) {
-      docker(["exec", "-i", CONTAINERS.postgres, "psql", "-U", pg.user, "-d", pg.db, "-v", "ON_ERROR_STOP=1", "-q"], loadSql(state.load, timeZone));
+    // SQL: la carga por id exacto y las correcciones de placa, en una sola transacción.
+    if (ld.length || plateFixes.length) {
+      docker(["exec", "-i", CONTAINERS.postgres, "psql", "-U", pg.user, "-d", pg.db, "-v", "ON_ERROR_STOP=1", "-q"],
+        transactionSql({ load: ld.length ? state.load : null, timeZone, corrections: plateFixes }));
     }
     // Conductores: por la API (mantiene el índice de placas de fleets-drivers).
     for (const d of drivers.filter((x) => x.diff.length)) {
@@ -243,6 +276,10 @@ async function main() {
       checks.push([ok, `${d.state.driverName}: ${open.length ? open.map((l) => `carga ${l.id} ${l.status}`).join(", ") : "sin carga"} (esperado: ${d.expect})`]);
     }
   }
+  for (const c of state.plateCorrections || []) {
+    const left = sqlJson(pg, `SELECT to_json((SELECT count(*) FROM fleet_allocation.allocation_decisions WHERE selected_driver_id = '${c.driverId}' AND selected_vehicle_plate = '${c.from}') + (SELECT count(*) FROM load_allocation.freight_loads WHERE assigned_driver_id = '${c.driverId}' AND assigned_vehicle_plate = '${c.from}'))`);
+    checks.push([Number(left) === 0, `Placa ${c.from} en lo guardado de ${c.driverId}: ${left}`]);
+  }
   const plates = new Set(active.map((d) => d.vehiclePlate));
   checks.push([plates.size === active.length, `Placas únicas en la flota: ${plates.size} de ${active.length}`]);
   console.log("\nVerificación:");
@@ -250,7 +287,7 @@ async function main() {
   if (checks.some(([ok]) => !ok)) process.exitCode = 1;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     console.error("✗ " + error.message);
     process.exit(1);

@@ -795,7 +795,7 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 }
 .login-input:focus {
     border-color: var(--color-focus);
-    box-shadow: 0 0 0 3px rgb(var(--route-500) / 0.25);
+    box-shadow: 0 0 0 3px var(--color-focus-soft);
 }
 .login-input[aria-invalid="true"] {
     border-color: var(--color-warn);
@@ -1165,7 +1165,7 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     outline: none;
 }
 .field-input::placeholder { color: var(--color-text-disabled); }
-.field-input:focus { border-color: var(--color-focus); box-shadow: 0 0 0 3px rgb(var(--route-500) / 0.25); }
+.field-input:focus { border-color: var(--color-focus); box-shadow: 0 0 0 3px var(--color-focus-soft); }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .field-row .field-label { margin-bottom: 0; }
 .field-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 var(--space-2); color: var(--color-text); font-size: var(--text-footnote); font-weight: var(--weight-semibold); }
