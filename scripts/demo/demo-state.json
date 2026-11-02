@@ -9,6 +9,15 @@
     "vehiclePlate": "TDK-410"
   },
   "mockDriverIds": ["drv-e2e-1", "drv-e2e-2", "drv-e2e-3"],
+  "pendingLoad": {
+    "_comentario": "Carga en espera que le encaja a Ana (25 t, tractomula 3S3): el motor reintenta solo cada 2 min y la propone con su puntaje.",
+    "id": 8,
+    "expectDriverId": "207a8e39-990e-48da-9b85-10178c83a8cb"
+  },
+  "staleCancelledLoads": {
+    "_comentario": "Cargas canceladas que conservan assignment_status PROPOSED o NOTIFIED de antes de cancelarse.",
+    "ids": [1, 14, 26, 45, 50]
+  },
   "plateCorrections": [
     {
       "_comentario": "Ana tuvo la placa de Carlos: sus decisiones del motor y sus cargas guardadas aún dicen TDK-410.",
@@ -45,7 +54,7 @@
         "currentLatitude": 4.6486,
         "currentLongitude": -74.1481,
         "currentSpeedKmH": 0.0,
-        "status": "EN_TRANSITO"
+        "status": "ACTIVO"
       }
     },
     {
@@ -75,13 +84,13 @@
         "currentLatitude": 4.6097,
         "currentLongitude": -74.0817,
         "currentSpeedKmH": 0.0,
-        "status": "DISPONIBLE"
+        "status": "ACTIVO"
       }
     },
     {
       "key": "ana",
       "email": null,
-      "expect": "placa propia TKR-527",
+      "expect": "placa propia TKR-527 y propuesta para la carga 8",
       "state": {
         "driverId": "207a8e39-990e-48da-9b85-10178c83a8cb",
         "driverName": "Ana Torres",
@@ -105,7 +114,7 @@
         "currentLatitude": 4.579684,
         "currentLongitude": -74.247393,
         "currentSpeedKmH": 0.0,
-        "status": "DISPONIBLE"
+        "status": "ACTIVO"
       }
     }
   ]

@@ -1,6 +1,10 @@
 // Deja la demo LOCAL de TruckCar en un estado conocido (scripts/demo/demo-state.json):
 //   - Carlos en tránsito con la carga 88, Diana sin carga, Ana con su placa propia, cada uno en su posición inicial.
 //   - Sin los conductores de prueba "Mock drv-e2e-1..3".
+//   - Los tres conductores en ACTIVO, el único estado que el motor de asignación considera (la Torre lo muestra como
+//     "Disponible" o "En tránsito").
+//   - La carga 8 en espera, sin propuesta ni descartados: el motor la reintenta solo (cada 2 min) y se la propone a Ana.
+//   - Sin assignment_status PROPOSED/NOTIFIED en las cargas de demo canceladas (1, 14, 26, 45, 50).
 //
 // Uso:  TRUCKCAR_DEMO_PASSWORD=… node scripts/demo/reset-demo.mjs            (dry-run: solo muestra qué cambiaría)
 //       TRUCKCAR_DEMO_PASSWORD=… node scripts/demo/reset-demo.mjs --apply    (respalda, aplica y verifica)
@@ -9,6 +13,7 @@
 // demo (por clave o WHERE exacto, SQL en una transacción); sin FLUSHALL, DROP ni borrados masivos; antes de modificar
 // respalda Redis y SQL en scripts/demo/backups/. Modifica datos locales directamente: no es para producción.
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,7 +21,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const COMPOSE_ROOT = resolve(HERE, "../../..");          // carpeta del docker-compose (padre de truckcar-frontend)
 const COMPOSE_PROJECT = "truckcar";
-const CONTAINERS = { redis: "truckcar-redis", postgres: "truckcar-postgis", loads: "truckcar-load-allocation" };
+const CONTAINERS = { redis: "truckcar-redis", postgres: "truckcar-postgis", loads: "truckcar-load-allocation", kafka: "truckcar-kafka" };
+const LOAD_EVENTS_TOPIC = "truckcar.events.load-allocation";
 const REDIS_PREFIX = "driver_vehicle_state";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
@@ -43,6 +49,8 @@ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MOCK_ID = /^drv-e2e-[1-3]$/;
 const PLATE = /^[A-Z0-9]{2,4}-?[0-9A-Z]{2,4}$/;
 const NAME = /^[\p{L} ]{2,60}$/u;
+/** Estados que fleets-drivers y el motor de asignación reconocen (FleetDriverStateDto.isAvailableForAllocation). */
+const DRIVER_STATUS = new Set(["ACTIVO", "INACTIVO"]);
 
 /** El estado canónico solo puede nombrar ids de demo con formato estricto (también protege el SQL). */
 export function validateState(state) {
@@ -55,6 +63,17 @@ export function validateState(state) {
     if (!ID.test(d.state.driverId) || !PLATE.test(d.state.vehiclePlate)) throw new Error("Conductor con formato inesperado: " + d.key);
   });
   const demoIds = new Set(state.drivers.map((d) => d.state.driverId));
+  state.drivers.forEach((d) => {
+    if (!DRIVER_STATUS.has(d.state.status)) throw new Error("Estado no reconocido por el motor: " + d.state.status + " (" + d.key + ")");
+  });
+  if (state.pendingLoad) {
+    if (!Number.isInteger(state.pendingLoad.id) || state.pendingLoad.id === state.load.id) throw new Error("pendingLoad.id debe ser un entero distinto de la carga en tránsito");
+    if (!demoIds.has(state.pendingLoad.expectDriverId)) throw new Error("pendingLoad debe esperar a un conductor de demo");
+  }
+  const stale = (state.staleCancelledLoads && state.staleCancelledLoads.ids) || [];
+  if (!stale.every(Number.isInteger) || stale.includes(state.load.id) || (state.pendingLoad && stale.includes(state.pendingLoad.id))) {
+    throw new Error("staleCancelledLoads.ids: enteros, sin la carga en tránsito ni la pendiente");
+  }
   (state.plateCorrections || []).forEach((c) => {
     if (!demoIds.has(c.driverId)) throw new Error("La corrección de placa solo puede tocar conductores de demo");
     if (!PLATE.test(c.from) || !PLATE.test(c.to) || c.from === c.to) throw new Error("Placas de la corrección con formato inesperado");
@@ -97,6 +116,58 @@ export function chronologyOk(row) {
   return p <= a && a <= t;
 }
 
+/** La carga pendiente está lista para que el motor la reintente: disponible, sin propuesta en curso ni descartados. */
+export function pendingLoadDiff(row, discarded) {
+  if (!row) return ["(la carga no existe)"];
+  const diff = [];
+  if (row.status !== "AVAILABLE") diff.push(`status ${row.status} → AVAILABLE`);
+  if (row.assignment_status && row.assignment_status !== "UNASSIGNED_NO_DRIVERS") diff.push(`propuesta ${row.assignment_status} → ninguna`);
+  if (row.assigned_driver_id || row.assigned_driver_name) diff.push(`conductor ${row.assigned_driver_name || row.assigned_driver_id} → ninguno`);
+  if (row.delivered_at || row.cancelled_at) diff.push("entrega o cancelación → vacías");
+  if (row.assignment_attempts) diff.push(`intentos ${row.assignment_attempts} → 0`);
+  if (discarded.length) diff.push(`${discarded.length} conductor(es) descartado(s) → ninguno`);
+  return diff;
+}
+
+/** SQL de la carga pendiente: por id exacto (UPDATE y dos DELETE). Sin transacción propia: va en la de transactionSql. */
+export function pendingLoadSql(id) {
+  if (!Number.isInteger(id)) throw new Error("id de carga no válido");
+  return `UPDATE load_allocation.freight_loads SET
+  status = 'AVAILABLE', assignment_status = NULL, assignment_status_changed_at = NULL, assignment_attempts = 0,
+  assigned_driver_id = NULL, assigned_driver_name = NULL, assigned_vehicle_plate = NULL, assigned_at = NULL,
+  trip_started_at = NULL, delivered_at = NULL, pod_notes = NULL, pod_receiver_document = NULL, pod_receiver_name = NULL,
+  pod_has_photo = NULL, pod_has_signature = NULL, cancellation_reason = NULL, cancelled_at = NULL, cancelled_by = NULL,
+  version = COALESCE(version, 0) + 1
+WHERE id = ${id};
+DELETE FROM load_allocation.freight_load_discarded_drivers WHERE load_id = ${id};
+DELETE FROM load_allocation.freight_load_pod_media WHERE load_id = ${id};
+`;
+}
+
+/** Cargas de demo canceladas que conservan una propuesta: solo esos ids, canceladas y con PROPOSED/NOTIFIED. */
+export function staleCancelledSql(ids) {
+  if (!ids.length) return "";
+  if (!ids.every(Number.isInteger)) throw new Error("ids de cargas no válidos");
+  return `UPDATE load_allocation.freight_loads SET assignment_status = NULL, assignment_status_changed_at = NULL,
+  version = COALESCE(version, 0) + 1
+WHERE id IN (${ids.join(", ")}) AND status = 'CANCELLED' AND assignment_status IN ('PROPOSED', 'NOTIFIED');
+`;
+}
+
+/**
+ * Evento trip.started de la carga en tránsito, con el contrato de Load-Allocation (sobre con payload). Hace falta porque
+ * el script deja la carga en tránsito por SQL, sin evento: fleets-drivers no sabría que el conductor va en ruta y la Torre
+ * lo mostraría "Disponible". De los consumidores del tópico solo fleets-drivers usa trip.started (AI-fleet y
+ * Notifications lo ignoran).
+ */
+export function tripStartedEvent(load, eventId, occurredAt) {
+  return {
+    eventId, eventType: "trip.started", occurredAt, version: 1, producer: "demo-reset",
+    payload: { loadId: load.id, assignedDriverId: load.driverId, assignedDriverName: load.driverName,
+      assignedVehiclePlate: load.vehiclePlate, loadStatus: load.status }
+  };
+}
+
 const TIME_ZONE = /^[A-Za-z]+(\/[A-Za-z_]+)+$/;
 
 /**
@@ -112,9 +183,10 @@ WHERE assigned_driver_id = ${q(c.driverId)} AND assigned_vehicle_plate = ${q(c.f
 `).join("");
 }
 
-/** Una sola transacción con lo que haga falta: la carga de demo y las correcciones de placa. */
-export function transactionSql({ load = null, timeZone = "America/Bogota", corrections = [] }) {
-  const body = (load ? loadSql(load, timeZone).replace(/^BEGIN;\n/, "").replace(/COMMIT;\n$/, "") : "") + plateSql(corrections);
+/** Una sola transacción con lo que haga falta: la carga en tránsito, la pendiente, las canceladas y las placas. */
+export function transactionSql({ load = null, timeZone = "America/Bogota", corrections = [], pendingLoadId = null, staleIds = [] }) {
+  const body = (load ? loadSql(load, timeZone).replace(/^BEGIN;\n/, "").replace(/COMMIT;\n$/, "") : "")
+    + (pendingLoadId != null ? pendingLoadSql(pendingLoadId) : "") + staleCancelledSql(staleIds) + plateSql(corrections);
   return `BEGIN;\n${body}COMMIT;\n`;
 }
 
@@ -220,6 +292,11 @@ async function main() {
     loads: sqlJson(pg, `SELECT COALESCE(json_agg(json_build_object('id', f.id, 'assigned_vehicle_plate', f.assigned_vehicle_plate)), '[]'::json) FROM load_allocation.freight_loads f WHERE assigned_driver_id = '${c.driverId}' AND assigned_vehicle_plate = '${c.from}'`) || []
   }));
   const plateFixes = plateRows.filter((p) => p.decisions.length || p.loads.length);
+  const pending = state.pendingLoad;
+  const pendingRow = pending ? sqlJson(pg, `SELECT row_to_json(f) FROM load_allocation.freight_loads f WHERE id = ${pending.id}`) : null;
+  const pendingDiscarded = pending ? sqlJson(pg, `SELECT COALESCE(json_agg(d), '[]'::json) FROM load_allocation.freight_load_discarded_drivers d WHERE load_id = ${pending.id}`) || [] : [];
+  const staleIds = (state.staleCancelledLoads && state.staleCancelledLoads.ids) || [];
+  const staleRows = staleIds.length ? sqlJson(pg, `SELECT COALESCE(json_agg(json_build_object('id', id, 'status', status, 'assignment_status', assignment_status, 'assignment_status_changed_at', assignment_status_changed_at)), '[]'::json) FROM load_allocation.freight_loads WHERE id IN (${staleIds.join(", ")}) AND status = 'CANCELLED' AND assignment_status IN ('PROPOSED', 'NOTIFIED')`) || [] : [];
   const drivers = [];
   for (const d of state.drivers) {
     let current = null;
@@ -232,8 +309,15 @@ async function main() {
   mocks.filter((m) => m.present).forEach((m) => plan.push(`Redis: borrar ${m.id} (placa ${m.hash.vehiclePlate || "—"}) y sus índices`));
   const ld = loadDiff(state.load, loadRow, podRows, nowLocal);
   if (ld.length) plan.push(`SQL: carga ${state.load.id}: ${ld.join("; ")}`);
+  const pd = pending ? pendingLoadDiff(pendingRow, pendingDiscarded) : [];
+  if (pd.length) plan.push(`SQL: carga pendiente ${pending.id}: ${pd.join("; ")}`);
+  if (staleRows.length) plan.push(`SQL: canceladas con propuesta vieja → sin propuesta: ${staleRows.map((r) => `${r.id} (${r.assignment_status})`).join(", ")}`);
   plateFixes.forEach((p) => plan.push(`SQL: placa ${p.from} → ${p.to} del conductor ${p.driverId}: ${p.decisions.length} decisión(es) del motor y ${p.loads.length} carga(s)`));
   drivers.filter((d) => d.diff.length).forEach((d) => plan.push(`API: ${d.state.driverName}: ${d.diff.join(", ")}`));
+  const loadDriver = drivers.find((d) => d.state.driverId === state.load.driverId);
+  const fleetKnowsTrip = loadDriver && loadDriver.current && loadDriver.current.currentLoadId === state.load.id
+    && loadDriver.current.currentLoadStatus === state.load.status;
+  if (!fleetKnowsTrip) plan.push(`Kafka: trip.started de la carga ${state.load.id} para que fleets-drivers sepa que ${state.load.driverName} va en ruta`);
 
   console.log(`Demo local · gateway ${gateway} · compose ${COMPOSE_ROOT}`);
   console.log(plan.length ? "Cambios:\n  - " + plan.join("\n  - ") : "Nada que cambiar: la demo ya está en el estado conocido.");
@@ -256,7 +340,8 @@ async function main() {
       plateSets,
       drivers: drivers.map((d) => ({ id: d.state.driverId, hash: redisHash(`${REDIS_PREFIX}:${d.state.driverId}`) }))
     }, null, 2));
-    writeFileSync(join(dir, "sql.json"), JSON.stringify({ load: loadRow, podMedia: podRows, plateCorrections: plateFixes }, null, 2));
+    writeFileSync(join(dir, "sql.json"), JSON.stringify({ load: loadRow, podMedia: podRows, plateCorrections: plateFixes,
+      pendingLoad: pendingRow, pendingLoadDiscardedDrivers: pendingDiscarded, staleCancelledLoads: staleRows }, null, 2));
     console.log("\nRespaldo: " + dir);
 
     // Redis: solo las claves exactas de los Mock (como lo haría el repositorio de Spring Data al borrar).
@@ -266,13 +351,26 @@ async function main() {
       if (m.hash.vehiclePlate) redis("SREM", `${REDIS_PREFIX}:vehiclePlate:${m.hash.vehiclePlate}`, m.id);
     }
     // SQL: la carga por id exacto y las correcciones de placa, en una sola transacción.
-    if (ld.length || plateFixes.length) {
+    if (ld.length || plateFixes.length || pd.length || staleRows.length) {
       docker(["exec", "-i", CONTAINERS.postgres, "psql", "-U", pg.user, "-d", pg.db, "-v", "ON_ERROR_STOP=1", "-q"],
-        transactionSql({ load: ld.length ? state.load : null, timeZone, corrections: plateFixes }));
+        transactionSql({ load: ld.length ? state.load : null, timeZone, corrections: plateFixes,
+          pendingLoadId: pd.length ? pending.id : null, staleIds: staleRows.map((r) => r.id) }));
     }
     // Conductores: por la API (mantiene el índice de placas de fleets-drivers).
     for (const d of drivers.filter((x) => x.diff.length)) {
       await api(gateway, "/fleets-drivers/state", { token, method: "POST", body: d.state });
+    }
+    // fleets-drivers: el viaje de la carga en tránsito, por el mismo tópico y contrato que usa Load-Allocation.
+    if (!fleetKnowsTrip) {
+      const event = tripStartedEvent(state.load, randomUUID(), new Date().toISOString());
+      docker(["exec", "-i", CONTAINERS.kafka, "/opt/kafka/bin/kafka-console-producer.sh", "--bootstrap-server", "localhost:9092",
+        "--topic", LOAD_EVENTS_TOPIC, "--property", "parse.key=true", "--property", "key.separator=|"],
+        `${state.load.id}|${JSON.stringify(event)}\n`);
+      for (let i = 0; i < 20; i++) {
+        const now = await api(gateway, "/fleets-drivers/drivers/" + state.load.driverId, { token });
+        if (now.currentLoadId === state.load.id) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
     }
   }
 
@@ -283,7 +381,12 @@ async function main() {
   checks.push([mockLeft === 0, `Conductores Mock: ${mockLeft}`]);
   for (const d of state.drivers) {
     const now = await api(gateway, "/fleets-drivers/drivers/" + d.state.driverId, { token });
-    checks.push([now.vehiclePlate === d.state.vehiclePlate, `${d.state.driverName}: placa ${now.vehiclePlate}, ${now.status}, posición ${now.currentLatitude}, ${now.currentLongitude}`]);
+    checks.push([now.vehiclePlate === d.state.vehiclePlate && now.status === d.state.status,
+      `${d.state.driverName}: placa ${now.vehiclePlate}, ${now.status}, posición ${now.currentLatitude}, ${now.currentLongitude}`]);
+    if (d.state.driverId === state.load.driverId) {
+      checks.push([now.currentLoadId === state.load.id && now.currentLoadStatus === state.load.status,
+        `${d.state.driverName}: fleets-drivers lo ve en ruta con la carga ${now.currentLoadId} (${now.currentLoadStatus})`]);
+    }
     if (d.email) {
       const loads = await api(gateway, "/loads/mine", { token: await login(gateway, d.email, password) });
       const open = loads.filter((l) => ["ASSIGNED", "IN_TRANSIT"].includes(l.status) || ["PROPOSED", "NOTIFIED"].includes(l.assignmentStatus));
@@ -300,11 +403,24 @@ async function main() {
   const after = sqlJson(pg, `SELECT row_to_json(f) FROM (SELECT published_at, assigned_at, trip_started_at FROM load_allocation.freight_loads WHERE id = ${state.load.id}) f`);
   checks.push([!!after && chronologyOk(after) && !!after.assigned_at && !!after.trip_started_at,
     `Carga ${state.load.id} en orden: publicada ${after && after.published_at}, asignada ${after && after.assigned_at}, en ruta ${after && after.trip_started_at}`]);
+  if (pending) {
+    const row = sqlJson(pg, `SELECT row_to_json(f) FROM (SELECT status, assignment_status, assigned_driver_id FROM load_allocation.freight_loads WHERE id = ${pending.id}) f`);
+    const discardedLeft = sqlJson(pg, `SELECT to_json(count(*)) FROM load_allocation.freight_load_discarded_drivers WHERE load_id = ${pending.id}`);
+    // El reintento programado puede proponerla en cuanto termina el reset: sin propuesta, o propuesta al conductor esperado.
+    const ok = row && row.status === "AVAILABLE" && Number(discardedLeft) === 0
+      && (!row.assignment_status || row.assignment_status === "UNASSIGNED_NO_DRIVERS" || row.assigned_driver_id === pending.expectDriverId);
+    checks.push([ok, `Carga ${pending.id} en espera para el motor: ${row && row.status}, ${(row && row.assignment_status) || "sin propuesta"}, ${discardedLeft} descartado(s)`]);
+  }
+  if (staleIds.length) {
+    const left = sqlJson(pg, `SELECT to_json(count(*)) FROM load_allocation.freight_loads WHERE id IN (${staleIds.join(", ")}) AND status = 'CANCELLED' AND assignment_status IN ('PROPOSED', 'NOTIFIED')`);
+    checks.push([Number(left) === 0, `Canceladas de demo con propuesta vieja: ${left}`]);
+  }
   const plates = new Set(active.map((d) => d.vehiclePlate));
   checks.push([plates.size === active.length, `Placas únicas en la flota: ${plates.size} de ${active.length}`]);
   console.log("\nVerificación:");
   checks.forEach(([ok, text]) => console.log(`  ${ok ? "✓" : "✗"} ${text}`));
   if (checks.some(([ok]) => !ok)) process.exitCode = 1;
+  if (pending) console.log(`\nEl motor reintenta las cargas en espera cada 2 min: en ese plazo la Torre muestra la carga ${pending.id} propuesta con su puntaje.`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
