@@ -5,6 +5,7 @@
   "scripts": {
     "build:css": "tailwindcss -c tailwind.config.cjs -i css/tailwind.input.css -o css/tailwind.css --minify",
     "check": "node scripts/check-syntax.mjs",
+    "check:links": "node scripts/check-doc-links.mjs",
     "lint": "eslint .",
     "test": "node --test test/",
     "ci": "npm run check && npm run lint && npm test"

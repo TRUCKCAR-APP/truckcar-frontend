@@ -1,6 +1,7 @@
 # Rediseño premium nativo · PWA del conductor
 
-Rama `refactor/ui-premium` · un commit por fase · capturas en 390×844, 360×800, 768×1024 y 1440×900.
+Rama `refactor/ui-premium` · un commit por fase · capturas en 390×844, 360×800, 768×1024 y 1440×900 (de la fase 1
+a la 5 solo se conservan las de 390×844).
 Auditoría inicial: [AUDITORIA.md](AUDITORIA.md) (10/20). Auditoría final: [AUDITORIA-FINAL.md](AUDITORIA-FINAL.md)
 (**15/20**). Dirección visual aprobada: **B** (prototipo en [`prototipo/`](prototipo/)). Guion de la demostración:
 [DEMO.md](DEMO.md).
@@ -208,9 +209,12 @@ estado):
 | Navegar | [antes](antes/navegar-390x844.jpg) | [fase 1](fase-1/navegar-390x844.jpg) | [fase 2](fase-2/navegar-390x844.jpg) | [fase 3A](fase-3a/navegar-390x844.jpg) |
 | SOS confirmado | [antes](antes/sos-390x844.jpg) | [fase 1](fase-1/sos-390x844.jpg) | [fase 2](fase-2/sos-390x844.jpg) | [fase 3A](fase-3a/sos-390x844.jpg) |
 | SOS sin señal | — | — | [fase 2](fase-2/sos-sin-senal-390x844.jpg) | [fase 3A](fase-3a/sos-sin-senal-390x844.jpg) |
-| Inicio de sesión (escritorio) | [antes](antes/login-1440x900.jpg) | [fase 1](fase-1/login-1440x900.jpg) | [fase 2](fase-2/login-1440x900.jpg) | [fase 3A](fase-3a/login-1440x900.jpg) |
+| Inicio de sesión | [antes, escritorio](antes/login-1440x900.jpg) | [fase 1](fase-1/login-390x844.jpg) | [fase 2](fase-2/login-390x844.jpg) | [fase 3A](fase-3a/login-390x844.jpg) |
 
-- Cada carpeta tiene todas sus pantallas en los 4 tamaños (390×844, 360×800, 768×1024 y 1440×900).
+- `antes/` y `fase-6/` (la versión final) tienen todas sus pantallas en los 4 tamaños (390×844, 360×800, 768×1024 y
+  1440×900). De `fase-1/` a `fase-5/` solo se conservan las de 390×844, los resúmenes y las comparativas: las demás
+  se quitaron para aligerar el repositorio. El inicio de sesión final en escritorio:
+  [fase-6/login-1440x900.jpg](fase-6/login-1440x900.jpg).
 - [`fase-2/`](fase-2/) suma la Torre de control (`torre-*`), "Mis envíos" (`envios-*`) y los estados vacíos.
 - Las capturas de la fase 1 son anteriores a la actualización de los tokens a la dirección B.
 
@@ -256,8 +260,8 @@ sus avisos y Rutas con "Centrar en mi posición". Todas las diferencias me parec
 - El punto en lugar de la flecha cuando no hay rumbo.
 - [navegar-rumbo-390x844.jpg](fase-3b/navegar-rumbo-390x844.jpg) muestra la flecha con rumbo. Se tomó con la
   herramienta de prueba "Simular GPS", porque el GPS emulado del navegador de captura no informa rumbo.
-- Escritorio: [navegar-1440x900.jpg](fase-3b/navegar-1440x900.jpg) y el resto de `*-1440x900` muestran la columna de
-  480 px sin marco.
+- Escritorio: [navegar-1440x900.jpg](fase-6/navegar-1440x900.jpg) y el resto de `fase-6/*-1440x900` (versión final)
+  muestran la columna de 480 px sin marco.
 
 **Verificación de la fase 3B:**
 - POD: [pod-390x844.jpg](fase-3b/pod-390x844.jpg).
@@ -289,7 +293,7 @@ Alertas en sus tres estados y Offline. Todas las diferencias me parecen aceptabl
 [comparativa-app-vs-prototipo-390x844.png](fase-4b/comparativa-app-vs-prototipo-390x844.png) compara el inicio de
 sesión y la hoja de reportar cerrada y abierta. Todas las diferencias me parecen aceptables (ver la imagen).
 - **Escritorio:** el inicio de sesión va en la columna de 480 px
-  ([login-1440x900.jpg](fase-4b/login-1440x900.jpg)), sin la tarjeta del prototipo de escritorio.
+  ([login-1440x900.jpg](fase-6/login-1440x900.jpg), versión final), sin la tarjeta del prototipo de escritorio.
 
 **Verificación de la fase 4B:**
 - **POD:** [pod-390x844.jpg](fase-4b/pod-390x844.jpg). Ya no se ve "Simular foto": solo aparece con `?demo=1`.
@@ -298,9 +302,9 @@ sesión y la hoja de reportar cerrada y abierta. Todas las diferencias me parece
 
 **Fase 5: antes y después.** [antes-despues.jpg](fase-5/antes-despues.jpg) compara la fase 4B con la 5:
 - Torre de control y "Mis envíos" en 1440×900 y en 390×844.
-- Además, en [`fase-5/`](fase-5/):
-  - [torre-criterios-1440x900.jpg](fase-5/torre-criterios-1440x900.jpg): la ventana de criterios de la asignación.
-  - [envios-detalle-1440x900.jpg](fase-5/envios-detalle-1440x900.jpg): el detalle de un envío.
+- Además:
+  - [torre-criterios-1440x900.jpg](fase-6/torre-criterios-1440x900.jpg) (versión final): la ventana de criterios de la asignación.
+  - [envios-detalle-1440x900.jpg](fase-6/envios-detalle-1440x900.jpg) (versión final): el detalle de un envío.
   - [hoja-confirmacion-390x844.jpg](fase-5/hoja-confirmacion-390x844.jpg): una hoja de confirmación de peligro con su
     ícono ya sin rojo.
 
