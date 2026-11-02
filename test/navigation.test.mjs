@@ -124,3 +124,59 @@ test("la línea gris del HUD muestra la calle actual solo si no repite la de la 
   assert.equal(street("Gire a la izquierda", ""), "");
   assert.equal(street("Gire a la izquierda", "Calle 13", { offRoute: true }), "", "fuera de ruta el aviso va en la tarjeta");
 });
+
+test("el gálibo y el peso de la ruta real llegan de Routing-Restrictions y se avisan antes de llegar", async () => {
+  const { w, spoken } = browser();
+  const requests = [];
+  // Un puente de 3,80 m a 1,4 km del inicio (sobre la Avenida Boyacá) y un vehículo de 4,10 m.
+  w.TruckCarData.currentDriver = { vehicle: { plate: "TDK-410", height: 4.1, grossWeight: 40 } };
+  w.TruckCarApi.restrictions = { validateRoute: async (request) => {
+    requests.push(request);
+    return { passable: false, blocking: [{ kind: "GALIBO_ALTURA", alongRouteMeters: 1400,
+      restriction: { id: 7, title: "Puente de la Calle 26", maxClearanceMeters: 3.8 } }], warnings: [] };
+  } };
+  w.document.body.insertAdjacentHTML("beforeend",
+    "<div data-nav-clearance hidden><span data-nav-clearance-text></span><span data-nav-clearance-sub></span></div>");
+
+  await w.RouteGuidance.prepare(LOAD);
+  await sleep(5);
+
+  assert.equal(requests.length, 1);
+  assert.equal(JSON.stringify(requests[0].path), "[[4.6,-74],[4.61,-74],[4.61,-73.99]]", "la geometría de OSRM, no texto del corredor");
+  assert.equal(requests[0].heightMeters, 4.1);
+  assert.equal(requests[0].grossWeightTons, 40);
+
+  w.RouteGuidance.update({ coords: [4.6, -74.0], speed: 50, source: "gps" });
+  const doc = w.document;
+  assert.equal(doc.querySelector("[data-nav-clearance]").hidden, false);
+  assert.equal(doc.querySelector("[data-nav-clearance-text]").textContent, "Gálibo de 3,80 m en 1,4 km");
+  assert.equal(doc.querySelector("[data-nav-clearance-sub]").textContent, "· su vehículo mide 4,10 m");
+  assert.ok(spoken.some((t) => /Atención: .*gálibo de 3,80 metros; su vehículo mide 4,10/.test(t)), "se anuncia una vez a 3 km o menos");
+
+  // Pasado el puente, el aviso desaparece.
+  w.RouteGuidance.update({ coords: [4.61, -73.995], speed: 40, source: "gps" });
+  assert.equal(doc.querySelector("[data-nav-clearance]").hidden, true);
+});
+
+test("sin vehículo registrado o sin respuesta de Routing-Restrictions no se inventa ningún aviso", async () => {
+  const { w } = browser();
+  w.document.body.insertAdjacentHTML("beforeend", "<div data-nav-clearance hidden><span data-nav-clearance-text></span></div>");
+  w.TruckCarApi.restrictions = { validateRoute: async () => { throw new Error("503"); } };
+  w.TruckCarData.currentDriver = { vehicle: { plate: "TDK-410", height: 4.1, grossWeight: 40 } };
+  await w.RouteGuidance.prepare(LOAD);
+  await sleep(5);
+  w.RouteGuidance.update({ coords: [4.6, -74.0], speed: 50, source: "gps" });
+  assert.equal(w.RouteGuidance.clearance.status, "unavailable");
+  assert.equal(w.document.querySelector("[data-nav-clearance]").hidden, true);
+
+  const second = browser();
+  second.w.TruckCarApi.restrictions = { validateRoute: async () => assert.fail("sin vehículo no se consulta") };
+  await second.w.RouteGuidance.prepare(LOAD);
+  assert.equal(second.w.RouteGuidance.clearance.status, "no-vehicle");
+
+  const long = Array.from({ length: 1001 }, (_, i) => [4 + i / 1000, -74]);
+  const sampled = w.RouteGuidance.samplePath(long);
+  assert.equal(sampled.length, 400);
+  assert.equal(JSON.stringify(sampled[0]), JSON.stringify(long[0]));
+  assert.equal(JSON.stringify(sampled.at(-1)), JSON.stringify(long.at(-1)));
+});

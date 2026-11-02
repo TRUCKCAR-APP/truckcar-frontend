@@ -13,6 +13,9 @@ window.RouteGuidance = (function () {
     const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
     const OFF_ROUTE_M = 250;
     const REROUTE_COOLDOWN_MS = 30000;
+    // Restricciones de la ruta (Routing-Restrictions): se anuncian una vez al quedar a 3 km o menos.
+    const CLEARANCE_ANNOUNCE_M = 3000;
+    const CLEARANCE_MAX_POINTS = 400;
     const ARRIVED_M = 60;
     const NEAR_ANNOUNCE_M = 300;
 
@@ -23,6 +26,8 @@ window.RouteGuidance = (function () {
     let lastReroute = 0;
     const announced = new Set();
     const listeners = new Set();
+    // { key, status: checking | ok | found | unavailable | no-vehicle, items: [{ id, kind, alongM, text, sub, spoken }] }
+    let clearance = null;
 
     // ------------------------------------------------------------------ geometría
     const toRad = (deg) => deg * Math.PI / 180;
@@ -209,6 +214,7 @@ window.RouteGuidance = (function () {
             route = buildRoute(osrm, target.key, target.source);
             status = 'ready';
             if (window.mapCtrl && window.mapCtrl.drawGuidanceLine) window.mapCtrl.drawGuidanceLine(route.geometry);
+            checkClearance(route);
             const fix = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
             if (fix) update(fix); else notify();
         } catch (e) {
@@ -232,6 +238,7 @@ window.RouteGuidance = (function () {
             if (!route || route.key !== key) return;
             route = buildRoute(osrm, key, 'recalculada');
             announced.clear();
+            checkClearance(route);
             if (window.mapCtrl && window.mapCtrl.drawGuidanceLine) window.mapCtrl.drawGuidanceLine(route.geometry);
             if (window.voiceEngine) window.voiceEngine.speak('Ruta recalculada.', false);
             update({ coords: position });
@@ -262,9 +269,89 @@ window.RouteGuidance = (function () {
             arrived: remainingM < ARRIVED_M && offM < OFF_ROUTE_M,
             position: point
         };
+        progress.alongM = alongM;
         announce(next, progress);
+        const restriction = nextClearance(alongM);
+        if (restriction && window.voiceEngine && restriction.alongM - alongM <= CLEARANCE_ANNOUNCE_M
+            && !announced.has('clearance:' + restriction.id)) {
+            announced.add('clearance:' + restriction.id);
+            window.voiceEngine.speak('Atención: ' + spokenDistance(Math.max(0, restriction.alongM - alongM)).trim() + ' '
+                + restriction.spoken + '.', true);
+        }
         if (progress.offRoute) reroute(point.coords);
         notify();
+    }
+
+    /** Hasta CLEARANCE_MAX_POINTS puntos de la geometría, siempre con el primero y el último. */
+    function samplePath(geometry) {
+        if (geometry.length <= CLEARANCE_MAX_POINTS) return geometry.slice();
+        const step = (geometry.length - 1) / (CLEARANCE_MAX_POINTS - 1);
+        return Array.from({ length: CLEARANCE_MAX_POINTS }, (_, i) => geometry[Math.round(i * step)]);
+    }
+
+    const metres = (value) => Number(value).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const tons = (value) => Number(value).toLocaleString('es-CO', { maximumFractionDigits: 1 });
+
+    /** Texto de una restricción de la ruta, con lo que mide o pesa este vehículo. */
+    function clearanceItem(item, vehicle, warning) {
+        const r = item.restriction || {};
+        const base = { id: r.id, kind: item.kind, alongM: item.alongRouteMeters, warning };
+        const title = r.title || 'Restricción vial';
+        if (item.kind === 'GALIBO_ALTURA') {
+            return { ...base, text: 'Gálibo de ' + metres(r.maxClearanceMeters) + ' m',
+                sub: 'su vehículo mide ' + metres(vehicle.height) + ' m',
+                spoken: 'gálibo de ' + metres(r.maxClearanceMeters) + ' metros; su vehículo mide ' + metres(vehicle.height) };
+        }
+        if (item.kind === 'PESO_BRUTO' || item.kind === 'PESO_POR_EJE') {
+            const limit = item.kind === 'PESO_BRUTO' ? r.maxGrossWeightTons : r.maxAxleWeightTons;
+            return { ...base, text: 'Límite de ' + tons(limit) + ' t' + (item.kind === 'PESO_POR_EJE' ? ' por eje' : ''),
+                sub: 'su peso bruto es ' + tons(vehicle.grossWeight) + ' t',
+                spoken: 'límite de peso de ' + tons(limit) + ' toneladas' };
+        }
+        if (item.kind === 'BLOQUEO_TOTAL') return { ...base, text: 'Paso cerrado', sub: title, spoken: 'paso cerrado: ' + title };
+        return { ...base, text: 'Precaución', sub: title, spoken: 'precaución: ' + title };
+    }
+
+    /**
+     * Pide a Routing-Restrictions las restricciones activas a lo largo de la geometría real (la de OSRM), con la altura y
+     * el peso del vehículo registrado. Sin vehículo o sin respuesta no se inventa nada: el HUD no muestra el aviso.
+     */
+    async function checkClearance(target) {
+        const driver = window.TruckCarData && window.TruckCarData.currentDriver;
+        const vehicle = driver && driver.vehicle;
+        const api = window.TruckCarApi && window.TruckCarApi.restrictions;
+        if (!vehicle || !Number.isFinite(vehicle.height) || !Number.isFinite(vehicle.grossWeight)) {
+            clearance = { key: target.key, status: 'no-vehicle', items: [] };
+            return;
+        }
+        if (!api || !api.validateRoute) return;
+        clearance = { key: target.key, status: 'checking', items: [] };
+        try {
+            const result = await api.validateRoute({
+                vehiclePlate: vehicle.plate,
+                heightMeters: vehicle.height,
+                grossWeightTons: vehicle.grossWeight,
+                path: samplePath(target.geometry)
+            });
+            if (route !== target) return;
+            const items = [
+                ...(result.blocking || []).map(item => clearanceItem(item, vehicle, false)),
+                ...(result.warnings || []).map(item => clearanceItem(item, vehicle, true))
+            ].sort((a, b) => a.alongM - b.alongM);
+            clearance = { key: target.key, status: items.length ? 'found' : 'ok', items };
+        } catch (e) {
+            if (route !== target) return;
+            clearance = { key: target.key, status: 'unavailable', items: [] };
+        }
+        notify();
+    }
+
+    /** La próxima restricción de la ruta desde la posición actual (las ya pasadas no cuentan); primero las que bloquean. */
+    function nextClearance(alongM) {
+        if (!route || !clearance || clearance.key !== route.key || !clearance.items.length) return null;
+        const from = alongM == null ? 0 : alongM - 50;
+        const ahead = clearance.items.filter(item => item.alongM >= from);
+        return ahead.find(item => !item.warning) || ahead[0] || null;
     }
 
     function announce(next, p) {
@@ -308,8 +395,17 @@ window.RouteGuidance = (function () {
             // Tiempo restante proporcional a la distancia que falta (OSRM, perfil de auto).
             remainingTime: route && route.durationS && route.totalM
                 ? formatDuration(route.durationS * (p && p.remainingM != null ? p.remainingM : route.totalM) / route.totalM) : '—',
-            speed
+            speed,
+            clearance: clearanceHud(p)
         };
+    }
+
+    function clearanceHud(p) {
+        const along = p && p.alongM != null ? p.alongM : null;
+        const item = nextClearance(along);
+        if (!item) return null;
+        const away = Math.max(0, item.alongM - (along || 0));
+        return { text: item.text + ' en ' + formatDistance(away), sub: item.sub, warning: item.warning };
     }
 
     /** Textos del HUD según el estado (el mismo marcado sirve para el render inicial y para las actualizaciones). */
@@ -348,6 +444,9 @@ window.RouteGuidance = (function () {
         document.querySelectorAll('[data-nav-icon]').forEach(el => { el.className = 'fas ' + s.icon; });
         document.querySelectorAll('[data-nav-glyph]').forEach(el => { el.setAttribute('href', 'assets/icons.svg#' + s.glyph); });
         document.querySelectorAll('[data-nav-offroute]').forEach(el => { el.hidden = !s.offRoute; });
+        document.querySelectorAll('[data-nav-clearance]').forEach(el => { el.hidden = !s.clearance; });
+        set('[data-nav-clearance-text]', s.clearance ? s.clearance.text : '');
+        set('[data-nav-clearance-sub]', s.clearance ? '· ' + s.clearance.sub : '');
     }
 
     function reset() {
@@ -355,6 +454,7 @@ window.RouteGuidance = (function () {
         status = 'idle';
         progress = null;
         pendingKey = null;
+        clearance = null;
         announced.clear();
     }
 
@@ -362,7 +462,8 @@ window.RouteGuidance = (function () {
         prepare, update, reset, snapshot, hudText, renderHud,
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
+        get clearance() { return clearance; },
         // Expuestos para pruebas.
-        instruction, formatDistance, formatDuration, glyph, project
+        instruction, formatDistance, formatDuration, glyph, project, samplePath, checkClearance
     };
 })();

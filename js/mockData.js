@@ -6,9 +6,11 @@
  * communityAlerts y fleetVehicles.
  *
  * Solo quedan datos locales del dispositivo:
- *   - offlineSyncData: regiones de mapa y cola offline del dispositivo.
+ *   - offlineSyncData: estado de la señal y resumen de la caché de mapa (js/app.js lo llena desde el Service Worker).
+ *     La cola sin señal vive en IndexedDB (js/offlineQueue.js).
  *
- * La navegación paso a paso sale de la ruta real de la carga (js/navigation.js: Route-AI + OSRM).
+ * La navegación paso a paso sale de la ruta real de la carga (js/navigation.js: Route-AI + OSRM), y las restricciones de
+ * gálibo y peso de esa ruta, de Routing-Restrictions.
  */
 window.TruckCarData = {
     currentDriver: null,
@@ -20,17 +22,7 @@ window.TruckCarData = {
     fleetVehicles: [],
 
     offlineSyncData: {
-        isOffline: false,
-        cachedRegions: [
-            { id: 'reg-1', name: 'Corredor Bogotá - Ibagué - Armenia', size: '48.2 MB', status: 'Descargado', updated: 'Hoy, 06:00' },
-            { id: 'reg-2', name: 'Sector La Línea y Cruce Cordillera', size: '32.6 MB', status: 'Descargado', updated: 'Ayer' },
-            { id: 'reg-3', name: 'Valle del Cauca - Buenaventura', size: '54.1 MB', status: 'Descargado', updated: 'Hoy, 07:15' }
-        ],
-        pendingQueue: [
-            { id: 'Q-1', type: 'Punto de telemetría GPS (Km 142)', time: '18:22:10', status: 'En cola' },
-            { id: 'Q-2', type: 'Confirmación paso Báscula Flandes', time: '18:24:35', status: 'En cola' },
-            { id: 'Q-3', type: 'Reporte conductor: Vía despejada Cajamarca', time: '18:25:01', status: 'En cola' }
-        ]
+        isOffline: false
     },
 
 };

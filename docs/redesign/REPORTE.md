@@ -182,6 +182,17 @@ pantalla y estado. Están en JPEG, de 300 a 500 KB cada una, y el texto sigue le
 | 4B | [fase-4b/resumen-app-actual-390x844.jpg](fase-4b/resumen-app-actual-390x844.jpg) |
 | 5 | [fase-5/resumen-app-actual-390x844.jpg](fase-5/resumen-app-actual-390x844.jpg) |
 | 6 | [fase-6/resumen-app-actual-390x844.jpg](fase-6/resumen-app-actual-390x844.jpg) |
+| Auditoría | [fase-4/hud-galibo-real.png](fase-4/hud-galibo-real.png): el aviso de gálibo real en Navegar |
+
+**Aviso de gálibo real en el HUD** ([fase-4/hud-galibo-real.png](fase-4/hud-galibo-real.png), 390×844).
+- **Cómo se tomó:**
+  - Sesión de Carlos (tractocamión de 4,10 m y 40 t), con GPS en el origen de la carga 88.
+  - La Torre registró por la API un puente de 3,80 m sobre la ruta que la app calculó con OSRM, 1,4 km por delante.
+  - Al terminar, la restricción se desactivó.
+- **Lo que se ve:** "Gálibo de 3,80 m en 1,4 km · su vehículo mide 4,10 m" bajo la altura y el peso. Viene de
+  `POST /restrictions/validate-route`, no es texto fijo.
+- **Lo que se oye:** "Atención: En 1,4 kilómetros, gálibo de 3,80 metros; su vehículo mide 4,10." Se anuncia una sola vez,
+  al quedar a 3 km o menos. Una captura no tiene sonido: el texto es el que recibió el motor de voz.
 
 **Prototipo, dirección B** ([`prototipo/capturas/`](prototipo/capturas/), cada captura rotulada con pantalla y
 estado):
@@ -777,6 +788,64 @@ Cómo usarlo:
       la app.
     - Font Awesome y Leaflet solo se guardan después de la primera visita con señal: una instalación nueva sin señal
       no los tiene.
+
+**Despliegue cloud con crédito de estudiante (Azure AKS, overlay `azure-students`)**
+
+Detalle, costos y decisiones: [`k8s/README.md`](https://github.com/TRUCKCAR-APP/Deployment-Infrastructure/blob/main/k8s/README.md),
+sección "Azure for Students" (repo Deployment-Infrastructure, PR #1).
+- **Qué se despliega:**
+  - Un nodo Standard_B4ms con una réplica por servicio.
+  - PostgreSQL Flexible Server B1ms, gestionado.
+  - Kafka, Redis y RabbitMQ en el clúster.
+  - Imágenes de GHCR.
+- **Regla:** el clúster y la base solo están encendidos para trabajar o presentar. Encendidos todo el mes, el crédito
+  no alcanza.
+
+Crear (una vez, desde la raíz del repo Deployment-Infrastructure):
+
+```bash
+az group create -n truckcar-rg -l eastus
+az aks create -g truckcar-rg -n truckcar --tier free --node-count 1 --node-vm-size Standard_B4ms \
+  --node-osdisk-size 32 --network-plugin azure --network-plugin-mode overlay --network-policy azure \
+  --enable-app-routing --enable-oidc-issuer --enable-workload-identity --generate-ssh-keys
+az postgres flexible-server create -g truckcar-rg -n truckcar-pg --tier Burstable --sku-name Standard_B1ms \
+  --storage-size 32 --version 16
+az postgres flexible-server parameter set -g truckcar-rg -s truckcar-pg --name azure.extensions --value POSTGIS
+az aks get-credentials -g truckcar-rg -n truckcar
+# Antes de aplicar: Key Vault con los secretos de overlays/azure-aks/external-secrets.yaml y External Secrets Operator.
+kubectl apply -k k8s/overlays/azure-students
+kubectl -n truckcar wait --for=condition=complete job/db-init --timeout=5m
+kubectl -n truckcar rollout status deploy/api-gateway
+```
+
+Apagar al terminar (detiene y desasigna los nodos: deja de cobrar el cómputo):
+
+```bash
+az aks stop -g truckcar-rg -n truckcar
+az postgres flexible-server stop -g truckcar-rg -n truckcar-pg   # Azure la enciende sola a los 7 días
+```
+
+Encender antes de trabajar o presentar (unos 10 minutos hasta que las 9 JVM respondan):
+
+```bash
+az postgres flexible-server start -g truckcar-rg -n truckcar-pg
+az aks start -g truckcar-rg -n truckcar
+kubectl -n truckcar rollout status deploy/api-gateway
+```
+
+Comprobar que quedó apagado:
+
+```bash
+az aks show -g truckcar-rg -n truckcar --query powerState.code -o tsv          # Stopped
+az postgres flexible-server show -g truckcar-rg -n truckcar-pg --query state -o tsv   # Stopped
+```
+
+- **Alerta de presupuesto:** en Cost Management → Budgets, con avisos en 20, 50 y 80 USD.
+- **Lo que cobra aunque el clúster esté apagado:** discos y balanceador del Ingress. Si el crédito se agota, se borra
+  el grupo con `az group delete -n truckcar-rg`; los manifiestos lo recrean.
+- **Validado** con `kubectl kustomize` y `kubeconform -strict`. **No probado en un AKS real.**
+- **Congelado para la sustentación (2 de noviembre de 2026):** cualquier cambio a estos comandos va primero al PR de
+  Deployment-Infrastructure.
 
 **Mapa y caché, lo que queda abierto con Stadia**
 - El plan gratuito es solo para uso no comercial: alcanza para la demo académica, no para producción.

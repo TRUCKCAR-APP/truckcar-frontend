@@ -346,7 +346,9 @@
         /** Routing-Restrictions: restricciones y cierres viales */
         restrictions: {
             listActive: (query) => http.get('/restrictions', { query }),
-            validateCompatibility: (request) => http.post('/restrictions/validate-compatibility', request)
+            validateCompatibility: (request) => http.post('/restrictions/validate-compatibility', request),
+            /** Restricciones activas a lo largo de la geometría real de la ruta (gálibo, peso, cierres). */
+            validateRoute: (request) => http.post('/restrictions/validate-route', request, { timeoutMs: 8000 })
         }
     };
 })();
