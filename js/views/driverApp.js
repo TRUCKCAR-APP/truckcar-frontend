@@ -226,6 +226,7 @@ window.DriverApp = {
                     <h2 class="list-title">Dimensiones y peso</h2>
                     <div class="list">
                         ${this.listRow('Gálibo (altura)', esc(this.number(v.height, 2, 'm')), true)}
+                        ${this.listRow('Capacidad de carga', esc(this.number(v.maxPayload, 1, 't')))}
                         ${this.listRow('Tara', esc(this.number(v.tareWeight, 1, 't')))}
                         ${this.listRow('Carga a bordo', esc(this.number(v.netCargoWeight, 1, 't')))}
                         ${this.listRow('Peso bruto actual (tara + carga)', esc(this.number(v.grossWeight, 1, 't')), true)}
