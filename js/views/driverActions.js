@@ -46,52 +46,47 @@ window.DriverActions = (function () {
 
     // ------------------------------------------------------------------ reporte vial de un toque
     /** Tipos del backend (Community-Alerts). "Trancón" no existe aún como tipo de alerta en el servidor. */
+    // Los 7 tipos de reporte con su ícono de Phosphor (assets/icons.svg). Sin colores: el texto dice qué es.
     const REPORTS = [
-        { type: 'landslide', label: 'Derrumbe', icon: 'fa-hill-rockslide', tone: 'text-rose-400' },
-        { type: 'danger', label: 'Accidente', icon: 'fa-car-burst', tone: 'text-rose-400' },
-        { type: 'workshop', label: 'Obra en vía', icon: 'fa-person-digging', tone: 'text-amber-400' },
-        { type: 'police', label: 'Retén', icon: 'fa-shield-halved', tone: 'text-sky-400' },
-        { type: 'scale', label: 'Báscula', icon: 'fa-weight-hanging', tone: 'text-amber-300' },
-        { type: 'bridge', label: 'Gálibo bajo', icon: 'fa-ruler-vertical', tone: 'text-rose-300' },
-        { type: 'rest', label: 'Parador seguro', icon: 'fa-square-parking', tone: 'text-emerald-400' }
+        { type: 'landslide', label: 'Derrumbe', icon: 'mountains' },
+        { type: 'danger', label: 'Accidente', icon: 'car-profile' },
+        { type: 'workshop', label: 'Obra en vía', icon: 'traffic-cone' },
+        { type: 'police', label: 'Retén', icon: 'police-car' },
+        { type: 'scale', label: 'Báscula', icon: 'scales' },
+        { type: 'bridge', label: 'Gálibo bajo', icon: 'arrows-vertical' },
+        { type: 'rest', label: 'Parador seguro', icon: 'bed' }
     ];
+    const warn = (text) => `<div class="warn-line">${icon('warning-fill')}<span>${esc(text)}</span></div>`;
 
     /** Reporte vial con la posición GPS real del dispositivo: la reciente (≤ 2 min) o una lectura nueva al abrir. */
     function openReportSheet(preset) {
         let coords = window.app.currentPosition(2 * 60 * 1000);
         const body = document.createElement('div');
         body.innerHTML = `
-            ${coords ? '' : `<p data-report-gps class="mb-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-[13px] text-amber-200">
-                <i class="fas fa-location-crosshairs"></i> Buscando su posición GPS…</p>`}
-            <div class="grid grid-cols-3 gap-2.5">
+            ${coords ? '' : `<div data-report-gps class="report-gps"><p class="status-line"><span class="spinner" aria-hidden="true"></span><span class="status-sub">Buscando su posición GPS…</span></p></div>`}
+            <div class="report-grid">
                 ${REPORTS.map(r => `
-                    <button type="button" class="report-tile ${r.type === preset ? '!border-brand-500' : ''}" data-report="${r.type}" ${coords ? '' : 'disabled'}>
-                        <i class="fas ${r.icon} ${r.tone}"></i><span>${r.label}</span>
+                    <button type="button" class="report-tile${r.type === preset ? ' is-preset' : ''}" data-report="${r.type}" ${coords ? '' : 'disabled'}>
+                        ${icon(r.icon)}<span>${r.label}</span>
                     </button>`).join('')}
             </div>
-            <details class="mt-3 group">
-                <summary class="list-none cursor-pointer text-[13px] font-semibold text-slate-400 py-2 flex items-center gap-2">
-                    <i class="fas fa-pen text-[11px]"></i> Añadir un detalle (opcional)
-                    <i class="fas fa-chevron-down text-[10px] transition group-open:rotate-180"></i>
-                </summary>
-                <textarea rows="2" maxlength="300" data-report-detail class="login-input w-full text-sm resize-none mt-1"
+            <details class="report-detail">
+                <summary>${icon('pencil-simple')}Añadir un detalle (opcional)${icon('caret-down')}</summary>
+                <textarea rows="2" maxlength="300" data-report-detail class="field-input report-detail-input"
                     placeholder="Ej. carril derecho cerrado, paso a un solo carril" enterkeyhint="done"></textarea>
             </details>
-            <p class="text-[12px] text-slate-500 mt-2 leading-snug">Un toque publica el reporte con su posición actual. Sin señal se guarda y se envía al reconectar.</p>`;
+            <p class="sheet-note">Sin señal, el reporte se guarda en el teléfono y se envía al reconectar.</p>`;
 
         window.Sheet.open({
             title: 'Reportar en la vía',
-            subtitle: 'Avise a otros conductores en un toque.',
-            icon: 'fa-bullhorn',
-            tone: 'warning',
+            subtitle: 'Un toque publica el reporte con su posición actual.',
             body,
             onMount(sheet, close) {
                 if (!coords) {
                     window.DeviceLocation.fix({ timeoutMs: 8000 }).then((fix) => {
                         const note = sheet.querySelector('[data-report-gps]');
                         if (!fix) {
-                            if (note) note.innerHTML = '<i class="fas fa-location-crosshairs"></i> '
-                                + esc(window.DeviceLocation.error || 'Sin señal GPS') + ' Active la ubicación para reportar.';
+                            if (note) note.innerHTML = warn((window.DeviceLocation.error || 'Sin señal GPS.') + ' Active la ubicación para reportar.');
                             return;
                         }
                         coords = fix.coords;
@@ -103,13 +98,13 @@ window.DriverActions = (function () {
                     const report = REPORTS.find(r => r.type === tile.dataset.report);
                     const detail = sheet.querySelector('[data-report-detail]').value.trim();
                     sheet.querySelectorAll('[data-report]').forEach(t => { t.disabled = true; });
-                    tile.innerHTML = '<i class="fas fa-circle-notch fa-spin text-brand-400"></i><span>Enviando…</span>';
+                    tile.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Enviando…</span>';
                     try {
                         const alert = await window.TruckCarService.reportAlert(report.type,
                             detail || report.label + ' reportado desde la cabina.', coords);
                         window.Native.haptic('success');
                         tile.classList.add('is-sent');
-                        tile.innerHTML = '<i class="fas fa-circle-check text-emerald-400"></i><span>Reportado</span>';
+                        tile.innerHTML = icon('check-circle-fill') + '<span>Reportado</span>';
                         window.voiceEngine.speak('Gracias. Alerta de ' + report.label + ' compartida.');
                         setTimeout(() => close(true), 650);
                         window.ui.toast(alert && alert.pendingSync ? 'Reporte guardado sin señal' : 'Reporte publicado',

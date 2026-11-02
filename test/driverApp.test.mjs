@@ -77,6 +77,7 @@ function screens({ alerts = [], dataStatus = {}, queue = { pending: 0, byKind: {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only", url: "http://localhost:5500/" + search }).window;
   w.ui = { escape: (v) => String(v ?? "") };
   w.OfflineQueue = { status: () => queue };
+  w.TruckCarConfig = { demoTools: search.includes("demo=1") };
   w.TruckCarData = { communityAlerts: alerts, offlineSyncData: offlineData };
   w.eval(readFileSync("js/views/driverApp.js", "utf8"));
   const text = (html) => new JSDOM(html).window.document.body.textContent.replace(/\s+/g, " ");

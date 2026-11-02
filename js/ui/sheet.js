@@ -35,13 +35,13 @@ window.Sheet = (function () {
                 <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title-${++openCount}">
                     <div class="sheet-handle" aria-hidden="true"></div>
                     <div class="sheet-body">
-                        <div class="flex items-start gap-3 pt-1 pb-4">
+                        <div class="sheet-head">
                             ${opts.icon ? `<div class="w-11 h-11 shrink-0 rounded-2xl border grid place-items-center text-lg ${TONES[opts.tone] || TONES.primary}"><i class="fas ${opts.icon}"></i></div>` : ''}
                             <div class="min-w-0 flex-1">
-                                <h2 id="sheet-title-${openCount}" class="text-[17px] font-extrabold text-white tracking-tight leading-snug"></h2>
-                                ${opts.subtitle ? '<p class="sheet-subtitle text-[13px] text-slate-400 mt-0.5 leading-snug"></p>' : ''}
+                                <h2 id="sheet-title-${openCount}" class="sheet-title"></h2>
+                                ${opts.subtitle ? '<p class="sheet-subtitle"></p>' : ''}
                             </div>
-                            ${opts.dismissible ? '<button type="button" data-sheet-close class="w-9 h-9 -mr-1 shrink-0 rounded-full bg-slate-800 text-slate-300 grid place-items-center" aria-label="Cerrar"><i class="fas fa-xmark"></i></button>' : ''}
+                            ${opts.dismissible ? '<button type="button" data-sheet-close class="header-icon-btn" aria-label="Cerrar"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>' : ''}
                         </div>
                         <div class="sheet-content"></div>
                         ${opts.actions.length ? `<div class="sheet-actions grid gap-2.5 pt-4">${opts.actions.map((a, i) => `

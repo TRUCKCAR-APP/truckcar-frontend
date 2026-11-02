@@ -59,7 +59,13 @@
     const provider = MAP_PROVIDERS[MAP_PROVIDER];
     const tileUrl = mapApiKey ? provider.url + '?' + provider.keyParam + '=' + encodeURIComponent(mapApiKey) : provider.url;
 
+    // Herramientas de simulación (GPS, pérdida de señal, foto, giro de pantalla): solo con ?demo=1. Sin el parámetro
+    // la app del conductor no muestra ninguna (css/main.css oculta .demo-only salvo en <html data-demo="1">).
+    const demoTools = new URLSearchParams(window.location.search).get('demo') === '1';
+    if (demoTools) document.documentElement.dataset.demo = '1';
+
     window.TruckCarConfig = Object.freeze({
+        demoTools,
         map: Object.freeze({ provider: MAP_PROVIDER, tileUrl, attribution: provider.attribution, maxZoom: provider.maxZoom }),
         environment: isLocal ? 'local' : 'production',
         gatewayUrl,

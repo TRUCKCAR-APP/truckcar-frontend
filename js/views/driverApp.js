@@ -587,14 +587,14 @@ window.DriverApp = {
             : off.cachedTiles === 0 ? 'Sin mapa guardado todavía' : 'Consultando…';
         const app = navigator.serviceWorker && navigator.serviceWorker.controller
             ? this.dotText('Disponible sin señal', 'ok') : this.dotText('Se guarda al abrirla con señal');
-        const demo = new URLSearchParams(window.location.search).get('demo') === '1';
+        const demo = Boolean(window.TruckCarConfig && window.TruckCarConfig.demoTools);
 
         return `
             <div class="screen-scroll">
-                <h1 class="large-title">${offline ? 'Sin señal' : 'En línea'}</h1>
+                <h1 class="large-title">Conexión</h1>
                 ${offline
-                    ? this.warnLine('Sin conexión', '· lo que haga se guarda en el teléfono y se envía al recuperar la señal.')
-                    : `<p class="status-line">${this.dotText(queue.pending ? 'Enviando lo guardado' : 'Todo enviado', 'ok')}<span class="status-sub"> · lo que haga se envía al momento</span></p>`}
+                    ? this.warnLine('Sin señal', '· lo que haga se guarda en el teléfono y se envía al recuperar la señal.')
+                    : `<p class="status-line">${this.dotText('En línea', 'ok')}<span class="status-sub"> · ${queue.pending ? 'enviando lo guardado' : 'lo que haga se envía al momento'}</span></p>`}
 
                 <h2 class="list-title">${offline ? 'Por enviar al recuperar la señal' : 'Por enviar'}</h2>
                 <div class="list">

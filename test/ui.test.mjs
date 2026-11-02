@@ -135,3 +135,28 @@ test("el formulario de entrega tiene un solo botón fijo «Confirmar entrega» y
   form.querySelector('[data-action="cancel"]').click();
   assert.equal(await result, false);
 });
+
+test("inicio de sesión: sin degradado ni halo, «Entrar» en ámbar y la URL de la API solo con ?demo=1", () => {
+  const render = (demoTools) => {
+    const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
+    w.ui = { escape: (v) => String(v ?? "") };
+    w.TruckCarConfig = { demoTools, apiBaseUrl: "http://localhost:8000/api/v1" };
+    w.eval(readFileSync("js/views/loginView.js", "utf8"));
+    return w.LoginView.render({ authMode: "login" });
+  };
+  const html = render(false);
+  assert.doesNotMatch(html, /gradient|shadow-brand|shadow-2xl/);
+  assert.match(html, /class="btn-accent login-submit"/);
+  assert.match(html, /Inicie sesión en TruckCar/);
+  assert.doesNotMatch(html, /API: /);
+  assert.match(render(true), /API: http:\/\/localhost:8000\/api\/v1/);
+});
+
+test("sin ?demo=1 ninguna herramienta de simulación se ve: todas llevan demo-only", () => {
+  const index = readFileSync("index.html", "utf8");
+  for (const id of ["rotate-device-btn", "sim-toggle-btn"]) {
+    assert.match(index, new RegExp(`id="${id}"[^>]*class="demo-only`), id);
+  }
+  assert.match(readFileSync("js/views/podModals.js", "utf8"), /data-action="simulate-photo" class="[^"]*demo-only/);
+  assert.match(readFileSync("css/main.css", "utf8"), /html:not\(\[data-demo="1"\]\) \.demo-only \{ display: none !important; \}/);
+});

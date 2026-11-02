@@ -226,7 +226,7 @@ window.PodUI = (function () {
                                     ${icon('camera')}Tomar o adjuntar foto
                                     <input type="file" name="photoFile" accept="image/*" capture="environment" class="hidden">
                                 </label>
-                                <button type="button" data-action="simulate-photo" class="field-link">Simular foto</button>
+                                <button type="button" data-action="simulate-photo" class="field-link demo-only">Simular foto</button>
                                 <button type="button" data-action="remove-photo" class="field-link hidden">${icon('x')}Quitar</button>
                             </div>
                             <figure id="pod-photo-figure" class="pod-photo hidden">

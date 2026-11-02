@@ -71,6 +71,11 @@ window.app = {
     init() {
         // Enlace público de seguimiento (?track=): sin sesión, sin cola offline ni barra de roles.
         if (window.PublicTracking.maybeStart()) return;
+        // Sin ?demo=1 no hay herramientas de simulación a la vista: una simulación de GPS que quedó activa de una sesión
+        // anterior se apaga, para que no siga corriendo sin un interruptor visible.
+        if (!window.TruckCarConfig.demoTools) {
+            try { localStorage.removeItem('truckcar.telemetryMode'); } catch (e) { /* sin almacenamiento */ }
+        }
         window.store.subscribe((state) => this.renderCurrentView(state));
         window.Native.init();
         this.initOffline();

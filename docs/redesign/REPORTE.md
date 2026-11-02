@@ -12,7 +12,7 @@ Auditoría inicial: [AUDITORIA.md](AUDITORIA.md). Dirección visual aprobada: **
 | 3A | Cabecera, Vehículo, Carga (en tránsito y sin carga) y Rutas (con su vacío) con la estructura del prototipo | Hecha, en revisión |
 | 3B | Navegar (HUD, marcador del camión, zoom inicial), "Centrar en mi posición" y escritorio en columna de 480 px | Hecha, en revisión |
 | 4A | Entrega (POD) con botón fijo, Alertas con sus tres estados y Offline con la fecha real del mapa | Hecha, en revisión |
-| 4B | Inicio de sesión y hoja de reportar | Pendiente |
+| 4B | Inicio de sesión y hoja de reportar | Hecha, en revisión |
 
 ## 1. Paleta: antes y después
 
@@ -125,6 +125,17 @@ Además:
 
 ## 5. Capturas
 
+**Todas las pantallas de la app, fase por fase.** Una imagen por fase con cada pantalla en 390×844, rotulada con
+pantalla y estado. Están en JPEG, de 300 a 500 KB cada una, y el texto sigue legible:
+
+| Fase | Imagen resumen |
+|---|---|
+| 2 | [fase-2/resumen-app-actual-390x844.jpg](fase-2/resumen-app-actual-390x844.jpg) |
+| 3A | [fase-3a/resumen-app-actual-390x844.jpg](fase-3a/resumen-app-actual-390x844.jpg) |
+| 3B | [fase-3b/resumen-app-actual-390x844.jpg](fase-3b/resumen-app-actual-390x844.jpg) |
+| 4A | [fase-4a/resumen-app-actual-390x844.jpg](fase-4a/resumen-app-actual-390x844.jpg) |
+| 4B | [fase-4b/resumen-app-actual-390x844.jpg](fase-4b/resumen-app-actual-390x844.jpg) |
+
 **Prototipo, dirección B** ([`prototipo/capturas/`](prototipo/capturas/), cada captura rotulada con pantalla y
 estado):
 - [comparativa-b.png](prototipo/capturas/comparativa-b.png): las nueve pantallas y los estados del SOS.
@@ -227,6 +238,40 @@ Alertas en sus tres estados y Offline. Todas las diferencias me parecen aceptabl
 - **POD:** [pod-390x844.jpg](fase-4a/pod-390x844.jpg).
 - **Cola offline:** [cola-390x844.jpg](fase-4a/cola-390x844.jpg).
 - **Modal SOS:** [sos-390x844.jpg](fase-4a/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-4a/sos-sin-senal-390x844.jpg).
+
+**Fase 4B: app real vs prototipo (390×844).**
+[comparativa-app-vs-prototipo-390x844.png](fase-4b/comparativa-app-vs-prototipo-390x844.png) compara el inicio de
+sesión y la hoja de reportar cerrada y abierta. Todas las diferencias me parecen aceptables (ver la imagen).
+- **Escritorio:** el inicio de sesión va en la columna de 480 px
+  ([login-1440x900.jpg](fase-4b/login-1440x900.jpg)), sin la tarjeta del prototipo de escritorio.
+
+**Verificación de la fase 4B:**
+- **POD:** [pod-390x844.jpg](fase-4b/pod-390x844.jpg). Ya no se ve "Simular foto": solo aparece con `?demo=1`.
+- **Cola offline:** [cola-390x844.jpg](fase-4b/cola-390x844.jpg).
+- **Modal SOS:** [sos-390x844.jpg](fase-4b/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-4b/sos-sin-senal-390x844.jpg).
+
+## 5b. Probado y no probado
+
+Todo lo verificado hasta ahora se probó en el **navegador de escritorio** (Chrome con Playwright) contra la pila local
+en `http://localhost`. Lo que depende del teléfono o de HTTPS **no está probado en un dispositivo real**.
+
+| Qué | Cómo se probó | Qué falta en un teléfono real con HTTPS |
+|---|---|---|
+| **Rumbo del GPS** (flecha del camión) | Herramienta de prueba "Simular GPS": avanza sobre la ruta y calcula el rumbo entre posiciones. El GPS emulado de Playwright no informa rumbo ni velocidad, así que en las capturas normales sale el punto. | Que el rumbo del GPS del teléfono (o el calculado entre dos lecturas) gire la flecha en la dirección de la vía, en marcha y detenido. |
+| **Posición real y "Sin posición"** | GPS emulado fijo en el origen de la carga. | Lecturas reales en movimiento, detenido más de 10 s, dentro de un túnel y con el permiso denegado. |
+| **Pérdida de señal** | La simulación de la app (`isOffline`) y el modo sin conexión de Chrome. Este modo **no corta** la red del Service Worker: para las teselas se bloquearon sus peticiones aparte. | Modo avión y zonas sin cobertura de verdad: la cola durable, el reenvío al reconectar y que la app abra sin red desde el ícono instalado. |
+| **Service Worker y caché de teselas** | Chrome de escritorio con el Service Worker activo: solo se guardaron las teselas vistas, vencimiento de 6 h, zona no vista oscura y sin errores, fecha real en Offline. Pruebas unitarias del vencimiento, el tope de 100 MB y la no-precarga. | Instalación como PWA, el tope de 100 MB con un recorrido largo y la expulsión en un teléfono con poco espacio. El Service Worker exige HTTPS fuera de `localhost`, así que en el teléfono solo funcionará desde el despliegue. |
+| **SOS** | El flujo real con el backend local: acuse con id, guardado sin señal y sin GPS. El botón se mantuvo con el puntero del escritorio. | Mantener 1,5 s con el dedo, la vibración, y que "Llamar al 123" abra el marcador del teléfono. |
+| **Entrega (POD)** | El formulario en el navegador, con foto simulada y sin firma real. | Firmar con el dedo, tomar la foto con la cámara trasera (`capture="environment"`) y subirla sin señal y al reconectar. |
+| **Voz de navegación** | No se escuchó: Playwright no reproduce audio. | Que las instrucciones se oigan en español y que "Silenciar" las apague. |
+| **Tamaños y áreas seguras** | Ventanas de 390×844, 360×800, 768×1024 y 1440×900 en Chrome de escritorio. | El notch y el área segura inferior en un teléfono real, el teclado abierto sobre los formularios y la orientación horizontal. |
+| **Contraste bajo el sol** | Medido con la fórmula WCAG. | Leer de reojo en la cabina, de noche y con sol directo, en un Android de gama media. |
+
+Para probar en un teléfono hay dos caminos:
+- **El despliegue con HTTPS** y su dominio registrado en Stadia.
+- **Antes del despliegue:** conectar un Android por USB y reenviar el puerto con `chrome://inspect` → "Port forwarding"
+  (5500 y 8000). El teléfono ve la app como `localhost`, que el navegador trata como seguro.
+- Por la IP local del computador no sirve: sin HTTPS no funcionan ni el Service Worker ni la geolocalización.
 
 ## 6. Inconsistencias de datos encontradas
 
@@ -502,6 +547,32 @@ Cómo usarlo:
     - El índice del mapa se vuelve a leer al entrar en la pantalla.
     - "Simular pérdida de señal" solo aparece con `?demo=1`.
     - "Reintentar ahora" va en ámbar, sin el degradado azul, y solo aparece si hay algo pendiente.
+
+- **Ajustes previos a la fase 4B**
+  - **Herramientas de simulación solo con `?demo=1`:** "Simular GPS", "Rotar", "Simular foto" y "Simular pérdida de
+    señal".
+    - `js/config.js` lee el parámetro y marca `<html data-demo="1">`; sin él, `.demo-only` no se muestra en ningún
+      tamaño.
+    - Una simulación de GPS que quedó activa de una sesión anterior se apaga al abrir la app sin `?demo=1`, para que
+      no siga corriendo sin un interruptor visible.
+    - La URL de la API bajo el inicio de sesión también aparece solo en demo.
+  - **Offline:** título fijo "Conexión", con el estado ("● En línea" o "⚠ Sin señal") como subtítulo.
+- **Fase 4B: decisiones**
+  - **Inicio de sesión:**
+    - Estructura del prototipo: marca, "Inicie sesión en TruckCar", texto de apoyo, campos con rótulo ("Correo",
+      "Contraseña" con mostrar u ocultar) y "Entrar" en ámbar plano.
+    - Sin el degradado azul, el halo ni la tarjeta.
+    - El registro usa los mismos campos.
+    - El error va con triángulo y texto, no en rojo.
+    - Sin la barra de la demostración encima.
+    - La validación nativa del formulario se conserva.
+  - **Hoja de reportar:**
+    - Cabecera "Reportar en la vía" con "Un toque publica el reporte con su posición actual", y cerrar de 44 px.
+    - Los 7 tipos en una cuadrícula de 4 columnas, con íconos neutros de Phosphor (sin los colores por tipo).
+    - "Añadir un detalle (opcional)" y la nota de sin señal.
+    - Mientras busca el GPS, un spinner y texto gris; sin GPS, triángulo y texto.
+  - **Cabecera de todas las hojas** (reportar, confirmaciones, motivos): título y subtítulo con tokens y cerrar con el
+    ícono de Phosphor. Los íconos con tono de las confirmaciones siguen; su rediseño queda fuera de esta fase.
 
 **Pendientes antes del despliegue**
 - Registrar el dominio de la demo en Stadia (cuenta y dominio). En `localhost` no hace falta.
