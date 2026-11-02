@@ -1,3 +1,19 @@
+/** Color de un token de css/tokens.css (ya resuelto), para las capas SVG de Leaflet. */
+function mapToken(name, fallback) {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+}
+
+/** Marcadores de la ruta, distintos por forma: origen = anillo hueco; destino = pin con bandera. */
+const ROUTE_PINS = {
+    origin: () => L.divIcon({ html: '<span class="map-pin-origin"></span>', className: 'map-pin', iconSize: [20, 20], iconAnchor: [10, 10] }),
+    stop: () => L.divIcon({ html: '<span class="map-pin-stop"></span>', className: 'map-pin', iconSize: [12, 12], iconAnchor: [6, 6] }),
+    destination: () => L.divIcon({
+        html: '<span class="map-pin-destination"><svg aria-hidden="true"><use href="assets/icons.svg#flag-checkered-fill"></use></svg></span>',
+        className: 'map-pin', iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -36]
+    })
+};
+
 class MapController {
     constructor() {
         this.map = null;
@@ -46,14 +62,18 @@ class MapController {
             center: defaultCenter,
             zoom: zoom,
             zoomControl: true,
-            attributionControl: true
+            attributionControl: false
         });
-        this.map.attributionControl.setPrefix(false);
+        // Atribución obligatoria y siempre legible: abajo a la izquierda, por encima de los controles de cada pantalla.
+        L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(this.map);
 
-        // Mosaicos de OpenStreetMap (los de CARTO ahora exigen API key). La atribución es obligatoria.
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap'
+        // Teselas oscuras del proveedor configurado en js/config.js (Stadia Maps; CARTO como plan B). crossOrigin hace
+        // legibles sus cabeceras: el Service Worker guarda cada tesela con el vencimiento que estas indican.
+        const tiles = window.TruckCarConfig.map;
+        L.tileLayer(tiles.tileUrl, {
+            maxZoom: tiles.maxZoom,
+            attribution: tiles.attribution,
+            crossOrigin: true
         }).addTo(this.map);
 
         this.alertMarkersLayer = L.layerGroup().addTo(this.map);
@@ -120,7 +140,57 @@ class MapController {
         if (this.guidanceLayer) {
             try { this.map.removeLayer(this.guidanceLayer); } catch (e) { /* capa ya removida */ }
         }
-        this.guidanceLayer = L.polyline(geometry, { color: '#3b82f6', weight: 6, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }).addTo(this.map);
+        this.guidanceLines = this.routeLines(geometry);
+        this.guidanceLayer = L.layerGroup(this.guidanceLines.layers).addTo(this.map);
+    }
+
+    /** Posición del conductor para separar lo recorrido de lo que falta (solo en la app del conductor). */
+    driverPosition() {
+        const state = window.store && window.store.state;
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        return state && state.activeRole === 'driver' && point && point.coords ? point.coords : null;
+    }
+
+    /**
+     * Divide la ruta en la posición: lo recorrido en grafito, lo que falta en azul con borde del color del fondo. Una
+     * posición a más de 250 m de la línea no cuenta (fuera de ruta o sin GPS): toda la ruta queda por recorrer.
+     */
+    splitRoute(coords, position) {
+        if (!position) return { done: [], ahead: coords };
+        const cos = Math.cos(position[0] * Math.PI / 180);
+        let index = 0;
+        let best = Infinity;
+        coords.forEach((c, i) => {
+            const d = ((c[0] - position[0]) ** 2) + ((c[1] - position[1]) * cos) ** 2;
+            if (d < best) { best = d; index = i; }
+        });
+        if (Math.sqrt(best) * 111320 > 250) return { done: [], ahead: coords };
+        return { done: coords.slice(0, index + 1).concat([position]), ahead: [position].concat(coords.slice(index + 1)) };
+    }
+
+    routeLines(coords) {
+        const style = { lineCap: 'round', lineJoin: 'round', opacity: 1, interactive: false };
+        const { done, ahead } = this.splitRoute(coords, this.driverPosition());
+        const lines = {
+            coords,
+            done: L.polyline(done, { ...style, color: mapToken('--color-route-done', '#3A4049'), weight: 6 }),
+            casing: L.polyline(ahead, { ...style, color: mapToken('--color-route-casing', '#0C0E12'), weight: 10 }),
+            ahead: L.polyline(ahead, { ...style, color: mapToken('--color-route', '#5AA2FF'), weight: 6 })
+        };
+        lines.layers = [lines.done, lines.casing, lines.ahead];
+        return lines;
+    }
+
+    /** Con cada posición nueva, lo recorrido crece y lo que falta se acorta. */
+    refreshRouteProgress() {
+        const position = this.driverPosition();
+        [this.routeProgressLines, this.guidanceLines].forEach(lines => {
+            if (!lines) return;
+            const { done, ahead } = this.splitRoute(lines.coords, position);
+            lines.done.setLatLngs(done);
+            lines.casing.setLatLngs(ahead);
+            lines.ahead.setLatLngs(ahead);
+        });
     }
 
     drawCoordinatorFleet() {
@@ -149,20 +219,14 @@ class MapController {
         }
         const polylineCoords = this.cachedOptimalRoadGeometry || waypoints.map(w => w.coords);
 
-        const glowLine = L.polyline(polylineCoords, { color: '#10b981', weight: 8, opacity: 0.35, lineCap: 'round', lineJoin: 'round' });
-        const mainLine = L.polyline(polylineCoords, { color: '#059669', weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' });
+        this.routeProgressLines = this.routeLines(polylineCoords);
         const markers = waypoints.map((wp, index) => {
-            const iconHtml = index === 0
-                ? '<div class="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1"><i class="fas fa-box"></i> Origen</div>'
-                : index === waypoints.length - 1
-                    ? '<div class="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1"><i class="fas fa-flag-checkered"></i> Destino</div>'
-                    : '<div class="w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white shadow-md"></div>';
-            return L.marker(wp.coords, {
-                icon: L.divIcon({ html: iconHtml, className: 'custom-wp-icon', iconSize: [80, 20], iconAnchor: [40, 10] })
-            }).bindPopup('<b>' + window.ui.escape(wp.name) + '</b><br><span class="text-xs text-gray-600">' + window.ui.escape(wp.instruction) + '</span>');
+            const kind = index === 0 ? 'origin' : index === waypoints.length - 1 ? 'destination' : 'stop';
+            return L.marker(wp.coords, { icon: ROUTE_PINS[kind](), title: wp.name || '' })
+                .bindPopup('<b>' + window.ui.escape(wp.name) + '</b><br><span class="map-popup-sub">' + window.ui.escape(wp.instruction) + '</span>');
         });
 
-        this.optimalRouteLayer = L.layerGroup([glowLine, mainLine].concat(markers)).addTo(this.map);
+        this.optimalRouteLayer = L.layerGroup(this.routeProgressLines.layers.concat(markers)).addTo(this.map);
 
         if (!this.cachedOptimalRoadGeometry && !this.isFetchingRoute) {
             this.fetchRealRoadGeometry(waypoints, routeKey);
@@ -183,11 +247,7 @@ class MapController {
             if (data.routes && data.routes[0] && data.routes[0].geometry && this.cachedRouteKey === routeKey) {
                 const roadCoords = data.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
                 this.cachedOptimalRoadGeometry = roadCoords;
-                if (this.optimalRouteLayer && this.map) {
-                    this.optimalRouteLayer.eachLayer(layer => {
-                        if (layer instanceof L.Polyline) layer.setLatLngs(roadCoords);
-                    });
-                }
+                if (this.optimalRouteLayer && this.map) this.renderRoutes();
             }
         } catch (err) {
             // Sin conexión a OSRM: se conservan los tramos rectos.
@@ -350,6 +410,7 @@ class MapController {
         } else if (this.map) {
             this.createTruckMarker([lat, lng]);
         }
+        this.refreshRouteProgress();
 
         if (this.map) {
             this.map.panTo([lat, lng], { animate: true, duration: 0.8 });
@@ -385,24 +446,20 @@ class MapController {
         this.shipmentTruckMarker = null;
         if (!load) return;
         const esc = window.ui.escape;
-        const label = (html, color) => L.divIcon({
-            html: `<div class="${color} text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1 whitespace-nowrap">${html}</div>`,
-            className: 'custom-wp-icon', iconSize: [96, 20], iconAnchor: [48, 10]
-        });
         const layers = [];
         const points = [];
         const origin = load.origin && load.origin.coords;
         const destination = load.destination && load.destination.coords;
         if (origin) {
-            layers.push(L.marker(origin, { icon: label('<i class="fas fa-box"></i> ' + esc(load.origin.city), 'bg-emerald-600') }));
+            layers.push(L.marker(origin, { icon: ROUTE_PINS.origin(), title: load.origin.city || '' }).bindPopup('<b>Origen</b><br>' + esc(load.origin.city)));
             points.push(origin);
         }
         if (destination) {
-            layers.push(L.marker(destination, { icon: label('<i class="fas fa-flag-checkered"></i> ' + esc(load.destination.city), 'bg-blue-600') }));
+            layers.push(L.marker(destination, { icon: ROUTE_PINS.destination(), title: load.destination.city || '' }).bindPopup('<b>Destino</b><br>' + esc(load.destination.city)));
             points.push(destination);
         }
         if (origin && destination) {
-            layers.push(L.polyline([origin, destination], { color: '#6366f1', weight: 3, opacity: 0.8, dashArray: '6 8' }));
+            layers.push(L.polyline([origin, destination], { color: mapToken('--color-route', '#5AA2FF'), weight: 3, opacity: 0.9, dashArray: '6 8' }));
         }
         if (truck && truck.coords) {
             this.shipmentTruckMarker = L.marker(truck.coords, { zIndexOffset: 1000, icon: this.shipmentTruckIcon(truck) })

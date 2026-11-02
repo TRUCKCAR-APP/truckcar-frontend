@@ -30,7 +30,37 @@
     }
     gatewayUrl = gatewayUrl.replace(/\/+$/, '').replace(/\/api\/v1$/, '');
 
+    /*
+     * Teselas del mapa: único punto de configuración (URL, atribución y parámetro de la clave). Para pasar al plan B
+     * cambie MAP_PROVIDER a 'carto'; no hay respaldo automático entre proveedores (docs/redesign/REPORTE.md, §7).
+     * La clave nunca va en el repositorio: la pone el despliegue en <meta name="truckcar-map-api-key"> o en
+     * window.TRUCKCAR_MAP_API_KEY. En localhost queda vacía: Stadia no la exige ahí.
+     */
+    const MAP_PROVIDER = 'stadia';
+    const MAP_PROVIDERS = {
+        stadia: {
+            url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+            keyParam: 'api_key',
+            maxZoom: 20,
+            attribution: '&copy; <a href="https://stadiamaps.com/" target="_blank" rel="noopener">Stadia Maps</a> '
+                + '&copy; <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> '
+                + '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+        },
+        carto: {
+            url: 'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png',
+            keyParam: 'key',
+            maxZoom: 20,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> '
+                + '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
+        }
+    };
+    const mapKeyTag = document.querySelector('meta[name="truckcar-map-api-key"]');
+    const mapApiKey = window.TRUCKCAR_MAP_API_KEY || (mapKeyTag && mapKeyTag.content) || '';
+    const provider = MAP_PROVIDERS[MAP_PROVIDER];
+    const tileUrl = mapApiKey ? provider.url + '?' + provider.keyParam + '=' + encodeURIComponent(mapApiKey) : provider.url;
+
     window.TruckCarConfig = Object.freeze({
+        map: Object.freeze({ provider: MAP_PROVIDER, tileUrl, attribution: provider.attribution, maxZoom: provider.maxZoom }),
         environment: isLocal ? 'local' : 'production',
         gatewayUrl,
         apiBaseUrl: gatewayUrl + API_PREFIX,

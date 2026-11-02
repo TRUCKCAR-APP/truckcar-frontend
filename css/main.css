@@ -241,65 +241,69 @@ input, textarea { caret-color: var(--color-accent); }
     background: rgba(15, 23, 42, 0.7);
 }
 
-/* Barra de pestañas del conductor */
+/* Barra inferior del conductor: seis pestañas iguales de 56 px más el área segura, fondo sólido y un micro-borde
+   superior. Inactiva: ícono de trazo y gris. Activa: ícono relleno, ámbar y una píldora al 15 % detrás del ícono; sin
+   línea superior ni otro indicador. */
+.driver-tabbar {
+    flex: none;
+    height: calc(var(--tabbar-height) + var(--safe-bottom));
+    padding: 0 calc(var(--space-2) + var(--safe-right)) var(--safe-bottom) calc(var(--space-2) + var(--safe-left));
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    background: var(--color-bg);
+    border-top: var(--border-subtle);
+}
 .driver-tab {
     position: relative;
-    flex: 1;
-    min-height: 52px;
+    isolation: isolate;
+    min-height: var(--touch-min);
+    height: var(--tabbar-height);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
-    border-radius: 14px;
-    color: var(--text-faint);
-    font-size: 10.5px;
-    font-weight: 600;
+    gap: 2px;
+    color: var(--color-icon-inactive);
+    font-size: var(--text-tab);          /* 12 px: única excepción al mínimo de 14 px */
+    font-weight: var(--weight-medium);
+    line-height: 1.2;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
 }
-.driver-tab i { font-size: 17px; }
-.driver-tab.is-active { color: #93c5fd; font-weight: 800; }
+.driver-tab svg { width: 24px; height: 24px; fill: currentColor; flex: none; }
+.driver-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.driver-tab.is-active { color: var(--color-accent); }
 .driver-tab.is-active::before {
     content: '';
     position: absolute;
-    top: 3px;
-    width: 18px;
-    height: 3px;
-    border-radius: 3px;
-    background: var(--primary-hi);
+    top: 6px;
+    left: 50%;
+    width: 52px;
+    height: 28px;
+    margin-left: -26px;
+    border-radius: 14px;
+    background: var(--color-accent-soft);
+    z-index: -1;
 }
+.driver-tab:active { color: var(--color-text); }
 .driver-tab-badge {
     position: absolute;
-    top: 7px;
-    right: calc(50% - 16px);
+    top: 6px;
+    right: calc(50% - 22px);
     width: 9px;
     height: 9px;
     border-radius: 999px;
-    background: var(--warning);
-    box-shadow: 0 0 0 2px var(--surface);
+    background: var(--color-warn);
+    box-shadow: 0 0 0 2px var(--color-bg);
 }
-.driver-tab-primary {
-    min-height: 52px;
-    min-width: 64px;
-    padding: 0 12px;
-    border-radius: 18px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    color: #fff;
-    font-size: 10.5px;
-    font-weight: 800;
-    background: linear-gradient(180deg, var(--primary-hi), var(--primary));
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 10px 22px -10px rgba(37, 99, 235, 0.8);
-}
-.driver-tab-primary i { font-size: 17px; }
 @media (hover: hover) and (pointer: fine) {
-    .driver-tab:hover { color: var(--text); }
+    .driver-tab:hover { color: var(--color-text); }
+    .driver-tab.is-active:hover { color: var(--color-accent); }
 }
 
 /* Los toasts del conductor aparecen sobre la barra de pestañas */
-body[data-view="driver"] .toaster { --toaster-offset: 68px; }
+body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) + var(--space-3)); }
 
 /* Paso a paso del viaje y del formulario de envío */
 .stepper { display: flex; align-items: center; gap: 6px; }
@@ -492,44 +496,132 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 }
 
 /* ------------------------------------------------------------------ SOS (mantener para activar) */
-/* En la barra superior del conductor, junto a cerrar sesión: nunca tapa contenido ni botones de acción. */
+/* En la barra superior del conductor, junto a cerrar sesión: nunca tapa contenido ni botones de acción. Pequeño y plano
+   en reposo (cara visible de 40 px dentro de un área táctil de 44 px); mientras se mantiene, se llena de rojo de
+   izquierda a derecha durante 1,5 s. */
 .sos-fab {
     position: absolute;
     top: calc(var(--safe-top) + 2px);
     right: calc(52px + var(--safe-right));
     z-index: 600;
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
-    display: grid;
-    place-items: center;
-    color: #fff;
-    background: radial-gradient(circle at 35% 30%, #f87171, #dc2626 60%, #991b1b);
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18), 0 8px 18px -8px rgba(220, 38, 38, 0.8);
+    height: var(--touch-min);
+    display: inline-flex;
+    align-items: center;
     touch-action: none;                         /* el gesto de mantener es del botón */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
-.sos-fab .sos-label { font-weight: 900; font-size: 11px; letter-spacing: 0.04em; }
-.sos-ring { position: absolute; inset: -5px; transform: rotate(-90deg); pointer-events: none; }
-.sos-ring circle { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; }
-.sos-fab.is-holding { scale: 1.08; }
+.sos-face {
+    position: relative;
+    height: 40px;
+    padding: 0 var(--space-3);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-sm);
+    background: var(--color-elevated);
+    color: var(--color-sos-text);               /* #FF6369 sobre #1B1F26: 5,7:1 */
+    font-size: var(--text-footnote);
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    isolation: isolate;
+}
+.sos-face svg { width: 20px; height: 20px; fill: currentColor; flex: none; }
+.sos-face::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--color-sos-solid);
+    transform: scaleX(var(--hold, 0));
+    transform-origin: left;
+}
+.sos-fab.is-holding .sos-face { color: var(--color-on-sos); }
+.sos-fab.is-releasing .sos-face::before { transition: transform 220ms var(--ease-out); }
+.sos-fab:focus-visible { outline: none; }
+.sos-fab:focus-visible .sos-face { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .sos-hint {
     position: absolute;
-    top: calc(var(--safe-top) + 54px);
+    top: calc(var(--safe-top) + 52px);
     right: calc(12px + var(--safe-right));
     z-index: 600;
-    padding: 7px 11px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 700;
-    background: rgba(127, 29, 29, 0.95);
-    color: #fee2e2;
-    box-shadow: var(--shadow-float);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    background: var(--color-elevated);
+    color: var(--color-text);
+    border: var(--border-elevated);
+    box-shadow: var(--elev-2);
     opacity: 0;
     transform: translateY(-4px);
     transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
     pointer-events: none;
 }
 .sos-hint.is-visible { opacity: 1; transform: none; }
+
+/* SOS activo: rojo pleno sobre toda la app, texto blanco (5,6:1) y etiquetas al 92 % (5,0:1). */
+.sos-modal {
+    position: absolute;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: calc(var(--space-6) + var(--safe-top)) calc(var(--gutter) + var(--safe-right)) calc(var(--space-4) + var(--safe-bottom)) calc(var(--gutter) + var(--safe-left));
+    background: var(--color-sos-solid);
+    color: var(--color-on-sos);
+    font-size: var(--text-body);
+}
+.sos-modal-icon { width: 32px; height: 32px; fill: currentColor; flex: none; }
+.sos-modal h2 {
+    margin: var(--space-6) 0 var(--space-2);
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+}
+.sos-modal p { margin: 0; color: rgba(255, 255, 255, 0.92); }
+.sos-modal p[hidden] { display: none; }
+.sos-line { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-6); font-weight: var(--weight-semibold); }
+.sos-line svg { width: 20px; height: 20px; fill: currentColor; flex: none; margin-top: 3px; }
+.sos-line.is-pending { font-weight: var(--weight-medium); }
+.sos-line b { font-weight: var(--weight-bold); }
+.sos-modal dl { margin: var(--space-6) 0 0; display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); }
+.sos-modal dt { color: rgba(255, 255, 255, 0.92); }
+.sos-modal dd { margin: 0; text-align: right; font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.sos-modal .spacer { flex: 1; min-height: var(--space-6); }
+.sos-call {
+    width: 100%;
+    min-height: 60px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    background: #FFFFFF;
+    color: var(--color-sos-solid);
+    font-size: var(--text-headline);
+    font-weight: var(--weight-bold);
+    touch-action: manipulation;
+    transition: transform var(--dur-press) var(--ease-out);
+}
+.sos-call svg { width: 24px; height: 24px; fill: currentColor; }
+.sos-close {
+    width: 100%;
+    min-height: 52px;
+    margin-top: var(--space-2);
+    color: var(--color-on-sos);
+    font-weight: var(--weight-semibold);
+    touch-action: manipulation;
+}
+.sos-call:active, .sos-close:active { transform: scale(var(--press-scale)); }
+.sos-modal:focus { outline: none; }
+/* Con el SOS activo no se muestra ningún aviso encima: nada puede tapar "Llamar al 123". */
+body.sos-open .toaster { display: none; }
+.sos-modal :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 3px; }
 
 /* Herramienta de prueba "Simular GPS" activa: imposible de confundir con el GPS real. */
 .sim-toggle.is-active { background: var(--color-warn); color: var(--color-bg); border-color: var(--color-warn); }
@@ -639,18 +731,62 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.35); }
 .glow-blue { box-shadow: 0 0 22px rgba(37, 99, 235, 0.4); }
 
+/* Sin tesela (sin señal y sin copia guardada): el fondo oscuro del mapa, sin cuadros rotos. */
 .leaflet-container {
-    background-color: #0b1220 !important;
+    background-color: var(--color-bg) !important;
     font-family: inherit;
 }
-.leaflet-popup-content-wrapper {
-    background: #1e293b !important;
-    color: #f8fafc !important;
-    border-radius: 14px !important;
-    border: 1px solid #334155;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+/* Atribución obligatoria: siempre visible y legible (gris secundario 6:1 sobre su fondo). Los controles de cada
+   pantalla se colocan por encima de ella (--map-attribution-space). */
+.leaflet-control-attribution.leaflet-control {
+    margin: 0 0 var(--space-2) var(--space-2);
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgb(var(--graphite-950) / 0.82);
+    color: var(--color-text-secondary);
+    font-size: var(--text-tab);
+    line-height: 1.4;
+    white-space: nowrap;                 /* una sola línea: los controles de cada pantalla quedan por encima */
 }
-.leaflet-popup-tip { background: #1e293b !important; }
+.leaflet-control-attribution a { color: var(--color-text-secondary); text-decoration: none; }
+:root { --map-attribution-space: 36px; }
+.map-above-attribution { bottom: calc(var(--map-attribution-space) + var(--space-2)) !important; }
+
+/* Marcadores de la ruta: distintos por forma, no por color. */
+/* Zoom sobre el mapa oscuro: superficie elevada, no el blanco de Leaflet. */
+.leaflet-bar { border: var(--border-elevated) !important; box-shadow: var(--elev-2) !important; border-radius: var(--radius-md) !important; overflow: hidden; }
+.leaflet-bar a, .leaflet-bar a:hover {
+    width: var(--touch-min) !important; height: var(--touch-min) !important; line-height: var(--touch-min) !important;
+    background: var(--color-elevated); color: var(--color-text); border-bottom-color: var(--color-border) !important;
+}
+.leaflet-bar a:active { background: var(--color-pressed); }
+.leaflet-bar a.leaflet-disabled { background: var(--color-surface); color: var(--color-text-disabled); }
+
+.map-pin { background: none; border: 0; }
+.map-pin-origin {
+    display: block; width: 20px; height: 20px; border-radius: 50%;
+    border: 4px solid var(--color-text); background: var(--color-bg);
+    box-shadow: 0 0 0 2px var(--color-bg);
+}
+.map-pin-stop {
+    display: block; width: 12px; height: 12px; border-radius: 50%;
+    border: 3px solid var(--color-text); background: var(--color-bg);
+}
+.map-pin-destination {
+    display: grid; place-items: center; width: 32px; height: 40px;
+    color: var(--color-bg); background: var(--color-text);
+    clip-path: path("M16 40 C16 40 0 24 0 16 A16 16 0 1 1 32 16 C32 24 16 40 16 40 Z");
+}
+.map-pin-destination svg { width: 18px; height: 18px; fill: currentColor; margin-top: -8px; }
+.map-popup-sub { color: var(--color-text-secondary); font-size: var(--text-caption); }
+.leaflet-popup-content-wrapper {
+    background: var(--color-elevated) !important;
+    color: var(--color-text) !important;
+    border-radius: var(--radius-md) !important;
+    border: var(--border-elevated);
+    box-shadow: var(--elev-3) !important;
+}
+.leaflet-popup-tip { background: var(--color-elevated) !important; }
 
 .login-input {
     background: #020617;

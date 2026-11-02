@@ -596,10 +596,14 @@ window.app = {
             });
         }
         const data = window.TruckCarData;
+        // Mapa guardado para usar sin señal: lo que dice el índice del Service Worker (js/tileStore.js), con el tamaño y
+        // el vencimiento reales de cada tesela vigente.
         const refreshTileCount = () => {
-            if (!window.caches) return;
-            caches.open('truckcar-tiles-v1').then(cache => cache.keys()).then(keys => {
-                data.offlineSyncData.cachedTiles = keys.length;
+            if (!window.indexedDB || !window.TileStore) return;
+            window.TileStore.summary().then(summary => {
+                data.offlineSyncData.cachedTiles = summary.count;
+                data.offlineSyncData.cachedTilesBytes = summary.bytes;
+                data.offlineSyncData.cachedTilesExpiry = summary.firstExpiry;
             }).catch(() => {});
         };
         refreshTileCount();

@@ -10,6 +10,8 @@
     <meta name="description" content="Navegación, entregas con prueba digital y alertas viales para transporte pesado, con funcionamiento sin señal.">
     <!-- URL del api-gateway en despliegue. Vacío = automático (localhost:8000 en local, mismo origen en producción). -->
     <meta name="truckcar-api-base-url" content="">
+    <!-- Clave de las teselas del mapa (js/config.js). Nunca en el repositorio: la pone el despliegue; vacía en local. -->
+    <meta name="truckcar-map-api-key" content="">
     <!-- Los enlaces públicos llevan el token en ?track=: hacia otros orígenes (teselas, CDN) solo viaja el origen. -->
     <meta name="referrer" content="strict-origin-when-cross-origin">
 
@@ -126,6 +128,7 @@
     <script src="js/ui/toaster.js"></script>
     <script src="js/ui/sheet.js"></script>
     <script src="js/offlineQueue.js"></script>
+    <script src="js/tileStore.js"></script>
     <script src="js/podEvidence.js"></script>
     <script src="js/dataService.js"></script>
     <script src="js/geolocation.js"></script>

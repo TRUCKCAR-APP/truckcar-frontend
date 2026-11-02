@@ -35,7 +35,7 @@
     position: absolute;
     top: 12px;
     left: 12px;
-    bottom: 12px;
+    bottom: calc(var(--map-attribution-space) + 4px);   /* sin tapar la atribución del mapa */
     width: 290px;
     z-index: 500;
     display: flex;
@@ -47,7 +47,7 @@
     position: absolute;
     top: 12px;
     right: 12px;
-    bottom: 12px;
+    bottom: calc(var(--map-attribution-space) + 4px);   /* sin tapar la atribución del mapa */
     width: 230px;
     z-index: 500;
     display: flex;

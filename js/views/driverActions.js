@@ -10,7 +10,7 @@
 window.DriverActions = (function () {
     const esc = (value) => window.ui.escape(value);
     const HOLD_MS = 1500;
-    const RING = 2 * Math.PI * 25;
+    const icon = (name) => `<svg aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
 
     // ------------------------------------------------------------------ progreso del viaje
     const STEPS = [
@@ -135,14 +135,10 @@ window.DriverActions = (function () {
         el.innerHTML = `
             <span class="sos-hint" role="status">Mantenga presionado para pedir ayuda</span>
             <button type="button" class="sos-fab" aria-label="SOS de emergencia: mantenga presionado 1,5 segundos">
-                <svg class="sos-ring" viewBox="0 0 54 54" aria-hidden="true">
-                    <circle cx="27" cy="27" r="25" stroke-dasharray="${RING}" stroke-dashoffset="${RING}"></circle>
-                </svg>
-                <span class="sos-label">SOS</span>
+                <span class="sos-face">${icon('siren')}SOS</span>
             </button>`;
         const hint = el.querySelector('.sos-hint');
         const button = el.querySelector('.sos-fab');
-        const circle = el.querySelector('circle');
         host.appendChild(hint);
         host.appendChild(button);
 
@@ -150,7 +146,8 @@ window.DriverActions = (function () {
         let startedAt = 0;
         let hintTimer = null;
 
-        const setProgress = (p) => { circle.style.strokeDashoffset = String(RING * (1 - p)); };
+        // El relleno rojo avanza con el tiempo mantenido (0 a 1); al soltar antes de tiempo vuelve a vacío.
+        const setProgress = (p) => { button.style.setProperty('--hold', String(p)); };
         const showHint = (visible) => {
             clearTimeout(hintTimer);
             hint.classList.toggle('is-visible', visible);
@@ -160,7 +157,7 @@ window.DriverActions = (function () {
             cancelAnimationFrame(raf);
             raf = null;
             button.classList.remove('is-holding');
-            circle.style.transition = animate ? 'stroke-dashoffset 220ms cubic-bezier(0.23, 1, 0.32, 1)' : 'none';
+            button.classList.toggle('is-releasing', !!animate);
             setProgress(0);
         };
         const tick = (now) => {
@@ -180,7 +177,7 @@ window.DriverActions = (function () {
         button.addEventListener('pointerdown', (event) => {
             button.setPointerCapture(event.pointerId);
             startedAt = performance.now();
-            circle.style.transition = 'none';
+            button.classList.remove('is-releasing');
             button.classList.add('is-holding');
             showHint(true);
             window.Native.haptic('tap');
@@ -218,28 +215,91 @@ window.DriverActions = (function () {
         return last ? { fix: last, stale: true } : null;
     }
 
+    const decimal = (value) => value.toLocaleString('es-CO', { minimumFractionDigits: 5, maximumFractionDigits: 5 });
+
     function positionLabel(position) {
         if (!position) return 'Sin GPS';
-        const { fix, stale } = position;
-        return fix.coords[0].toFixed(5) + ', ' + fix.coords[1].toFixed(5)
-            + (fix.accuracy ? ' ±' + Math.round(fix.accuracy) + ' m' : '')
-            + (stale ? ' (última confirmada ' + window.DeviceLocation.age(fix) + ')' : '');
+        const { fix } = position;
+        return decimal(fix.coords[0]) + ', ' + decimal(fix.coords[1]) + (fix.accuracy ? ' ±' + Math.round(fix.accuracy) + ' m' : '');
     }
 
-    function sosStatusHtml(kind, title, detail) {
-        const tones = {
-            sending: ['fa-circle-notch fa-spin', 'bg-slate-800/60 border-slate-700 text-slate-200'],
-            sent: ['fa-circle-check', 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'],
-            queued: ['fa-cloud-arrow-up', 'bg-amber-500/10 border-amber-500/30 text-amber-200'],
-            failed: ['fa-triangle-exclamation', 'bg-rose-500/10 border-rose-500/30 text-rose-200']
-        };
-        const [icon, cls] = tones[kind];
-        return `<div class="p-3 rounded-2xl border ${cls} text-[13px] leading-snug flex gap-2.5" role="status">
-            <i class="fas ${icon} mt-0.5"></i><div><b class="block">${esc(title)}</b>${detail ? `<span class="opacity-90">${esc(detail)}</span>` : ''}</div></div>`;
+    /** Antigüedad de la lectura GPS que se envió ("hace 40 s"); si es la última confirmada, lo dice. */
+    function readingLabel(position) {
+        if (!position) return 'Sin lectura';
+        const age = window.DeviceLocation.age(position.fix);
+        return position.stale ? 'última confirmada ' + age : age;
     }
 
     /**
-     * SOS: POST /api/v1/alerts/sos con la posición GPS real del dispositivo. La hoja se abre al instante y muestra el
+     * Estado del aviso. "Torre de control avisada" solo con el acuse del servidor (id y hora). Guardado sin señal, sin
+     * GPS o con error del servidor: triángulo, qué pasó y la instrucción de llamar al 123.
+     */
+    function sosStatusHtml(kind, detail) {
+        const call = ' <b>Llame al 123 ahora.</b>';
+        switch (kind) {
+            case 'sending': return `<div class="sos-line is-pending"><span>Avisando a la torre de control…</span></div>`;
+            case 'sent': return `<div class="sos-line">${icon('check-circle-fill')}<span>Torre de control avisada · ${esc(detail)}</span></div>`;
+            case 'queued': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>Sin señal: el aviso se enviará al recuperar la señal.${call}</span></div>`;
+            case 'no-gps': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>No hay posición GPS: ${esc(detail)} Sin ubicación la torre no puede ubicarlo.${call}</span></div>`;
+            default: return `<div class="sos-line is-pending">${icon('warning-fill')}<span>No se pudo enviar el SOS: ${esc(detail)}.${call}</span></div>`;
+        }
+    }
+
+    /**
+     * Modal del SOS activo: rojo pleno sobre toda la app (dentro del marco del teléfono). Resuelve 'call' o 'close'.
+     * Escape cierra; el foco vuelve al botón SOS al cerrar.
+     */
+    function openSosModal({ plate, load, onMount }) {
+        return new Promise((resolve) => {
+            const host = document.getElementById('phone-mockup-frame') || document.body;
+            const previousFocus = document.activeElement;
+            const modal = document.createElement('div');
+            modal.className = 'sos-modal';
+            modal.setAttribute('role', 'alertdialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.setAttribute('aria-labelledby', 'sos-modal-title');
+            modal.setAttribute('aria-describedby', 'sos-modal-status');
+            modal.innerHTML = `
+                <svg class="sos-modal-icon" aria-hidden="true"><use href="assets/icons.svg#siren"></use></svg>
+                <h2 id="sos-modal-title">SOS activado</h2>
+                <p data-sos-calm>Mantenga la calma. Si hay heridos o peligro inmediato, llame a la línea de emergencias.</p>
+                <div id="sos-modal-status" data-sos-status role="status" aria-live="assertive">${sosStatusHtml('sending')}</div>
+                <dl>
+                    <dt>Posición</dt><dd data-sos-position>Obteniendo GPS del teléfono…</dd>
+                    <dt>Lectura GPS</dt><dd data-sos-reading>—</dd>
+                    <dt>Vehículo</dt><dd>${esc(plate || '—')}</dd>
+                    <dt>Carga</dt><dd>${load ? esc(load.id) : 'Sin carga activa'}</dd>
+                </dl>
+                <span class="spacer"></span>
+                <button type="button" class="sos-call" data-sos-action="call">${icon('phone')}Llamar al 123</button>
+                <button type="button" class="sos-close" data-sos-action="close">Cerrar</button>`;
+            let ticker = null;
+            document.body.classList.add('sos-open');
+            const close = (value) => {
+                clearInterval(ticker);
+                document.body.classList.remove('sos-open');
+                document.removeEventListener('keydown', onKey);
+                modal.remove();
+                if (previousFocus && previousFocus.focus) previousFocus.focus({ preventScroll: true });
+                resolve(value);
+            };
+            const onKey = (event) => { if (event.key === 'Escape') close('close'); };
+            document.addEventListener('keydown', onKey);
+            modal.querySelectorAll('[data-sos-action]').forEach(button =>
+                button.addEventListener('click', () => close(button.dataset.sosAction)));
+            host.appendChild(modal);
+            // El foco va al modal, no a "Llamar al 123": con Enter mantenido para activar el SOS, la repetición de la tecla
+            // marcaría sin querer.
+            modal.tabIndex = -1;
+            modal.focus({ preventScroll: true });
+            // La antigüedad de la lectura sigue contando mientras el modal está abierto.
+            const tick = (fn) => { clearInterval(ticker); fn(); ticker = setInterval(fn, 1000); };
+            onMount(modal, tick);
+        });
+    }
+
+    /**
+     * SOS: POST /api/v1/alerts/sos con la posición GPS real del dispositivo. El modal se abre al instante y muestra el
      * resultado real: torre avisada (id y hora del servidor), guardado sin señal (cola durable) o error. La llamada al
      * 123 siempre está.
      */
@@ -248,51 +308,39 @@ window.DriverActions = (function () {
         const driver = window.TruckCarData.currentDriver || {};
         let send = null;
 
-        const result = window.Sheet.open({
-            title: 'SOS activado',
-            subtitle: 'Mantenga la calma. Si hay heridos o peligro inmediato, llame a la línea de emergencias.',
-            icon: 'fa-life-ring',
-            tone: 'danger',
-            body: `
-                <div data-sos-status>${sosStatusHtml('sending', 'Avisando a la torre de control…', 'Enviando su posición.')}</div>
-                <div class="card p-3.5 space-y-2 text-[13px] mt-3">
-                    <div class="flex justify-between gap-3"><span class="text-slate-400">Posición</span>
-                        <b class="font-mono text-right" data-sos-position>Obteniendo GPS del teléfono…</b></div>
-                    <div class="flex justify-between gap-3"><span class="text-slate-400">Vehículo</span>
-                        <b class="font-mono">${esc((driver.vehicle && driver.vehicle.plate) || '—')}</b></div>
-                    <div class="flex justify-between gap-3"><span class="text-slate-400">Carga</span>
-                        <b>${load ? esc(load.id) : 'Sin carga activa'}</b></div>
-                </div>`,
-            actions: [
-                { label: 'Llamar al 123', tone: 'danger', icon: 'fa-phone', value: 'call' },
-                { label: 'Cerrar', tone: 'secondary', value: 'close' }
-            ],
-            onMount(sheet) {
-                const status = sheet.querySelector('[data-sos-status]');
-                const show = (...args) => { status.innerHTML = sosStatusHtml(...args); };
+        const result = openSosModal({
+            plate: driver.vehicle && driver.vehicle.plate,
+            load,
+            onMount(modal, tick) {
+                const status = modal.querySelector('[data-sos-status]');
+                const calm = modal.querySelector('[data-sos-calm]');
+                const show = (kind, detail) => {
+                    status.innerHTML = sosStatusHtml(kind, detail);
+                    calm.hidden = kind !== 'sending' && kind !== 'sent';
+                };
                 send = (async () => {
                     const position = await sosPosition();
-                    sheet.querySelector('[data-sos-position]').textContent = positionLabel(position);
+                    modal.querySelector('[data-sos-position]').textContent = positionLabel(position);
+                    tick(() => { modal.querySelector('[data-sos-reading]').textContent = readingLabel(position); });
                     if (!position) {
-                        show('failed', 'No hay posición GPS', (window.DeviceLocation.error || 'Sin señal GPS.')
-                            + ' Sin ubicación la torre no puede ubicarlo: active el GPS o llame al 123.');
+                        show('no-gps', window.DeviceLocation.error || 'sin señal GPS.');
                         window.Native.haptic('warning');
                         return;
                     }
                     try {
                         const sos = await window.TruckCarService.triggerSos(position.fix.coords, position.fix.accuracy);
                         if (sos.pendingSync) {
-                            show('queued', 'SOS guardado sin señal', 'Se enviará a la torre en cuanto haya cobertura. Si puede, llame al 123.');
-                            window.voiceEngine.speak('Sin señal. El SOS se enviará al recuperar la cobertura.');
+                            show('queued');
+                            window.voiceEngine.speak('Sin señal. El SOS se enviará al recuperar la cobertura. Llame al 123.');
                         } else {
                             const at = new Date(sos.receivedAt || sos.triggeredAt || Date.now())
-                                .toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
-                            show('sent', 'Torre de control avisada', 'SOS #' + sos.id + ' recibido a las ' + at + '. Un coordinador lo atenderá.');
+                                .toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+                            show('sent', 'SOS #' + sos.id + ', ' + at);
                             window.Native.haptic('success');
                             window.voiceEngine.speak('SOS enviado. La torre de control fue avisada.', true);
                         }
                     } catch (error) {
-                        show('failed', 'No se pudo enviar el SOS', window.ui.errorMessage(error) + '. Llame al 123.');
+                        show('failed', window.ui.errorMessage(error));
                         window.Native.haptic('warning');
                     }
                 })();

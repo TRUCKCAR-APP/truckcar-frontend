@@ -39,38 +39,32 @@ window.DriverApp = {
                 </div>
 
                 ${(isLandscape && currentScreen === 'navigation') ? '' : `
-                    <nav class="safe-bottom bg-slate-900/95 border-t border-slate-800 z-40 shrink-0" aria-label="Secciones del conductor">
-                        <div class="h-16 px-1 flex items-center justify-around">
-                            <button onclick="window.store.setState({ driverScreen: 'profile' })" ${currentScreen === 'profile' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'profile' ? 'is-active' : ''}">
-                                <i class="fas fa-truck"></i>
-                                <span>Vehículo</span>
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'assigned_load' })" ${currentScreen === 'assigned_load' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'assigned_load' ? 'is-active' : ''}">
-                                <i class="fas fa-clipboard-list"></i>
-                                <span>Carga</span>
-                                ${window.DriverApp.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>' : ''}
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'route_overview' })" ${currentScreen === 'route_overview' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'route_overview' ? 'is-active' : ''}">
-                                <i class="fas fa-route"></i>
-                                <span>Rutas</span>
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'navigation' })" ${currentScreen === 'navigation' ? 'aria-current="page"' : ''} class="driver-tab-primary">
-                                <i class="fas fa-location-arrow"></i>
-                                <span>Navegar</span>
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'alerts' })" ${currentScreen === 'alerts' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'alerts' ? 'is-active' : ''}">
-                                <i class="fas fa-shield-alt"></i>
-                                <span>Alertas</span>
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'offline' })" ${currentScreen === 'offline' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'offline' ? 'is-active' : ''}">
-                                <i class="fas fa-download"></i>
-                                <span>Offline</span>
-                            </button>
-                        </div>
+                    <nav class="driver-tabbar z-40" aria-label="Secciones del conductor">
+                        ${this.TABS.map(([screen, label, icon]) => this.tabButton(currentScreen, screen, label, icon)).join('')}
                     </nav>
                 `}
             </div>
         `;
+    },
+
+    /** Pestañas: [pantalla, etiqueta, ícono de Phosphor (assets/icons.svg; la activa usa su variante -fill)]. */
+    TABS: [
+        ['profile', 'Vehículo', 'truck'],
+        ['assigned_load', 'Carga', 'package'],
+        ['route_overview', 'Rutas', 'path'],
+        ['navigation', 'Navegar', 'navigation-arrow'],
+        ['alerts', 'Alertas', 'bell'],
+        ['offline', 'Offline', 'cloud-arrow-down']
+    ],
+
+    tabButton(currentScreen, screen, label, icon) {
+        const active = currentScreen === screen;
+        const badge = screen === 'assigned_load' && this.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>' : '';
+        return `
+            <button onclick="window.store.setState({ driverScreen: '${screen}' })" ${active ? 'aria-current="page"' : ''} class="driver-tab ${active ? 'is-active' : ''}">
+                <svg aria-hidden="true"><use href="assets/icons.svg#${icon}${active ? '-fill' : ''}"></use></svg>
+                <span>${label}</span>${badge}
+            </button>`;
     },
 
     hasPendingLoad() {
@@ -389,7 +383,7 @@ window.DriverApp = {
                             <i class="fas fa-shield-halved"></i> ${esc(opt.name)}
                         </span>
                     </div>
-                    <button onclick="window.mapCtrl.fitAllRoute()" class="absolute bottom-3 right-3 z-[400] p-2 bg-slate-900/90 text-white rounded-xl border border-slate-700 shadow text-xs">
+                    <button onclick="window.mapCtrl.fitAllRoute()" class="absolute map-above-attribution right-3 z-[400] p-2 bg-slate-900/90 text-white rounded-xl border border-slate-700 shadow text-xs">
                         <i class="fas fa-expand"></i>
                     </button>
                 </div>
@@ -566,12 +560,12 @@ window.DriverApp = {
                     <div id="driver-telemetry-badge" class="absolute top-2 left-2 right-2 z-[500] flex flex-wrap items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl text-[10px] text-slate-200 shadow-lg" aria-live="polite"></div>
                     <div id="live-nav-map-container" class="w-full h-full"></div>
 
-                    <div class="absolute bottom-4 left-4 z-[400] speed-gauge rounded-2xl p-2.5 shadow-2xl border border-slate-700 text-center min-w-[75px]">
+                    <div class="absolute map-above-attribution left-4 z-[400] speed-gauge rounded-2xl p-2.5 shadow-2xl border border-slate-700 text-center min-w-[75px]">
                         <div data-nav-speed class="text-2xl font-black text-emerald-400 font-mono">${speed}</div>
                         <div class="text-[9px] font-bold uppercase text-slate-400">km/h</div>
                     </div>
 
-                    <div class="absolute bottom-4 right-4 z-[400] flex flex-col items-center gap-2">
+                    <div class="absolute map-above-attribution right-4 z-[400] flex flex-col items-center gap-2">
                         <button onclick="window.app.toggleVoice()" class="w-11 h-11 bg-slate-900/90 text-white rounded-full shadow-xl border border-slate-700 flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}" aria-label="Activar o silenciar la voz">
                             <i class="fas ${state.voiceEnabled ? 'fa-volume-up' : 'fa-volume-mute'}"></i>
                         </button>

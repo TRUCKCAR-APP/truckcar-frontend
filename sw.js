@@ -4,17 +4,24 @@
  *  - App shell (HTML, CSS, JS propios): precargado al instalar (sin pasar por la caché HTTP). Con red se sirve la
  *    versión vigente (red primero, revalidada); sin señal, la copia guardada. Así nunca se mezcla HTML nuevo con CSS viejo.
  *  - Librerías de CDN (Tailwind, Leaflet, Font Awesome, fuentes): caché en tiempo de ejecución.
- *  - Teselas de OpenStreetMap: caché primero, con un máximo de entradas (las más antiguas se descartan).
+ *  - Teselas del mapa (Stadia Maps; CARTO como plan B): caché propia, separada del app shell, con la política de
+ *    js/tileStore.js: solo las teselas ya vistas (nunca precarga), vencimiento según sus cabeceras (7 días si no traen),
+ *    tope de 100 MB y expulsión de vencidas y menos usadas. Sin señal y sin tesela: un cuadro transparente.
  *  - API REST (api-gateway), WebSocket, evidencias (/pod-media/) y rutas OSRM: nunca se sirven desde caché; lo que
  *    se haga sin señal lo guarda la cola durable de IndexedDB (js/offlineQueue.js).
  *
  * Cambiar VERSION invalida el app shell anterior en la activación.
  */
-const VERSION = 'v9';
+importScripts('js/tileStore.js');
+
+const VERSION = 'v10';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
-const TILE_CACHE = 'truckcar-tiles-v1';
-const MAX_TILES = 1500;
+// v1 guardaba hasta 1.500 teselas de OpenStreetMap sin vencimiento: al activarse esta versión se borra entera.
+const TILE_CACHE = 'truckcar-tiles-v2';
+const PURGE_EVERY_MS = 15 * 60 * 1000;
+// PNG transparente de 1×1: sin señal y sin la tesela, el mapa muestra su fondo oscuro sin cuadros rotos ni errores.
+const EMPTY_TILE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=';
 
 const SHELL = [
     './',
@@ -25,6 +32,7 @@ const SHELL = [
     'assets/icon-512.png',
     'assets/icon-maskable-512.png',
     'assets/apple-touch-icon.png',
+    'assets/icons.svg',
     'css/tokens.css',
     'fonts/manrope-latin-wght-normal.woff2',
     'css/main.css',
@@ -36,6 +44,7 @@ const SHELL = [
     'js/ui/toaster.js',
     'js/ui/sheet.js',
     'js/offlineQueue.js',
+    'js/tileStore.js',
     'js/podEvidence.js',
     'js/dataService.js',
     'js/geolocation.js',
@@ -56,7 +65,8 @@ const SHELL = [
 ];
 
 const CDN_HOSTS = ['cdn.tailwindcss.com', 'cdnjs.cloudflare.com', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
-const TILE_HOSTS = /(^|\.)tile\.openstreetmap\.org$/;
+// Proveedores de teselas de js/config.js (cambiar de uno a otro no requiere tocar este archivo).
+const TILE_HOSTS = /^(tiles\.stadiamaps\.com|([a-d]\.)?basemaps\.cartocdn\.com)$/;
 
 // Cada archivo se pide con cache: 'reload' para saltarse la caché HTTP del navegador: con addAll() una versión nueva
 // del Service Worker podía guardar el CSS o el JS viejo que el navegador aún tenía en su caché.
@@ -74,6 +84,8 @@ self.addEventListener('activate', (event) => {
         .then(keys => Promise.all(keys
             .filter(key => key.startsWith('truckcar-') && ![SHELL_CACHE, RUNTIME_CACHE, TILE_CACHE].includes(key))
             .map(key => caches.delete(key))))
+        .then(() => reconcileTiles())
+        .then(() => purgeTiles())
         .then(() => self.clients.claim()));
 });
 
@@ -83,7 +95,8 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
 
     if (TILE_HOSTS.test(url.hostname)) {
-        event.respondWith(cacheFirstTile(request));
+        event.respondWith(tile(request));
+        if (Date.now() - lastPurge > PURGE_EVERY_MS && event.waitUntil) event.waitUntil(purgeTiles());
         return;
     }
     if (CDN_HOSTS.includes(url.hostname)) {
@@ -138,25 +151,95 @@ async function staleWhileRevalidate(request, cacheName) {
     return cached || network;
 }
 
-async function cacheFirstTile(request) {
+// ------------------------------------------------------------------ teselas del mapa
+let lastPurge = 0;
+let budget = Promise.resolve();
+
+function emptyTile() {
+    const bytes = Uint8Array.from(atob(EMPTY_TILE), c => c.charCodeAt(0));
+    return new Response(bytes, { status: 200, headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' } });
+}
+
+/**
+ * Una tesela que el mapa pidió: vigente en la caché, se sirve de ahí; si no, de la red, y se guarda con su vencimiento
+ * si sus cabeceras lo permiten. Una vencida nunca se sirve: se borra. Sin red ni copia vigente, cuadro transparente.
+ */
+async function tile(request) {
     const cache = await caches.open(TILE_CACHE);
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    try {
-        const response = await fetch(request);
-        if (response.ok || response.type === 'opaque') {
-            await cache.put(request, response.clone());
-            trimTiles(cache);
+    const now = Date.now();
+    const record = await self.TileStore.get(request.url).catch(() => null);
+    if (record && record.expires > now) {
+        const cached = await cache.match(request.url);
+        if (cached) {
+            if (now - record.used > 60000) self.TileStore.put({ ...record, used: now }).catch(() => {});
+            return cached;
         }
-        return response;
+    }
+    if (record) {
+        await cache.delete(request.url);
+        await self.TileStore.remove(request.url).catch(() => {});
+    }
+    let response;
+    try {
+        response = await fetch(request);
     } catch (error) {
-        // Sin señal y sin la tesela: Leaflet muestra el cuadro vacío y el resto del mapa sigue funcionando.
-        return Response.error();
+        return emptyTile();
+    }
+    // Solo respuestas legibles (CORS): de una opaca no se conocen el vencimiento ni el tamaño, así que no se guarda.
+    if (response.ok && (response.type === 'cors' || response.type === 'basic')) {
+        const ttl = self.TileStore.ttlFrom(response.headers, now);
+        if (ttl > 0) await store(cache, request.url, response.clone(), now + ttl, now);
+    }
+    return response;
+}
+
+async function store(cache, url, response, expires, now) {
+    try {
+        const body = await response.blob();
+        await cache.put(url, new Response(body, { headers: { 'Content-Type': response.headers.get('content-type') || 'image/png' } }));
+        await self.TileStore.put({ url, bytes: body.size, expires, used: now });
+        budget = budget.then(enforceBudget, enforceBudget);
+        await budget;
+    } catch (error) {
+        // Sin espacio o sin IndexedDB: la tesela se muestra igual, solo no queda para usar sin señal.
+        await cache.delete(url).catch(() => {});
     }
 }
 
-async function trimTiles(cache) {
-    const keys = await cache.keys();
-    const excess = keys.length - MAX_TILES;
-    for (let i = 0; i < excess; i++) await cache.delete(keys[i]);
+/** Tope de 100 MB: fuera las vencidas y, si no alcanza, las de uso menos reciente. */
+async function enforceBudget() {
+    const records = await self.TileStore.all();
+    const total = records.reduce((sum, r) => sum + r.bytes, 0);
+    const now = Date.now();
+    if (total <= self.TileStore.MAX_BYTES && !records.some(r => r.expires <= now)) return;
+    await evict(self.TileStore.planEviction(records, now, self.TileStore.MAX_BYTES));
+}
+
+async function evict(urls) {
+    if (!urls.length) return;
+    const cache = await caches.open(TILE_CACHE);
+    await Promise.all(urls.map(url => cache.delete(url)));
+    await self.TileStore.remove(urls);
+}
+
+/** Borra las teselas vencidas (al activarse el Service Worker y cada 15 min mientras se usa el mapa). */
+async function purgeTiles() {
+    lastPurge = Date.now();
+    try {
+        const now = Date.now();
+        await evict((await self.TileStore.all()).filter(r => r.expires <= now).map(r => r.url));
+    } catch (error) { /* sin IndexedDB: nada que purgar */ }
+}
+
+/** Caché e índice coinciden: una tesela sin vencimiento conocido no se conserva; un registro sin tesela, tampoco. */
+async function reconcileTiles() {
+    try {
+        const cache = await caches.open(TILE_CACHE);
+        const keys = (await cache.keys()).map(key => (typeof key === 'string' ? key : key.url));
+        const known = new Set((await self.TileStore.all()).map(r => r.url));
+        const cached = new Set(keys);
+        await Promise.all(keys.filter(url => !known.has(url)).map(url => cache.delete(url)));
+        const orphans = [...known].filter(url => !cached.has(url));
+        if (orphans.length) await self.TileStore.remove(orphans);
+    } catch (error) { /* sin IndexedDB: nada que reconciliar */ }
 }

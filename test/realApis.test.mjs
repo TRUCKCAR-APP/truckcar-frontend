@@ -58,25 +58,31 @@ test("el SOS envía la posición actual y muestra el id y la hora que confirma e
   assert.match(status, /Torre de control avisada/);
   assert.match(status, /SOS #41/);
   assert.doesNotMatch(w.document.body.textContent, /demostración/i);
-  assert.ok(w.document.querySelector("[data-sheet-action='0']").textContent.includes("Llamar al 123"));
+  assert.ok(w.document.querySelector("[data-sos-action='call']").textContent.includes("Llamar al 123"));
+  assert.match(w.document.querySelector(".sos-modal dl").textContent, /Lectura GPS\s*hace \d+ s/);
 
-  w.document.querySelector("[data-sheet-action='1']").click();
+  w.document.querySelector("[data-sos-action='close']").click();
   await done;
+  assert.equal(w.document.querySelector(".sos-modal"), null, "Cerrar quita el modal");
 });
 
-test("sin señal el SOS queda guardado y la hoja lo dice; un error del servidor también se muestra", async () => {
+test("sin acuse del servidor el SOS no dice que avisó a la torre: sin señal queda guardado y pide llamar al 123", async () => {
   const { w } = browser({ service: { triggerSos: async () => ({ id: null, pendingSync: true }) } });
   const done = w.DriverActions.activate();
   await sleep(30);
-  assert.match(w.document.querySelector("[data-sos-status]").textContent, /guardado sin señal/);
-  w.document.querySelector("[data-sheet-action='1']").click();
+  const queued = w.document.querySelector("[data-sos-status]").textContent;
+  assert.match(queued, /Sin señal: el aviso se enviará al recuperar la señal\. Llame al 123 ahora\./);
+  assert.doesNotMatch(queued, /Torre de control avisada/);
+  w.document.querySelector("[data-sos-action='close']").click();
   await done;
 
   const failing = browser({ service: { triggerSos: async () => { throw new Error("Error HTTP 500"); } } });
   const again = failing.w.DriverActions.activate();
   await sleep(30);
-  assert.match(failing.w.document.querySelector("[data-sos-status]").textContent, /No se pudo enviar el SOS.*Error HTTP 500/s);
-  failing.w.document.querySelector("[data-sheet-action='1']").click();
+  const failed = failing.w.document.querySelector("[data-sos-status]").textContent;
+  assert.match(failed, /No se pudo enviar el SOS: Error HTTP 500.*Llame al 123 ahora/s);
+  assert.doesNotMatch(failed, /Torre de control avisada/);
+  failing.w.document.querySelector("[data-sos-action='close']").click();
   await again;
 });
 
@@ -176,8 +182,8 @@ test("el SOS envía la lectura del GPS del teléfono, nunca la posición de nave
   const done = w.DriverActions.activate();
   await sleep(40);
   assert.deepEqual(calls, [{ coords: [6.2442, -75.5812], accuracy: 12 }]);
-  assert.match(w.document.querySelector("[data-sos-position]").textContent, /6\.24420, -75\.58120 ±12 m/);
-  w.document.querySelector("[data-sheet-action='1']").click();
+  assert.match(w.document.querySelector("[data-sos-position]").textContent, /6,24420, -75,58120 ±12 m/);
+  w.document.querySelector("[data-sos-action='close']").click();
   await done;
 });
 
@@ -188,8 +194,8 @@ test("sin señal GPS el SOS usa la última posición real confirmada y dice su a
   const done = w.DriverActions.activate();
   await sleep(60);
   assert.deepEqual(calls, [[4.4389, -75.2322]]);
-  assert.match(w.document.querySelector("[data-sos-position]").textContent, /última confirmada hace 5 min/);
-  w.document.querySelector("[data-sheet-action='1']").click();
+  assert.match(w.document.querySelector("[data-sos-reading]").textContent, /última confirmada hace 5 min/);
+  w.document.querySelector("[data-sos-action='close']").click();
   await done;
 
   const none = browser({ gps: null, service: { triggerSos: async () => { calls.push("no debería"); return {}; } } });
@@ -197,6 +203,6 @@ test("sin señal GPS el SOS usa la última posición real confirmada y dice su a
   await sleep(60);
   assert.equal(calls.length, 1);
   assert.match(none.w.document.querySelector("[data-sos-status]").textContent, /No hay posición GPS/);
-  none.w.document.querySelector("[data-sheet-action='1']").click();
+  none.w.document.querySelector("[data-sos-action='close']").click();
   await again;
 });
