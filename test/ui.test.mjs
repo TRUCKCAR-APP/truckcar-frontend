@@ -73,15 +73,22 @@ test("401, 403 y 409 se explican en un diálogo; un 500 queda para el toast", as
 
 test("el indicador de red distingue sin señal, sincronizando, reconectando y en línea", () => {
   assert.deepEqual(pick(browser({ online: false, pending: 3 })), ["offline", "Sin señal · 3 guardados"]);
-  assert.deepEqual(pick(browser({ isOffline: true })), ["offline", "Modo sin señal"]);
+  assert.deepEqual(pick(browser({ isOffline: true })), ["offline", "Sin señal"]);
   assert.deepEqual(pick(browser({ pending: 1 })), ["syncing", "Sincronizando 1 pendiente…"]);
   assert.deepEqual(pick(browser({ telemetry: "reconnecting" })), ["reconnecting", "Reconectando telemática…"]);
-  assert.deepEqual(pick(browser({ telemetry: "online" })), ["online", "En línea · en vivo"]);
+  assert.deepEqual(pick(browser({ telemetry: "online" })), ["online", "En línea"]);
 
   const w = browser({ pending: 2 });
   w.document.body.innerHTML = "<span data-network-status></span>";
   w.Native.NetworkStatus.render();
-  assert.equal(w.document.querySelector(".net-pill").dataset.state, "syncing");
+  assert.equal(w.document.querySelector(".net-status").dataset.state, "syncing");
+
+  // Sin señal es una advertencia: triángulo y texto, no solo un color.
+  const off = browser({ online: false });
+  off.document.body.innerHTML = "<span data-network-status></span>";
+  off.Native.NetworkStatus.render();
+  assert.ok(off.document.querySelector(".net-status svg use").getAttribute("href").endsWith("#warning-fill"));
+  assert.match(off.document.querySelector(".net-status").textContent, /Sin señal/);
 
   function pick(win) {
     const s = win.Native.NetworkStatus.snapshot();
@@ -111,4 +118,45 @@ test("el formulario del generador valida en vivo y reconoce ciudades sin tildes"
   assert.deepEqual(Object.keys(validate(ok)), []);
   const bad = validate({ ...ok, cargoDescription: " ", weightTons: "75", destinationCity: "bogota", offeredBudget: "10" });
   assert.deepEqual(Object.keys(bad).sort(), ["cargoDescription", "destinationCity", "offeredBudget", "weightTons"]);
+});
+
+test("el formulario de entrega tiene un solo botón fijo «Confirmar entrega» y la X cierra sin registrar", async () => {
+  const w = browser();
+  w.PodEvidence = { sha256Hex: async () => "0".repeat(64), dataUrlToBlob: async () => new w.Blob(["x"]) };
+  // Lienzo sin dibujo real: cualquier método del contexto 2D es un no-op.
+  w.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, { get: () => () => {}, set: () => true });
+  w.eval(readFileSync("js/views/podModals.js", "utf8"));
+  const result = w.PodUI.openDeliveryForm({ id: "CARGA-88", destination: { name: "Ibagué, Tolima" } }, async () => {});
+  const form = w.document.getElementById("pod-form");
+  const buttons = [...form.querySelectorAll("button")];
+  assert.equal(buttons.filter((b) => b.type === "submit").length, 1);
+  assert.match(form.querySelector(".pod-footer").textContent, /Confirmar entrega/);
+  assert.equal(buttons.filter((b) => /Cancelar/.test(b.textContent)).length, 0, "sin el botón «Cancelar»");
+  form.querySelector('[data-action="cancel"]').click();
+  assert.equal(await result, false);
+});
+
+test("inicio de sesión: sin degradado ni halo, «Entrar» en ámbar y la URL de la API solo con ?demo=1", () => {
+  const render = (demoTools) => {
+    const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
+    w.ui = { escape: (v) => String(v ?? "") };
+    w.TruckCarConfig = { demoTools, apiBaseUrl: "http://localhost:8000/api/v1" };
+    w.eval(readFileSync("js/views/loginView.js", "utf8"));
+    return w.LoginView.render({ authMode: "login" });
+  };
+  const html = render(false);
+  assert.doesNotMatch(html, /gradient|shadow-brand|shadow-2xl/);
+  assert.match(html, /class="btn-accent login-submit"/);
+  assert.match(html, /Inicie sesión en TruckCar/);
+  assert.doesNotMatch(html, /API: /);
+  assert.match(render(true), /API: http:\/\/localhost:8000\/api\/v1/);
+});
+
+test("sin ?demo=1 ninguna herramienta de simulación se ve: todas llevan demo-only", () => {
+  const index = readFileSync("index.html", "utf8");
+  for (const id of ["rotate-device-btn", "sim-toggle-btn"]) {
+    assert.match(index, new RegExp(`id="${id}"[^>]*class="demo-only`), id);
+  }
+  assert.match(readFileSync("js/views/podModals.js", "utf8"), /data-action="simulate-photo" class="[^"]*demo-only/);
+  assert.match(readFileSync("css/main.css", "utf8"), /html:not\(\[data-demo="1"\]\) \.demo-only \{ display: none !important; \}/);
 });

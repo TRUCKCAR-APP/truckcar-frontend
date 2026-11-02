@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0C0E12">
+    <title>Registrar entrega · prototipo TruckCar</title>
+    <link rel="preload" href="fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="proto.css">
+</head>
+<body data-screen="carga">
+<div class="app">
+    <div data-header></div>
+
+    <main class="screen pod">
+        <div class="head">
+            <div>
+                <h1>Registrar entrega</h1>
+                <div class="secondary">CARGA-88 · Ibagué, Tolima</div>
+            </div>
+            <button type="button" class="icon-btn" aria-label="Cerrar">
+                <svg class="icon" aria-hidden="true"><use href="icons.svg#x"></use></svg>
+            </button>
+        </div>
+
+        <!-- Error de envío: la firma y la foto no se pierden. -->
+        <div class="error-box" data-only="error" role="alert" hidden>
+            <div class="warn-line"><svg class="icon" aria-hidden="true"><use href="icons.svg#warning-fill"></use></svg><span>No se pudo registrar la entrega</span></div>
+            <p>El servidor no respondió. La firma y la foto siguen en este formulario: revise la señal e intente de nuevo.</p>
+        </div>
+
+        <form id="pod-form" onsubmit="return false">
+            <div class="field">
+                <label>Nombre de quien recibe <span class="req">· obligatorio</span></label>
+                <div class="input" data-filled="Martha Lucía Rojas" data-empty="Ej. jefe de bodega"></div>
+            </div>
+            <div class="field">
+                <label>Documento</label>
+                <div class="input" data-filled="CC 1.020.304.050" data-empty="CC 1020304050"></div>
+            </div>
+
+            <div class="field">
+                <div class="sign-label">
+                    <label>Firma del receptor <span class="req">· obligatoria</span></label>
+                    <button type="button"><svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#eraser"></use></svg>Borrar</button>
+                </div>
+                <div class="signature" data-signature>Firme con el dedo dentro del recuadro</div>
+            </div>
+
+            <div class="field">
+                <label>Foto de la carga entregada</label>
+                <button type="button" class="photo-slot" data-only="vacio"><svg class="icon" aria-hidden="true"><use href="icons.svg#camera"></use></svg>Tomar o adjuntar foto</button>
+                <div class="photo-loaded" data-only="lleno error" hidden>
+                    <img src="img/sacos-cafe.jpg" alt="Sacos de café descargados en la bodega">
+                    <div class="meta">Foto de la entrega<span>Lista para enviar · 1,2 MB</span></div>
+                    <button type="button" class="icon-btn" aria-label="Quitar la foto"><svg class="icon" aria-hidden="true"><use href="icons.svg#x"></use></svg></button>
+                </div>
+            </div>
+            <p class="note">La firma y la foto se envían cifradas. Sin señal se guardan en el teléfono y se envían al reconectar.</p>
+        </form>
+
+        <!-- Fijo sobre la barra inferior, como en Carga: siempre a la vista sin desplazarse. -->
+        <div class="actions">
+            <button type="submit" form="pod-form" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#check-circle"></use></svg><span data-submit>Confirmar entrega</span></button>
+        </div>
+    </main>
+
+    <div data-tabbar></div>
+</div>
+<script src="proto.js"></script>
+<script>
+    (function () {
+        const estado = new URLSearchParams(location.search).get('estado') || 'vacio';
+        const filled = estado !== 'vacio';
+        document.querySelectorAll('[data-only]').forEach((el) => { el.hidden = !el.dataset.only.split(' ').includes(estado); });
+        document.querySelectorAll('[data-filled]').forEach((el) => {
+            el.textContent = filled ? el.dataset.filled : el.dataset.empty;
+            el.classList.toggle('placeholder', !filled);
+        });
+        if (filled) {
+            // Trazo de firma de ejemplo (tinta oscura sobre el recuadro claro, como la imagen que se guarda).
+            document.querySelector('[data-signature]').innerHTML = '<svg viewBox="0 0 340 168" aria-label="Firma registrada"><path d="M30 118 C 52 60, 70 52, 78 96 S 98 140, 112 96 S 140 40, 150 92 C 156 120, 172 124, 186 98 C 196 80, 204 78, 210 96 C 216 112, 232 116, 248 90 C 262 70, 280 66, 306 84" fill="none" stroke="#14171C" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        }
+        if (estado === 'error') document.querySelector('[data-submit]').textContent = 'Reintentar entrega';
+    })();
+</script>
+</body>
+</html>

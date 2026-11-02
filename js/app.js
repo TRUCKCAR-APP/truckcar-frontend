@@ -32,17 +32,34 @@ window.ui = {
     },
 
     /** Banner con el estado de sincronización con el backend, reutilizado por ambas vistas. */
+    /** Qué no se pudo actualizar, en palabras del conductor (el detalle técnico queda en el título). */
+    SYNC_SECTIONS: {
+        alerts: 'las alertas', routes: 'la ruta', fleet: 'la flota', user: 'su perfil', profile: 'el perfil',
+        driver: 'el perfil', assignment: 'la carga', load: 'la carga', loads: 'las cargas', shipments: 'los envíos',
+        deliveries: 'las entregas', evaluation: 'la evaluación de despacho'
+    },
+
+    /**
+     * Franja bajo la cabecera mientras se actualizan los datos o si algo falló. Sin colores de fondo: actualizando es
+     * texto gris; un fallo es una advertencia (triángulo y texto, nunca rojo, que es solo del SOS). Una pantalla que ya
+     * explica su propio error (Alertas, Rutas) no lo repite aquí.
+     */
     syncBanner(state) {
         const status = state.dataStatus || {};
-        const errors = Object.entries(status.errors || {});
+        const own = state.activeRole === 'driver'
+            ? { alerts: 'alerts', route_overview: 'routes' }[state.driverScreen] : null;
+        const errors = Object.entries(status.errors || {}).filter(([key]) => key !== own);
+        const icon = (name) => '<svg aria-hidden="true"><use href="assets/icons.svg#' + name + '"></use></svg>';
         if (status.loading) {
-            return `<div class="px-3 py-1.5 bg-indigo-500/10 border-b border-indigo-500/30 text-[11px] text-indigo-300 flex items-center gap-2 shrink-0">
-                <i class="fas fa-spinner fa-spin"></i> Sincronizando con el API Gateway...</div>`;
+            return '<div class="sync-banner" role="status"><span class="spinner" aria-hidden="true"></span>Actualizando…</div>';
         }
         if (errors.length) {
-            return `<div class="px-3 py-1.5 bg-rose-500/10 border-b border-rose-500/30 text-[11px] text-rose-300 flex items-center justify-between gap-2 shrink-0">
-                <span class="truncate"><i class="fas fa-triangle-exclamation"></i> ${errors.map(([k, v]) => this.escape(k + ': ' + v)).join(' · ')}</span>
-                <button onclick="window.app.reloadData()" class="shrink-0 underline font-bold">Reintentar</button></div>`;
+            const what = [...new Set(errors.map(([key]) => this.SYNC_SECTIONS[key] || key))];
+            const list = what.length > 1 ? what.slice(0, -1).join(', ') + ' y ' + what[what.length - 1] : what[0];
+            const detail = errors.map(([k, v]) => k + ': ' + v).join(' · ');
+            return `<div class="sync-banner is-warn" role="status" title="${this.escape(detail)}">
+                <span class="sync-text">${icon('warning-fill')}No se pudo actualizar ${this.escape(list)}</span>
+                <button onclick="window.app.reloadData()" class="sync-retry">Reintentar</button></div>`;
         }
         return '';
     }
@@ -54,6 +71,11 @@ window.app = {
     init() {
         // Enlace público de seguimiento (?track=): sin sesión, sin cola offline ni barra de roles.
         if (window.PublicTracking.maybeStart()) return;
+        // Sin ?demo=1 no hay herramientas de simulación a la vista: una simulación de GPS que quedó activa de una sesión
+        // anterior se apaga, para que no siga corriendo sin un interruptor visible.
+        if (!window.TruckCarConfig.demoTools) {
+            try { localStorage.removeItem('truckcar.telemetryMode'); } catch (e) { /* sin almacenamiento */ }
+        }
         window.store.subscribe((state) => this.renderCurrentView(state));
         window.Native.init();
         this.initOffline();
@@ -353,7 +375,7 @@ window.app = {
             frame.classList.toggle('coordinator-frame', !driverLike);
             frame.style.position = 'relative'; // ancla del botón SOS
         }
-        const active = 'bg-brand-600 text-white shadow';
+        const active = 'bg-accent-500/15 text-accent-500';
         const idle = 'text-slate-400 hover:text-slate-200';
         [['role-btn-driver', 'driver'], ['role-btn-coordinator', 'coordinator']].forEach(([id, view]) => {
             const el = document.getElementById(id);
@@ -396,6 +418,8 @@ window.app = {
             if (state.driverScreen === 'route_overview') {
                 if (!document.getElementById('overview-map-container')) return;
                 window.mapCtrl.initMap('overview-map-container', [4.6097, -74.0817], 7);
+                // La hoja inferior de Rutas tapa la parte baja del mapa: atribución y encuadre van por encima de ella.
+                window.mapCtrl.observeBottomSheet(document.querySelector('[data-route-sheet]'));
                 window.mapCtrl.drawOverviewRoutes();
             } else if (state.driverScreen === 'navigation') {
                 if (!document.getElementById('live-nav-map-container')) return;
@@ -585,17 +609,44 @@ window.app = {
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(error =>
                 console.warn('[TruckCar] No se pudo registrar el Service Worker', error));
+            // Una versión nueva del Service Worker tomó el control: se recarga una vez para no seguir con el CSS y el JS
+            // que sirvió la anterior. En la primera instalación (sin controlador previo) no hace falta.
+            const hadController = !!navigator.serviceWorker.controller;
+            let reloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!hadController || reloading) return;
+                reloading = true;
+                window.location.reload();
+            });
         }
         const data = window.TruckCarData;
+        // Mapa guardado para usar sin señal: lo que dice el índice del Service Worker (js/tileStore.js), con el tamaño y
+        // el vencimiento reales de cada tesela vigente.
         const refreshTileCount = () => {
-            if (!window.caches) return;
-            caches.open('truckcar-tiles-v1').then(cache => cache.keys()).then(keys => {
-                data.offlineSyncData.cachedTiles = keys.length;
+            if (!window.indexedDB || !window.TileStore) return;
+            window.TileStore.summary().then(summary => {
+                data.offlineSyncData.cachedTiles = summary.count;
+                data.offlineSyncData.cachedTilesBytes = summary.bytes;
+                data.offlineSyncData.cachedTilesExpiry = summary.firstExpiry;
             }).catch(() => {});
         };
         refreshTileCount();
+        // Al entrar en la pantalla Offline se vuelve a leer el índice: la fecha "guardado hasta" es la real del momento.
+        let lastScreen = null;
+        window.store.subscribe((state) => {
+            if (state.driverScreen === 'offline' && lastScreen !== 'offline' && window.TileStore) {
+                window.TileStore.summary().then(summary => {
+                    data.offlineSyncData.cachedTiles = summary.count;
+                    data.offlineSyncData.cachedTilesBytes = summary.bytes;
+                    data.offlineSyncData.cachedTilesExpiry = summary.firstExpiry;
+                    if (window.store.state.driverScreen === 'offline') this.renderCurrentView(window.store.state);
+                }).catch(() => {});
+            }
+            lastScreen = state.driverScreen;
+        });
         window.OfflineQueue.onChange(() => {
             const state = window.store.state;
+            if (window.DriverApp) window.DriverApp.renderOfflineBadge();
             if (state.activeRole === 'driver' && state.driverScreen === 'offline') {
                 refreshTileCount();
                 this.renderCurrentView(state);

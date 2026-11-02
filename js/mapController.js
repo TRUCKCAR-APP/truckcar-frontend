@@ -1,3 +1,19 @@
+/** Color de un token de css/tokens.css (ya resuelto), para las capas SVG de Leaflet. */
+function mapToken(name, fallback) {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+}
+
+/** Marcadores de la ruta, distintos por forma: origen = anillo hueco; destino = pin con bandera. */
+const ROUTE_PINS = {
+    origin: () => L.divIcon({ html: '<span class="map-pin-origin"></span>', className: 'map-pin', iconSize: [20, 20], iconAnchor: [10, 10] }),
+    stop: () => L.divIcon({ html: '<span class="map-pin-stop"></span>', className: 'map-pin', iconSize: [12, 12], iconAnchor: [6, 6] }),
+    destination: () => L.divIcon({
+        html: '<span class="map-pin-destination"><svg aria-hidden="true"><use href="assets/icons.svg#flag-checkered-fill"></use></svg></span>',
+        className: 'map-pin', iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -36]
+    })
+};
+
 class MapController {
     constructor() {
         this.map = null;
@@ -15,9 +31,24 @@ class MapController {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
         this.isFetchingRoute = false;
+        // Distancia y duración por carretera de la misma línea que se dibuja (OSRM, perfil de auto).
+        this.routeSummary = null;
+        this.routeSummaryFailed = false;
+        this.bottomInset = 0;
     }
 
     initMap(containerId, center = [4.6097, -74.0817], zoom = 8) {
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
+        if (this.sheetObserver) {
+            this.sheetObserver.disconnect();
+            this.sheetObserver = null;
+        }
+        this.bottomInset = 0;
+        this.navFramed = false;
+        this.navGuidanceFramed = false;
         if (this.map) {
             try {
                 // Detener animaciones pendientes evita el error "_leaflet_pos" al destruir el mapa.
@@ -42,14 +73,18 @@ class MapController {
             center: defaultCenter,
             zoom: zoom,
             zoomControl: true,
-            attributionControl: true
+            attributionControl: false
         });
-        this.map.attributionControl.setPrefix(false);
+        // Atribución obligatoria y siempre legible: abajo a la izquierda, por encima de los controles de cada pantalla.
+        L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(this.map);
 
-        // Mosaicos de OpenStreetMap (los de CARTO ahora exigen API key). La atribución es obligatoria.
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap'
+        // Teselas oscuras del proveedor configurado en js/config.js (Stadia Maps; CARTO como plan B). crossOrigin hace
+        // legibles sus cabeceras: el Service Worker guarda cada tesela con el vencimiento que estas indican.
+        const tiles = window.TruckCarConfig.map;
+        L.tileLayer(tiles.tileUrl, {
+            maxZoom: tiles.maxZoom,
+            attribution: tiles.attribution,
+            crossOrigin: true
         }).addTo(this.map);
 
         this.alertMarkersLayer = L.layerGroup().addTo(this.map);
@@ -58,17 +93,63 @@ class MapController {
         this.shipmentTruckMarker = null;
         this.mountKey = containerId;
 
-        setTimeout(() => {
-            if (this.map) {
-                this.map.invalidateSize();
-            }
-        }, 200);
+        // Leaflet mide el contenedor una sola vez al crearse. Si después cambia de tamaño (la pestaña termina de
+        // aparecer, cargan las fuentes, rota el teléfono, se abre una hoja), las teselas quedan desalineadas y con
+        // huecos: se vuelve a medir cada vez que el contenedor cambia, una vez por cuadro.
+        if (typeof ResizeObserver === 'function') {
+            let frame = null;
+            this.resizeObserver = new ResizeObserver(() => {
+                cancelAnimationFrame(frame);
+                frame = requestAnimationFrame(() => { if (this.map) this.map.invalidateSize({ pan: false }); });
+            });
+            this.resizeObserver.observe(container);
+        } else {
+            setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 200);
+        }
     }
 
     /** Invalida la geometría cacheada cuando cambia la carga o el plan de ruta. */
     resetRouteCache() {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
+        this.routeSummary = null;
+        this.routeSummaryFailed = false;
+    }
+
+    /**
+     * Una hoja inferior tapa la parte baja del mapa: la atribución y los controles de abajo suben por encima de ella y
+     * el encuadre de la ruta la descuenta. Se vuelve a medir cuando la hoja cambia de alto.
+     */
+    observeBottomSheet(sheet) {
+        if (!this.map || !sheet) return;
+        const container = this.map.getContainer();
+        const apply = () => {
+            this.bottomInset = sheet.offsetHeight;
+            container.style.setProperty('--map-bottom-inset', this.bottomInset + 'px');
+        };
+        apply();
+        if (typeof ResizeObserver === 'function') {
+            this.sheetObserver = new ResizeObserver(apply);
+            this.sheetObserver.observe(sheet);
+        }
+    }
+
+    /** Cifras de la hoja de Rutas: kilómetros y tiempo de la línea dibujada, o "Sin información" si no se pudo calcular. */
+    routeFiguresHtml() {
+        const s = this.routeSummary;
+        if (s) {
+            const minutes = Math.round(s.durationMin);
+            const hours = Math.floor(minutes / 60);
+            return '<span class="figure">' + Math.round(s.distanceKm) + '<small>km</small></span>'
+                + '<span class="figure">' + (hours ? hours + '<small>h</small> ' : '') + (minutes % 60) + '<small>min</small></span>';
+        }
+        return this.routeSummaryFailed
+            ? '<span class="figure is-none">Sin información</span>'
+            : '<span class="figure is-none">Calculando…</span>';
+    }
+
+    renderRouteFigures() {
+        document.querySelectorAll('[data-route-figures]').forEach(el => { el.innerHTML = this.routeFiguresHtml(); });
     }
 
     currentRoute() {
@@ -88,6 +169,8 @@ class MapController {
     /** Navegación: ruta, alertas, la línea de la guía paso a paso y el camión en la posición actual (si la hay). */
     drawLiveNavigation(position) {
         if (!this.map) return;
+        // Sin botones de zoom en navegación: chocan con la tarjeta del HUD y se puede pellizcar el mapa.
+        if (this.map.zoomControl) this.map.removeControl(this.map.zoomControl);
         this.renderRoutes();
         this.renderAlerts();
         this.guidanceLayer = null;
@@ -95,11 +178,60 @@ class MapController {
         if (guided) this.drawGuidanceLine(guided.geometry);
         if (position) {
             this.createTruckMarker(position);
-            this.map.setView(position, 15);
+            this.frameNextLeg(position);
         } else {
             this.truckMarker = null;
             this.fitAllRoute();
         }
+    }
+
+    /** Lo que tapa el HUD de navegación: arriba la tarjeta, a la derecha el panel vertical. */
+    navInsets() {
+        const card = document.querySelector('.nav-screen .hud-card');
+        const panel = document.querySelector('.nav-screen .hud-panel');
+        const landscape = !!document.querySelector('.nav-screen.is-landscape');
+        return {
+            top: card && !landscape ? card.offsetHeight + 16 : 16,
+            left: card && landscape ? card.offsetWidth + 16 : 0,
+            right: panel ? panel.offsetWidth + 16 : 0
+        };
+    }
+
+    /**
+     * Encuadre inicial de la navegación: la posición y la próxima maniobra, fuera de lo que tapa el HUD. El zoom se
+     * limita a 14: más cerca, el mapa se llena de nombres de calles que no se leen de reojo.
+     */
+    frameNextLeg(position) {
+        if (!this.map || !position) return;
+        const snapshot = window.RouteGuidance ? window.RouteGuidance.snapshot() : {};
+        const next = snapshot.nextLocation;
+        const inset = this.navInsets();
+        const near = next && L.latLng(position).distanceTo(L.latLng(next)) < 40000;
+        const bounds = L.latLngBounds(near ? [position, next] : [position]);
+        this.map.fitBounds(bounds.pad(near ? 0.15 : 0), {
+            paddingTopLeft: [24 + inset.left, inset.top + 24],
+            paddingBottomRight: [24 + inset.right, 40 + (this.bottomInset || 0)],
+            maxZoom: 14,
+            animate: false
+        });
+        if (!near) this.map.setZoom(Math.min(this.map.getZoom(), 14), { animate: false });
+        this.navFramed = true;
+    }
+
+    /** "Centrar en mi posición": la última lectura real del GPS (o la de la telemetría); sin ninguna, lo dice. */
+    centerOnPosition() {
+        if (!this.map) return;
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        const fix = window.DeviceLocation && window.DeviceLocation.last();
+        const position = point ? point.coords : fix ? fix.coords : null;
+        if (!position) {
+            window.ui.toast('Sin posición GPS', 'warning', { description: 'Active la ubicación del teléfono o espere la señal.' });
+            return;
+        }
+        if (this.truckMarker) this.truckMarker.setLatLng(position);
+        else this.createTruckMarker(position);
+        if (document.getElementById('live-nav-map-container')) this.frameNextLeg(position);
+        else this.map.setView(position, Math.max(this.map.getZoom(), 12), { animate: true });
     }
 
     /** Línea de la ruta que sigue la guía (la del plan o la recalculada desde la posición actual). */
@@ -108,7 +240,61 @@ class MapController {
         if (this.guidanceLayer) {
             try { this.map.removeLayer(this.guidanceLayer); } catch (e) { /* capa ya removida */ }
         }
-        this.guidanceLayer = L.polyline(geometry, { color: '#3b82f6', weight: 6, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }).addTo(this.map);
+        this.guidanceLines = this.routeLines(geometry);
+        this.guidanceLayer = L.layerGroup(this.guidanceLines.layers).addTo(this.map);
+        if (this.truckMarker && !this.navGuidanceFramed) {
+            this.navGuidanceFramed = true;
+            this.frameNextLeg(this.truckMarker.getLatLng());
+        }
+    }
+
+    /** Posición del conductor para separar lo recorrido de lo que falta (solo en la app del conductor). */
+    driverPosition() {
+        const state = window.store && window.store.state;
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        return state && state.activeRole === 'driver' && point && point.coords ? point.coords : null;
+    }
+
+    /**
+     * Divide la ruta en la posición: lo recorrido en grafito, lo que falta en azul con borde del color del fondo. Una
+     * posición a más de 250 m de la línea no cuenta (fuera de ruta o sin GPS): toda la ruta queda por recorrer.
+     */
+    splitRoute(coords, position) {
+        if (!position) return { done: [], ahead: coords };
+        const cos = Math.cos(position[0] * Math.PI / 180);
+        let index = 0;
+        let best = Infinity;
+        coords.forEach((c, i) => {
+            const d = ((c[0] - position[0]) ** 2) + ((c[1] - position[1]) * cos) ** 2;
+            if (d < best) { best = d; index = i; }
+        });
+        if (Math.sqrt(best) * 111320 > 250) return { done: [], ahead: coords };
+        return { done: coords.slice(0, index + 1).concat([position]), ahead: [position].concat(coords.slice(index + 1)) };
+    }
+
+    routeLines(coords) {
+        const style = { lineCap: 'round', lineJoin: 'round', opacity: 1, interactive: false };
+        const { done, ahead } = this.splitRoute(coords, this.driverPosition());
+        const lines = {
+            coords,
+            done: L.polyline(done, { ...style, color: mapToken('--color-route-done', '#3A4049'), weight: 6 }),
+            casing: L.polyline(ahead, { ...style, color: mapToken('--color-route-casing', '#0C0E12'), weight: 10 }),
+            ahead: L.polyline(ahead, { ...style, color: mapToken('--color-route', '#5AA2FF'), weight: 6 })
+        };
+        lines.layers = [lines.done, lines.casing, lines.ahead];
+        return lines;
+    }
+
+    /** Con cada posición nueva, lo recorrido crece y lo que falta se acorta. */
+    refreshRouteProgress() {
+        const position = this.driverPosition();
+        [this.routeProgressLines, this.guidanceLines].forEach(lines => {
+            if (!lines) return;
+            const { done, ahead } = this.splitRoute(lines.coords, position);
+            lines.done.setLatLngs(done);
+            lines.casing.setLatLngs(ahead);
+            lines.ahead.setLatLngs(ahead);
+        });
     }
 
     drawCoordinatorFleet() {
@@ -134,23 +320,19 @@ class MapController {
         if (this.cachedRouteKey !== routeKey) {
             this.cachedOptimalRoadGeometry = null;
             this.cachedRouteKey = routeKey;
+            this.routeSummary = null;
+            this.routeSummaryFailed = false;
         }
         const polylineCoords = this.cachedOptimalRoadGeometry || waypoints.map(w => w.coords);
 
-        const glowLine = L.polyline(polylineCoords, { color: '#10b981', weight: 8, opacity: 0.35, lineCap: 'round', lineJoin: 'round' });
-        const mainLine = L.polyline(polylineCoords, { color: '#059669', weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' });
+        this.routeProgressLines = this.routeLines(polylineCoords);
         const markers = waypoints.map((wp, index) => {
-            const iconHtml = index === 0
-                ? '<div class="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1"><i class="fas fa-box"></i> Origen</div>'
-                : index === waypoints.length - 1
-                    ? '<div class="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1"><i class="fas fa-flag-checkered"></i> Destino</div>'
-                    : '<div class="w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white shadow-md"></div>';
-            return L.marker(wp.coords, {
-                icon: L.divIcon({ html: iconHtml, className: 'custom-wp-icon', iconSize: [80, 20], iconAnchor: [40, 10] })
-            }).bindPopup('<b>' + window.ui.escape(wp.name) + '</b><br><span class="text-xs text-gray-600">' + window.ui.escape(wp.instruction) + '</span>');
+            const kind = index === 0 ? 'origin' : index === waypoints.length - 1 ? 'destination' : 'stop';
+            return L.marker(wp.coords, { icon: ROUTE_PINS[kind](), title: wp.name || '' })
+                .bindPopup('<b>' + window.ui.escape(wp.name) + '</b><br><span class="map-popup-sub">' + window.ui.escape(wp.instruction) + '</span>');
         });
 
-        this.optimalRouteLayer = L.layerGroup([glowLine, mainLine].concat(markers)).addTo(this.map);
+        this.optimalRouteLayer = L.layerGroup(this.routeProgressLines.layers.concat(markers)).addTo(this.map);
 
         if (!this.cachedOptimalRoadGeometry && !this.isFetchingRoute) {
             this.fetchRealRoadGeometry(waypoints, routeKey);
@@ -165,20 +347,24 @@ class MapController {
             const url = 'https://router.project-osrm.org/route/v1/driving/' + coordString + '?overview=full&geometries=geojson';
 
             const res = await fetch(url);
-            if (!res.ok) return;
+            if (!res.ok) {
+                this.routeSummaryFailed = true;
+                this.renderRouteFigures();
+                return;
+            }
             const data = await res.json();
 
             if (data.routes && data.routes[0] && data.routes[0].geometry && this.cachedRouteKey === routeKey) {
                 const roadCoords = data.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
                 this.cachedOptimalRoadGeometry = roadCoords;
-                if (this.optimalRouteLayer && this.map) {
-                    this.optimalRouteLayer.eachLayer(layer => {
-                        if (layer instanceof L.Polyline) layer.setLatLngs(roadCoords);
-                    });
-                }
+                this.routeSummary = { distanceKm: data.routes[0].distance / 1000, durationMin: data.routes[0].duration / 60 };
+                if (this.optimalRouteLayer && this.map) this.renderRoutes();
+                this.renderRouteFigures();
             }
         } catch (err) {
-            // Sin conexión a OSRM: se conservan los tramos rectos.
+            // Sin conexión a OSRM: se conservan los tramos rectos y la hoja dice "Sin información".
+            this.routeSummaryFailed = true;
+            this.renderRouteFigures();
         } finally {
             this.isFetchingRoute = false;
         }
@@ -190,18 +376,13 @@ class MapController {
 
         const alerts = window.TruckCarData.communityAlerts || [];
         alerts.filter(alert => alert.coords).forEach(alert => {
-            let color = 'bg-amber-500';
-            let icon = 'fa-triangle-exclamation';
-
-            if (alert.type === 'scale') { color = 'bg-indigo-600'; icon = 'fa-weight-hanging'; }
-            else if (alert.type === 'bridge') { color = 'bg-red-600'; icon = 'fa-ruler-vertical'; }
-            else if (alert.type === 'police') { color = 'bg-blue-600'; icon = 'fa-shield-alt'; }
-            else if (alert.type === 'rest') { color = 'bg-emerald-600'; icon = 'fa-coffee'; }
-            else if (alert.type === 'workshop') { color = 'bg-orange-600'; icon = 'fa-wrench'; }
-            else if (alert.type === 'danger') { color = 'bg-rose-600'; icon = 'fa-car-burst'; }
+            // El tipo lo dice el ícono; el color solo separa lo que es un peligro (advertencia) de lo que no (parador).
+            const icon = { scale: 'fa-weight-hanging', bridge: 'fa-ruler-vertical', police: 'fa-shield-alt', rest: 'fa-mug-hot',
+                workshop: 'fa-wrench', danger: 'fa-car-burst' }[alert.type] || 'fa-triangle-exclamation';
+            const tone = alert.type === 'rest' ? '' : ' is-warn';
 
             const alertIcon = L.divIcon({
-                html: '<div class="w-7 h-7 ' + color + ' text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white text-xs"><i class="fas ' + icon + '"></i></div>',
+                html: '<div class="alert-pin' + tone + '"><i class="fas ' + icon + '"></i></div>',
                 className: 'community-alert-pin',
                 iconSize: [28, 28],
                 iconAnchor: [14, 14]
@@ -232,19 +413,19 @@ class MapController {
     }
 
     fleetTruckIcon(truck) {
-        const statusColor = truck.status === 'EN_TRANSITO' ? 'bg-emerald-600' : truck.status === 'DESCANSO' ? 'bg-amber-500' : 'bg-blue-600';
+        const statusClass = truck.status === 'EN_TRANSITO' ? ' is-transit' : truck.status === 'DESCANSO' ? ' is-rest' : '';
         const heading = typeof truck.heading === 'number' ? truck.heading : null;
         // fa-location-arrow apunta al noreste (45°): se compensa para que 0° sea el norte.
         const arrow = heading == null ? '' : `
-            <i class="fas fa-location-arrow truck-heading absolute -top-1.5 -right-1.5 text-[11px] text-emerald-300 drop-shadow"
+            <i class="fas fa-location-arrow truck-heading fleet-heading"
                style="transform: rotate(${Math.round(heading - 45)}deg)"></i>`;
         return L.divIcon({
             html: `
                 <div class="flex flex-col items-center">
-                    <div class="relative w-8 h-8 ${statusColor} text-white rounded-full shadow-lg border-2 border-white flex items-center justify-center text-xs">
+                    <div class="fleet-pin${statusClass}">
                         <i class="fas fa-truck"></i>${arrow}
                     </div>
-                    <span class="bg-slate-900 text-white text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow mt-0.5 border border-slate-700 whitespace-nowrap">${window.ui.escape(truck.plate)}</span>
+                    <span class="fleet-plate">${window.ui.escape(truck.plate)}</span>
                 </div>`,
             className: 'fleet-truck-marker',
             iconSize: [60, 45],
@@ -254,7 +435,7 @@ class MapController {
 
     fleetPopup(truck) {
         return '<b>' + window.ui.escape(truck.driverName) + ' (' + window.ui.escape(truck.plate) + ')</b><br>'
-            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(truck.status) + '</b> | Vel: '
+            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(window.DriverApp.statusLabel(truck.status)) + '</b> | Vel: '
             + truck.speed + ' km/h' + (typeof truck.heading === 'number' ? ' | Rumbo: ' + Math.round(truck.heading) + '°' : '');
     }
 
@@ -298,23 +479,41 @@ class MapController {
         marker._truckcarAnimation = requestAnimationFrame(step);
     }
 
+    /** Rumbo real del camión (GPS o el calculado entre dos lecturas); null si no se conoce. */
+    truckHeading() {
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        return point && typeof point.heading === 'number' ? point.heading : null;
+    }
+
+    truckIcon(heading) {
+        const html = heading == null
+            ? '<span class="truck-dot" role="img" aria-label="Su posición"></span>'
+            : '<span class="truck-arrow" role="img" aria-label="Su posición y rumbo" style="--heading:' + Math.round(heading)
+                + 'deg"><svg aria-hidden="true"><use href="assets/icons.svg#heading"></use></svg></span>';
+        return L.divIcon({ html, className: 'truck-pin', iconSize: [44, 44], iconAnchor: [22, 22] });
+    }
+
     createTruckMarker(coords = this.currentCoords) {
         if (!this.map) return;
         if (this.truckMarker) {
-            try { this.map.removeLayer(this.truckMarker); } catch(e) {}
+            try { this.map.removeLayer(this.truckMarker); } catch(e) { /* capa ya removida */ }
         }
 
         const latLng = Array.isArray(coords) ? coords : [coords.lat, coords.lng];
         this.currentCoords = latLng;
+        this.truckMarkerHeading = this.truckHeading();
+        this.truckMarker = L.marker(latLng, { icon: this.truckIcon(this.truckMarkerHeading), zIndexOffset: 1000, keyboard: false }).addTo(this.map);
+    }
 
-        const truckIcon = L.divIcon({
-            html: '<div class="w-9 h-9 bg-slate-900 border-2 border-emerald-400 rounded-full shadow-xl flex items-center justify-center text-emerald-400 text-sm animate-pulse"><i class="fas fa-truck-moving"></i></div>',
-            className: 'truck-pin',
-            iconSize: [36, 36],
-            iconAnchor: [18, 18]
-        });
-
-        this.truckMarker = L.marker(latLng, { icon: truckIcon, zIndexOffset: 1000 }).addTo(this.map);
+    /** Gira la flecha con el rumbo nuevo sin recrear el marcador (o cambia entre punto y flecha). */
+    updateTruckHeading() {
+        if (!this.truckMarker) return;
+        const heading = this.truckHeading();
+        const el = this.truckMarker.getElement && this.truckMarker.getElement();
+        const arrow = el && el.querySelector('.truck-arrow');
+        if (heading != null && arrow) arrow.style.setProperty('--heading', Math.round(heading) + 'deg');
+        else if ((heading == null) !== (this.truckMarkerHeading == null)) this.truckMarker.setIcon(this.truckIcon(heading));
+        this.truckMarkerHeading = heading;
     }
 
     updateTruckPosition(arg1, arg2) {
@@ -338,9 +537,14 @@ class MapController {
         } else if (this.map) {
             this.createTruckMarker([lat, lng]);
         }
+        this.updateTruckHeading();
+        this.refreshRouteProgress();
 
         if (this.map) {
-            this.map.panTo([lat, lng], { animate: true, duration: 0.8 });
+            // En navegación, la posición queda bajo el centro: se ve más vía por delante, por debajo de la tarjeta.
+            const inset = document.getElementById('live-nav-map-container') ? this.navInsets() : { top: 0, left: 0 };
+            const target = this.map.project([lat, lng]).subtract([inset.left / 2, inset.top / 2]);
+            this.map.panTo(this.map.unproject(target), { animate: true, duration: 0.8 });
         }
     }
 
@@ -359,7 +563,7 @@ class MapController {
         if (points.length === 1) {
             this.map.setView(points[0], 11, { animate: false });
         } else if (points.length > 1) {
-            this.map.fitBounds(L.latLngBounds(points), { padding: [40, 40], animate: false });
+            this.map.fitBounds(L.latLngBounds(points), { paddingTopLeft: [40, 40], paddingBottomRight: [40, 40 + this.bottomInset], animate: false });
         }
     }
 
@@ -373,24 +577,20 @@ class MapController {
         this.shipmentTruckMarker = null;
         if (!load) return;
         const esc = window.ui.escape;
-        const label = (html, color) => L.divIcon({
-            html: `<div class="${color} text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1 whitespace-nowrap">${html}</div>`,
-            className: 'custom-wp-icon', iconSize: [96, 20], iconAnchor: [48, 10]
-        });
         const layers = [];
         const points = [];
         const origin = load.origin && load.origin.coords;
         const destination = load.destination && load.destination.coords;
         if (origin) {
-            layers.push(L.marker(origin, { icon: label('<i class="fas fa-box"></i> ' + esc(load.origin.city), 'bg-emerald-600') }));
+            layers.push(L.marker(origin, { icon: ROUTE_PINS.origin(), title: load.origin.city || '' }).bindPopup('<b>Origen</b><br>' + esc(load.origin.city)));
             points.push(origin);
         }
         if (destination) {
-            layers.push(L.marker(destination, { icon: label('<i class="fas fa-flag-checkered"></i> ' + esc(load.destination.city), 'bg-blue-600') }));
+            layers.push(L.marker(destination, { icon: ROUTE_PINS.destination(), title: load.destination.city || '' }).bindPopup('<b>Destino</b><br>' + esc(load.destination.city)));
             points.push(destination);
         }
         if (origin && destination) {
-            layers.push(L.polyline([origin, destination], { color: '#6366f1', weight: 3, opacity: 0.8, dashArray: '6 8' }));
+            layers.push(L.polyline([origin, destination], { color: mapToken('--color-route', '#5AA2FF'), weight: 3, opacity: 0.9, dashArray: '6 8' }));
         }
         if (truck && truck.coords) {
             this.shipmentTruckMarker = L.marker(truck.coords, { zIndexOffset: 1000, icon: this.shipmentTruckIcon(truck) })
@@ -410,17 +610,17 @@ class MapController {
     shipmentTruckIcon(truck) {
         const heading = typeof truck.heading === 'number' ? truck.heading : null;
         const arrow = heading == null ? '' : `
-            <i class="fas fa-location-arrow absolute -top-2 -right-2 text-[12px] text-emerald-300 drop-shadow"
+            <i class="fas fa-location-arrow fleet-heading"
                style="transform: rotate(${Math.round(heading - 45)}deg)"></i>`;
         return L.divIcon({
-            html: `<div class="relative w-9 h-9 bg-slate-900 border-2 border-emerald-400 rounded-full shadow-xl flex items-center justify-center text-emerald-400 text-sm"><i class="fas fa-truck-moving"></i>${arrow}</div>`,
+            html: `<div class="fleet-pin is-transit"><i class="fas fa-truck-moving"></i>${arrow}</div>`,
             className: 'truck-pin', iconSize: [36, 36], iconAnchor: [18, 18]
         });
     }
 
     shipmentTruckPopup(truck) {
         const esc = window.ui.escape;
-        return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(truck.status) + ' · '
+        return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(window.DriverApp.statusLabel(truck.status)) + ' · '
             + truck.speed + ' km/h · ' + esc(truck.lastCheckin);
     }
 

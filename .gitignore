@@ -33,3 +33,6 @@ bin/
 
 ### Node (lint y pruebas) ###
 node_modules/
+
+### Respaldos del script de datos de demo (datos locales) ###
+scripts/demo/backups/

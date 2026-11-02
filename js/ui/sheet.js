@@ -11,16 +11,18 @@
  */
 window.Sheet = (function () {
     const esc = (value) => window.ui.escape(value);
+    // Ícono de la hoja sobre una superficie neutra; el significado lo da el color del ícono (advertencia u ok), nunca un
+    // fondo teñido. Una acción destructiva (rechazar, cancelar) no es una emergencia: no va en rojo, que es del SOS.
     const TONES = {
-        primary: 'text-brand-400 bg-brand-600/15 border-brand-500/30',
-        warning: 'text-amber-300 bg-amber-500/15 border-amber-500/30',
-        danger: 'text-rose-300 bg-rose-500/15 border-rose-500/30',
-        success: 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30'
+        primary: 'text-slate-100 bg-slate-800 border-transparent',
+        warning: 'text-warn-500 bg-slate-800 border-transparent',
+        danger: 'text-warn-500 bg-slate-800 border-transparent',
+        success: 'text-ok-500 bg-slate-800 border-transparent'
     };
     const BUTTONS = {
         primary: 'btn-cta',
-        success: 'btn-cta is-success',
-        danger: 'btn-cta !bg-none !bg-rose-600 !shadow-rose-900/50',
+        success: 'btn-cta',
+        danger: 'btn-secondary w-full',
         secondary: 'btn-secondary w-full'
     };
     let openCount = 0;
@@ -35,13 +37,13 @@ window.Sheet = (function () {
                 <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title-${++openCount}">
                     <div class="sheet-handle" aria-hidden="true"></div>
                     <div class="sheet-body">
-                        <div class="flex items-start gap-3 pt-1 pb-4">
+                        <div class="sheet-head">
                             ${opts.icon ? `<div class="w-11 h-11 shrink-0 rounded-2xl border grid place-items-center text-lg ${TONES[opts.tone] || TONES.primary}"><i class="fas ${opts.icon}"></i></div>` : ''}
                             <div class="min-w-0 flex-1">
-                                <h2 id="sheet-title-${openCount}" class="text-[17px] font-extrabold text-white tracking-tight leading-snug"></h2>
-                                ${opts.subtitle ? '<p class="sheet-subtitle text-[13px] text-slate-400 mt-0.5 leading-snug"></p>' : ''}
+                                <h2 id="sheet-title-${openCount}" class="sheet-title"></h2>
+                                ${opts.subtitle ? '<p class="sheet-subtitle"></p>' : ''}
                             </div>
-                            ${opts.dismissible ? '<button type="button" data-sheet-close class="w-9 h-9 -mr-1 shrink-0 rounded-full bg-slate-800 text-slate-300 grid place-items-center" aria-label="Cerrar"><i class="fas fa-xmark"></i></button>' : ''}
+                            ${opts.dismissible ? '<button type="button" data-sheet-close class="header-icon-btn" aria-label="Cerrar"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>' : ''}
                         </div>
                         <div class="sheet-content"></div>
                         ${opts.actions.length ? `<div class="sheet-actions grid gap-2.5 pt-4">${opts.actions.map((a, i) => `

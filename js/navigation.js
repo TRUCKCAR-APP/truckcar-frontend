@@ -103,6 +103,28 @@ window.RouteGuidance = (function () {
         return 'fa-arrow-up';
     }
 
+    /** Ícono de Phosphor (assets/icons.svg) de la maniobra, para el HUD. Distingue giro, giro leve, retorno y glorieta. */
+    function glyph(step) {
+        const m = step.maneuver || {};
+        const mod = m.modifier || '';
+        if (m.type === 'arrive') return 'flag-checkered-fill';
+        if (m.type === 'depart') return 'navigation-arrow-fill';
+        if (m.type === 'roundabout' || m.type === 'rotary') return 'arrows-counter-clockwise';
+        if (mod === 'uturn') return 'arrow-u-up-left';
+        if (mod === 'slight left') return 'arrow-up-left';
+        if (mod === 'slight right') return 'arrow-up-right';
+        if (mod.includes('left')) return 'arrow-bend-up-left';
+        if (mod.includes('right')) return 'arrow-bend-up-right';
+        return 'arrow-up';
+    }
+
+    /** Tiempo restante en texto ("2 h 16 min"). */
+    function formatDuration(seconds) {
+        if (seconds == null || !Number.isFinite(seconds)) return '—';
+        const minutes = Math.max(1, Math.round(seconds / 60));
+        return minutes >= 60 ? Math.floor(minutes / 60) + ' h ' + (minutes % 60) + ' min' : minutes + ' min';
+    }
+
     function formatDistance(m) {
         if (m == null || !Number.isFinite(m)) return '—';
         if (m < 1000) return Math.max(10, Math.round(m / 10) * 10) + ' m';
@@ -151,6 +173,7 @@ window.RouteGuidance = (function () {
                 text: instruction(s, i === kept.length - 1),
                 street: street(s),
                 icon: icon(s),
+                glyph: glyph(s),
                 location: s.maneuver && s.maneuver.location ? [s.maneuver.location[1], s.maneuver.location[0]] : null
             };
             start += s.distance;
@@ -273,23 +296,41 @@ window.RouteGuidance = (function () {
             offRoute: !!(p && p.offRoute),
             arrived: !!(p && p.arrived),
             icon: p && p.arrived ? 'fa-flag-checkered' : next ? next.icon : 'fa-route',
+            glyph: p && p.arrived ? 'flag-checkered-fill' : next ? next.glyph : 'path',
+            // Ubicación de la próxima maniobra: la navegación encuadra la posición y ese punto.
+            nextLocation: next && next.location ? next.location : null,
             distance: p && p.toNextM != null ? formatDistance(p.toNextM) : next ? formatDistance(next.startM) : '—',
             instruction: p && p.arrived ? 'Llegó al destino de la carga' : next ? next.text : '',
             street: current ? current.street : '',
             stepNumber: p && p.nextIndex != null ? p.nextIndex + 1 : route ? 1 : 0,
             stepCount: route ? route.steps.length : 0,
             remaining: route ? formatDistance(p && p.remainingM != null ? p.remainingM : route.totalM) : '—',
+            // Tiempo restante proporcional a la distancia que falta (OSRM, perfil de auto).
+            remainingTime: route && route.durationS && route.totalM
+                ? formatDuration(route.durationS * (p && p.remainingM != null ? p.remainingM : route.totalM) / route.totalM) : '—',
             speed
         };
     }
 
     /** Textos del HUD según el estado (el mismo marcado sirve para el render inicial y para las actualizaciones). */
+    /**
+     * Calle por la que va el camión, bajo la instrucción. Si no se conoce o es la misma que ya nombra la instrucción
+     * ("…hacia Avenida Calle 59 Sur"), no se muestra nada: repetirla no informa.
+     */
+    function currentStreet(s) {
+        const street = (s.street || '').trim();
+        if (!street) return '';
+        const plain = (text) => text.toLocaleLowerCase('es-CO').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return plain(s.instruction || '').includes(plain(street)) ? '' : street;
+    }
+
     function hudText(s) {
-        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: 'OSRM sobre el plan de Route-AI' };
+        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: 'Ruta por carretera de OSRM' };
         if (s.status === 'unavailable') return { distance: '—', instruction: 'Guía paso a paso no disponible', street: 'Sin conexión con el servicio de rutas: siga el mapa.' };
         if (s.status === 'idle') return { distance: '—', instruction: 'Preparando la navegación…', street: '' };
-        if (!s.hasPosition) return { distance: s.distance, instruction: s.instruction, street: 'Esperando la señal GPS del dispositivo…' };
-        return { distance: s.distance, instruction: s.instruction, street: s.offRoute ? 'Fuera de ruta: recalculando…' : s.street };
+        // Sin GPS o fuera de ruta, el aviso ya está dentro de la tarjeta (triángulo y texto): la línea gris no lo repite.
+        if (!s.hasPosition || s.offRoute) return { distance: s.distance, instruction: s.instruction, street: '' };
+        return { distance: s.distance, instruction: s.instruction, street: currentStreet(s) };
     }
 
     function renderHud() {
@@ -302,8 +343,10 @@ window.RouteGuidance = (function () {
         set('[data-nav-street]', text.street);
         set('[data-nav-speed]', s.speed == null ? '—' : String(s.speed));
         set('[data-nav-remaining]', s.remaining);
+        set('[data-nav-eta]', s.remainingTime === '—' ? 'Tiempo sin información' : s.remainingTime + ' · estimado para auto');
         set('[data-nav-step]', s.stepCount ? 'Paso ' + s.stepNumber + ' de ' + s.stepCount : 'Ruta real');
         document.querySelectorAll('[data-nav-icon]').forEach(el => { el.className = 'fas ' + s.icon; });
+        document.querySelectorAll('[data-nav-glyph]').forEach(el => { el.setAttribute('href', 'assets/icons.svg#' + s.glyph); });
         document.querySelectorAll('[data-nav-offroute]').forEach(el => { el.hidden = !s.offRoute; });
     }
 
@@ -320,6 +363,6 @@ window.RouteGuidance = (function () {
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
         // Expuestos para pruebas.
-        instruction, formatDistance, project
+        instruction, formatDistance, formatDuration, glyph, project
     };
 })();

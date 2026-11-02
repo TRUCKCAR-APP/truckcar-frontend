@@ -1,0 +1,558 @@
+/*
+ * Prototipo de dirección visual · TruckCar conductor.
+ * Dirección A (por defecto): casi monocroma, color solo semántico. Dirección B ([data-dir="b"]): la misma base con un
+ * acento ámbar apagado en el botón principal y la pestaña activa. Todo sale de los tokens de :root.
+ */
+@font-face {
+    font-family: "Manrope";
+    src: url("fonts/manrope-latin-wght-normal.woff2") format("woff2-variations"), url("fonts/manrope-latin-wght-normal.woff2") format("woff2");
+    font-weight: 500 700;
+    font-display: swap;
+}
+
+:root {
+    color-scheme: dark;
+    --bg: #0C0E12;
+    --surface: #14171C;
+    --elevated: #1B1F26;
+    --line: rgba(255, 255, 255, 0.07);
+    --text: #ECEEF1;
+    --text-2: #8A919C;
+    --ok: #5BC48A;
+    --warn: #E3A93C;
+    --danger: #E5484D;
+    --route: #5AA2FF;
+    --sos-text: #FF6369;     /* texto e ícono del SOS en reposo */
+    --sos-solid: #C62828;    /* relleno al mantener y fondo del modal activo (texto blanco 5,6:1) */
+
+    /* Dirección A: el principal es el propio texto claro, sin color de marca. */
+    --primary: #ECEEF1;
+    --on-primary: #0C0E12;
+    --tab-active: #ECEEF1;
+    --tab-active-bg: rgba(255, 255, 255, 0.08);
+
+    --font: "Manrope", system-ui, sans-serif;
+    --t-12: 0.75rem;     /* solo etiquetas de la barra inferior */
+    --t-14: 0.875rem;    /* textos de apoyo */
+    --t-15: 0.9375rem;
+    --t-17: 1.0625rem;   /* cuerpo */
+    --t-20: 1.25rem;
+    --t-28: 1.75rem;
+    --t-34: 2.125rem;
+    --t-44: 2.75rem;
+
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+    --r-sm: 10px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px;
+    --tabbar: 56px;
+    --header: 56px;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+}
+[data-dir="b"] {
+    --primary: #E8A33D;
+    --on-primary: #0C0E12;
+    --tab-active: #E8A33D;
+    --tab-active-bg: rgba(232, 163, 61, 0.15);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }   /* un display propio del componente nunca anula hidden */
+html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+    background: var(--bg);
+}
+html, body { height: 100%; height: 100dvh; margin: 0; }
+body {
+    font-family: var(--font);
+    font-size: var(--t-17);
+    font-weight: 500;
+    line-height: 1.45;
+    color: var(--text);
+    background: var(--bg);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+}
+::selection { background: rgba(90, 162, 255, 0.28); }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--route); outline-offset: 2px; border-radius: var(--r-sm); }
+.icon { width: 24px; height: 24px; fill: currentColor; flex: none; }
+.icon-sm { width: 20px; height: 20px; }
+
+/* ── Estructura ────────────────────────────────────────────────────────────────────────────────────────────── */
+.app { height: 100%; display: flex; flex-direction: column; }
+.header {
+    flex: none;
+    height: calc(var(--header) + var(--safe-top));
+    padding: var(--safe-top) var(--s-4) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+}
+.wordmark { font-weight: 700; font-size: var(--t-17); letter-spacing: -0.01em; }
+.net { display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--t-14); color: var(--text-2); }
+.net.warn-line { color: var(--warn); font-size: var(--t-14); gap: 6px; align-items: center; }
+.net.warn-line .icon { width: 18px; height: 18px; margin: 0; }
+.header .spacer { flex: 1; }
+.icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--r-md); color: var(--text-2); }
+.icon-btn:active { background: var(--elevated); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-2); display: inline-block; }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.danger { background: var(--danger); }
+
+.screen { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: var(--s-6) var(--s-4) var(--s-8); }
+
+/* ── SOS: pequeño y plano en reposo; al mantener 1,5 s se llena de rojo ─────────────────────────────────────── */
+/* El botón mide 44 px de alto (área táctil); la cara visible, 40 px. */
+.sos { height: 44px; display: inline-flex; align-items: center; touch-action: none; }
+.sos-face {
+    position: relative;
+    height: 40px;
+    padding: 0 var(--s-3);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--r-sm);
+    background: var(--elevated);
+    color: var(--sos-text);          /* #FF6369 sobre #1B1F26: 5,7:1 */
+    font-weight: 700;
+    font-size: var(--t-15);
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    isolation: isolate;
+}
+.sos-face::before {                 /* el relleno avanza de izquierda a derecha mientras se mantiene */
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--sos-solid);
+    transform: scaleX(var(--hold, 0));
+    transform-origin: left;
+}
+.sos.is-holding .sos-face, .sos[style*="--hold"] .sos-face { color: #fff; transition: color 120ms; }
+.sos.is-holding .sos-face::before { transition: transform 1500ms linear; transform: scaleX(1); }
+.sos[style*="--hold"] .sos-face::before { transform: scaleX(var(--hold)); }
+
+/* Advertencia: siempre triángulo + texto, nunca solo color (el ámbar de advertencia se parece al acento). */
+.warn-line { display: flex; align-items: flex-start; gap: var(--s-2); color: var(--warn); font-weight: 600; font-size: var(--t-15); }
+.warn-line .icon { width: 20px; height: 20px; margin-top: 1px; }
+.warn-line .sub { color: var(--text-2); font-weight: 500; }
+.sos-face .icon { width: 20px; height: 20px; }
+
+/* ── Tipografía ────────────────────────────────────────────────────────────────────────────────────────────── */
+.large-title { font-size: var(--t-34); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 var(--s-2); }
+.secondary { color: var(--text-2); font-size: var(--t-15); }
+.status { display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--t-15); font-weight: 600; color: var(--text); }
+.status .sub { color: var(--text-2); font-weight: 500; }
+
+/* ── Lista agrupada (Ajustes de iOS) ───────────────────────────────────────────────────────────────────────── */
+.group-title { font-size: var(--t-14); font-weight: 600; color: var(--text-2); margin: var(--s-8) 0 var(--s-2) var(--s-4); }
+.group { background: var(--surface); border-radius: var(--r-md); }
+.row {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    position: relative;
+}
+.row + .row::before {               /* línea fina con sangría, como en iOS */
+    content: "";
+    position: absolute;
+    top: 0;
+    left: var(--s-4);
+    right: 0;
+    border-top: 1px solid var(--line);
+}
+.row .label { flex: 1; color: var(--text); }
+.row .value { color: var(--text-2); text-align: right; display: inline-flex; align-items: center; gap: var(--s-2); }
+.row .value.strong { color: var(--text); font-weight: 600; }
+.row button.label { text-align: left; }
+.row .chev { color: var(--text-2); width: 18px; height: 18px; }
+
+/* ── Botones ───────────────────────────────────────────────────────────────────────────────────────────────── */
+.btn-primary {
+    width: 100%;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-2);
+    border-radius: var(--r-md);
+    background: var(--primary);
+    color: var(--on-primary);
+    font-weight: 700;
+    font-size: var(--t-17);
+    transition: transform 140ms var(--ease-out);
+}
+.btn-primary:active { transform: scale(0.98); }
+.btn-text {
+    width: 100%;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-2);
+    color: var(--text);
+    font-weight: 600;
+    font-size: var(--t-17);
+}
+
+/* ── Placa colombiana de carga ─────────────────────────────────────────────────────────────────────────────── */
+.plate {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 132px;
+    height: 46px;
+    padding: 0 var(--s-4);
+    border-radius: 6px;
+    background: #F2C200;
+    color: #111;
+    border: 2px solid #111;
+    box-shadow: inset 0 0 0 2px #F2C200, inset 0 0 0 3px rgba(17, 17, 17, 0.55);
+    font-weight: 700;
+    font-size: 1.625rem;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+/* ── Barra inferior ────────────────────────────────────────────────────────────────────────────────────────── */
+.tabbar {
+    flex: none;
+    height: calc(var(--tabbar) + var(--safe-bottom));
+    padding: 0 var(--s-2) var(--safe-bottom);
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+}
+/* Degradado sobre el contenido que queda cortado detrás del botón fijo: indica que hay más debajo. */
+.screen > .actions::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 32px;
+    background: linear-gradient(to bottom, rgba(12, 14, 18, 0), var(--bg));
+    pointer-events: none;
+}
+.tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: var(--text-2);
+    font-size: var(--t-12);
+    font-weight: 500;
+    position: relative;
+    isolation: isolate;
+}
+.tab .icon { width: 24px; height: 24px; }
+.tab[aria-current="page"] { color: var(--tab-active); }   /* mismo peso medio en todas: solo cambian color, relleno y píldora */
+.tab[aria-current="page"]::before {     /* píldora sutil detrás del ícono, sin línea superior */
+    content: "";
+    position: absolute;
+    top: 6px;
+    width: 52px;
+    height: 28px;
+    border-radius: 14px;
+    background: var(--tab-active-bg);
+    z-index: -1;
+}
+
+/* ── Carga en tránsito ─────────────────────────────────────────────────────────────────────────────────────── */
+.trip { display: grid; grid-template-columns: 20px 1fr; column-gap: var(--s-3); margin-top: var(--s-6); }
+.trip .rail { display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+.trip .stop { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--text); flex: none; }
+.trip .stop.end { background: var(--text); }
+.trip .line { width: 2px; flex: 1; background: var(--line); margin: 6px 0; min-height: 32px; }
+.place-label { font-size: var(--t-14); color: var(--text-2); font-weight: 600; }
+.place { font-size: var(--t-34); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.place-sub { font-size: var(--t-15); color: var(--text-2); }
+.trip .leg { padding-bottom: var(--s-6); }
+.trip .leg:last-child { padding-bottom: 0; }
+
+.fare { margin-top: var(--s-8); padding-top: var(--s-6); border-top: 1px solid var(--line); }
+.fare .amount { font-size: var(--t-44); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
+.fare .amount small { font-size: var(--t-17); font-weight: 600; color: var(--text-2); letter-spacing: 0; margin-left: var(--s-1); }
+
+/* La acción principal siempre a la vista, fija sobre la barra inferior (sin depender del scroll). */
+.actions { margin-top: var(--s-8); display: grid; gap: var(--s-2); }
+.screen > .actions {
+    position: sticky;
+    z-index: 2;
+    bottom: calc(-1 * var(--s-8));
+    margin: var(--s-6) calc(-1 * var(--s-4)) calc(-1 * var(--s-8));
+    padding: var(--s-3) var(--s-4) var(--s-4);
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+}
+
+/* ── Rutas: mapa a pantalla completa con hoja inferior ─────────────────────────────────────────────────────── */
+.map-screen { flex: 1; position: relative; overflow: hidden; }
+#map { position: absolute; inset: 0; background: #0E1013; }
+.leaflet-container { font-family: var(--font); background: #0E1013; }
+.leaflet-control-attribution { margin: var(--s-2) 0 0 var(--s-2) !important; border-radius: 6px; background: rgba(12, 14, 18, 0.72) !important; color: var(--text-2) !important; font-size: 11px !important; }
+.leaflet-control-attribution a { color: var(--text-2) !important; }
+.map-tools { position: absolute; top: var(--s-4); right: var(--s-4); z-index: 500; display: grid; gap: var(--s-2); }
+.map-tool { width: 44px; height: 44px; display: grid; place-items: center; border-radius: var(--r-md); background: var(--elevated); color: var(--text); border: 1px solid var(--line); }
+
+.sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 600;
+    background: var(--surface);
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 -12px 32px -12px rgba(0, 0, 0, 0.7);
+    padding: 0 var(--s-4) var(--s-4);
+}
+.sheet-handle { height: 24px; display: grid; place-items: center; touch-action: none; }
+.sheet-handle::before { content: ""; width: 40px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); }
+.route-title { font-size: var(--t-20); font-weight: 700; letter-spacing: -0.01em; }
+.route-figures { display: flex; align-items: baseline; gap: var(--s-6); margin: var(--s-3) 0 var(--s-1); }
+.figure { font-size: var(--t-28); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.figure small { font-size: var(--t-15); color: var(--text-2); font-weight: 600; letter-spacing: 0; margin-left: 2px; }
+.sheet .group { background: var(--elevated); margin-top: var(--s-4); }
+.sheet .actions { margin-top: var(--s-4); }
+
+/* ── Modal SOS activo: rojo pleno ──────────────────────────────────────────────────────────────────────────── */
+.sos-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: var(--sos-solid);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    padding: calc(var(--s-6) + var(--safe-top)) var(--s-4) calc(var(--s-4) + var(--safe-bottom));
+}
+.sos-modal[hidden] { display: none; }
+.sos-modal h2 { font-size: var(--t-34); font-weight: 700; letter-spacing: -0.02em; margin: var(--s-6) 0 var(--s-2); line-height: 1.1; }
+.sos-modal p { font-size: var(--t-17); margin: 0; color: rgba(255, 255, 255, 0.92); }   /* 5,0:1 sobre #C62828 */
+.sos-modal .sent { display: flex; align-items: baseline; gap: var(--s-2); margin-top: var(--s-6); font-weight: 600; }
+.sos-modal .sent .dot { background: #fff; transform: translateY(-1px); }
+.sos-modal dl { margin: var(--s-6) 0 0; display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); font-size: var(--t-17); }
+.sos-modal dt { color: rgba(255, 255, 255, 0.92); }   /* etiquetas: ≥90 % de opacidad, 5,0:1 */
+.sos-modal dd { margin: 0; text-align: right; font-weight: 600; }
+.sos-modal .spacer { flex: 1; }
+.sos-call { min-height: 60px; border-radius: var(--r-md); background: #fff; color: var(--sos-solid); font-weight: 700; font-size: var(--t-20); display: flex; align-items: center; justify-content: center; gap: var(--s-2); width: 100%; }
+.sos-close { min-height: 52px; color: #fff; font-weight: 600; width: 100%; margin-top: var(--s-2); }
+
+@media (prefers-reduced-motion: reduce) {
+    .sos.is-holding::before { transition-duration: 1500ms; }   /* el progreso es información: se conserva, sin rebotes */
+    .btn-primary:active { transform: none; }
+}
+
+/* ── Marcadores del mapa: distintos por forma ──────────────────────────────────────────────────────────────── */
+.pin-origin { display: block; width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--text); background: var(--bg); }
+.pin-dest {
+    display: grid; place-items: center; width: 32px; height: 40px; color: var(--bg);
+    background: var(--text);
+    clip-path: path("M16 40 C16 40 0 24 0 16 A16 16 0 1 1 32 16 C32 24 16 40 16 40 Z");
+}
+.pin-dest .icon { width: 18px; height: 18px; margin-top: -8px; }
+/* Flecha de navegación sin círculo (un triángulo dentro de un círculo se lee como "reproducir"), con borde del color del
+   fondo para separarla de la ruta azul. Gira con el rumbo real. */
+.pin-truck { display: grid; place-items: center; width: 44px; height: 44px; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6)); }
+.pin-truck .icon {
+    width: 40px; height: 40px; color: var(--text);
+    stroke: var(--bg); stroke-width: 18; stroke-linejoin: round; paint-order: stroke;
+    transform: rotate(var(--heading, 0deg));
+}
+
+/* ── HUD de navegación: una tarjeta superior y un panel vertical, todo en la rejilla de 16 px ─────────────── */
+.hud-card {
+    position: absolute; z-index: 600; top: var(--s-4); left: var(--s-4); right: var(--s-4);
+    border-radius: var(--r-xl);
+    background: rgba(20, 23, 28, 0.78);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.7);
+}
+/* Android de gama media sin backdrop-filter: fondo sólido de la misma paleta. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .hud-card { background: var(--surface); }
+}
+@media (prefers-reduced-transparency: reduce) {
+    .hud-card { background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+.hud-turn { display: grid; grid-template-columns: 56px 1fr; gap: var(--s-4); padding: var(--s-4); align-items: center; }
+.hud-arrow { width: 56px; height: 56px; border-radius: var(--r-lg); background: var(--text); color: var(--bg); display: grid; place-items: center; }
+.hud-arrow .icon { width: 36px; height: 36px; }
+.hud-distance { font-size: var(--t-34); font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; }
+.hud-instruction { font-size: var(--t-17); font-weight: 600; line-height: 1.3; }
+.hud-meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+.hud-meta > div { padding: var(--s-3) var(--s-4); }
+.hud-meta > div + div { border-left: 1px solid var(--line); }
+.hud-meta .k { font-size: var(--t-14); color: var(--text-2); }
+.hud-meta .v { font-size: var(--t-17); font-weight: 700; }
+.hud-meta .v.none { color: var(--text-2); font-weight: 600; }
+.hud-warning { padding: var(--s-3) var(--s-4); border-top: 1px solid var(--line); }
+
+/* Navegar: el mapa ocupa lo que deja la barra del viaje, que crece con su texto (nunca se corta). */
+.nav-screen { display: flex; flex-direction: column; }
+.map-area { flex: 1; position: relative; overflow: hidden; }
+.hud-panel {
+    position: absolute; z-index: 600; right: var(--s-4); bottom: var(--s-4);
+    display: grid; gap: var(--s-2); justify-items: end;
+}
+.hud-speed {
+    width: 72px; height: 72px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line);
+    display: grid; place-content: center; text-align: center; line-height: 1;
+}
+.hud-speed b { font-size: var(--t-28); font-weight: 700; letter-spacing: -0.02em; }
+.hud-speed span { font-size: var(--t-12); color: var(--text-2); font-weight: 600; margin-top: 4px; }
+.hud-btn { width: 56px; height: 56px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); display: grid; place-items: center; color: var(--text); }
+.hud-btn.is-off { color: var(--text-2); }
+
+.trip-bar {
+    flex: none; min-height: 72px;
+    display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4);
+    background: var(--bg); border-top: 1px solid var(--line);
+}
+.trip-bar .remaining { flex: 1; line-height: 1.2; }
+.trip-bar .remaining b { font-size: var(--t-20); font-weight: 700; }
+.trip-bar .remaining span { display: block; font-size: var(--t-14); color: var(--text-2); }
+.btn-secondary {
+    min-height: 48px; padding: 0 var(--s-4); border-radius: var(--r-md); background: var(--elevated); color: var(--text);
+    font-weight: 700; display: inline-flex; align-items: center; gap: var(--s-2);
+}
+
+/* ── Alertas: filtros con desplazamiento horizontal limpio ─────────────────────────────────────────────────── */
+.filters {
+    display: flex; gap: var(--s-2); overflow-x: auto; scrollbar-width: none; margin: var(--s-4) calc(-1 * var(--s-4)) 0;
+    padding: 0 var(--s-4); scroll-padding: 0 var(--s-4);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+.filters::-webkit-scrollbar { display: none; }
+.filter {
+    flex: none; min-height: 40px; padding: 0 var(--s-4); border-radius: 20px; font-size: var(--t-15); font-weight: 600;
+    color: var(--text-2); border: 1px solid var(--line); white-space: nowrap;
+}
+.filter[aria-pressed="true"] { background: var(--elevated); color: var(--text); border-color: transparent; }
+
+/* Estado vacío anclado bajo los filtros, no flotando en el centro de la pantalla. */
+.empty { margin-top: var(--s-10); padding: var(--s-8) var(--s-4); background: var(--surface); border-radius: var(--r-lg); text-align: center; }
+.empty-mark { width: 64px; height: 64px; margin: 0 auto var(--s-4); border-radius: 50%; background: var(--elevated); display: grid; place-items: center; color: var(--text); }
+.empty-mark .icon { width: 32px; height: 32px; }
+.empty h2 { font-size: var(--t-20); font-weight: 700; margin: 0 0 var(--s-2); letter-spacing: -0.01em; }
+.empty p { color: var(--text-2); font-size: var(--t-15); margin: 0 auto var(--s-6); max-width: 30ch; }
+.empty .meta { margin: var(--s-4) 0 0; font-size: var(--t-14); }
+
+.tab { text-decoration: none; }
+.sos-modal .sent .icon { width: 20px; height: 20px; flex: none; transform: translateY(3px); }
+.sos-modal .sent.pending { font-weight: 500; }
+.sos-modal .sent.pending b { font-weight: 700; }
+
+/* ── Hoja inferior de reportar ─────────────────────────────────────────────────────────────────────────────── */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 1500; background: rgba(12, 14, 18, 0.64); display: flex; align-items: flex-end; }
+.sheet-backdrop[hidden] { display: none; }
+.report-sheet {
+    width: 100%; background: var(--surface); border-radius: var(--r-xl) var(--r-xl) 0 0; border-top: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 -12px 32px -12px rgba(0, 0, 0, 0.7); padding: 0 var(--s-4) calc(var(--s-4) + var(--safe-bottom));
+}
+.sheet-head { display: flex; align-items: flex-start; gap: var(--s-3); margin-bottom: var(--s-4); }
+.sheet-head > div { flex: 1; }
+.sheet-head h2 { font-size: var(--t-20); font-weight: 700; margin: 0 0 var(--s-1); letter-spacing: -0.01em; }
+.sheet-head p { margin: 0; }
+.report-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-2); }
+.report-tile {
+    min-height: 92px; border-radius: var(--r-md); background: var(--elevated); color: var(--text);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2);
+    font-size: var(--t-14); font-weight: 600; text-align: center; padding: var(--s-2);
+}
+.report-tile .icon { width: 28px; height: 28px; }
+.report-tile:active { background: #232831; }
+.sheet-note { margin: var(--s-4) 0 0; font-size: var(--t-14); }
+
+/* ── Estados de carga y error ──────────────────────────────────────────────────────────────────────────────── */
+.skeleton-row { height: 76px; border-radius: var(--r-md); background: var(--surface); margin-top: var(--s-2); position: relative; overflow: hidden; }
+.skeleton-row::after {
+    content: ""; position: absolute; left: var(--s-4); right: 40%; top: 20px; height: 14px; border-radius: 7px; background: var(--elevated);
+    box-shadow: 0 24px 0 -2px var(--elevated);
+}
+.loading-note { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-10); color: var(--text-2); font-size: var(--t-15); }
+
+/* ── Login ─────────────────────────────────────────────────────────────────────────────────────────────────── */
+body.login-page { display: grid; place-items: center; }
+.login-panel { width: 100%; }
+.login { min-height: 100%; display: flex; flex-direction: column; justify-content: center; padding: calc(var(--s-10) + var(--safe-top)) var(--s-4) calc(var(--s-6) + var(--safe-bottom)); max-width: 432px; margin: 0 auto; }
+.login .mark { width: 56px; height: 56px; border-radius: 14px; }
+.login h1 { font-size: var(--t-34); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin: var(--s-6) 0 var(--s-2); }
+.login .lead { color: var(--text-2); font-size: var(--t-17); margin: 0 0 var(--s-8); }
+.field { display: grid; gap: var(--s-2); margin-bottom: var(--s-4); }
+.field label { font-size: var(--t-15); font-weight: 600; }
+.field label .req { color: var(--text-2); font-weight: 500; }
+.input {
+    min-height: 52px; width: 100%; border-radius: var(--r-md); background: var(--surface); border: 1px solid rgba(255, 255, 255, 0.10);
+    color: var(--text); font: inherit; font-size: 1rem; padding: 0 var(--s-4); display: flex; align-items: center;
+}
+.input.placeholder { color: var(--text-2); }
+.input-wrap { position: relative; }
+.input-wrap .icon-btn { position: absolute; right: 4px; top: 4px; }
+.login .actions { margin-top: var(--s-6); }
+.login .alt { margin-top: var(--s-6); text-align: center; color: var(--text-2); font-size: var(--t-15); }
+.login .alt a { color: var(--text); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 900px) {
+    body.login-page { display: grid; place-items: center; }
+    .login-panel { width: 432px; padding: var(--s-10); background: var(--surface); border-radius: var(--r-xl); border: 1px solid var(--line); }
+    .login-panel .input { background: var(--bg); }
+    .login { padding: 0; min-height: auto; }
+}
+
+/* ── Formulario de entrega (POD) ───────────────────────────────────────────────────────────────────────────── */
+.pod { padding: var(--s-6) var(--s-4) var(--s-8); }
+.pod .head { display: flex; align-items: flex-start; gap: var(--s-3); }
+.pod .head > div { flex: 1; }
+.pod h1 { font-size: var(--t-28); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 var(--s-1); }
+.pod .error-box { margin: var(--s-4) 0 0; padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); }
+.pod .error-box p { margin: var(--s-1) 0 0 28px; color: var(--text-2); font-size: var(--t-15); }
+.pod form { margin-top: var(--s-6); }
+.sign-label { display: flex; align-items: baseline; justify-content: space-between; }
+.sign-label button { color: var(--text-2); font-size: var(--t-15); font-weight: 600; display: inline-flex; gap: 6px; align-items: center; min-height: 44px; }
+.signature {
+    height: 168px; border-radius: var(--r-md); background: #ECEEF1; border: 1px solid rgba(255, 255, 255, 0.10);
+    display: grid; place-items: center; color: #5B616C; font-size: var(--t-15); font-weight: 500;
+}
+.signature svg { width: 100%; height: 100%; }
+.photo-slot {
+    min-height: 56px; border-radius: var(--r-md); border: 1px dashed rgba(255, 255, 255, 0.18); color: var(--text);
+    display: flex; align-items: center; justify-content: center; gap: var(--s-2); font-weight: 600; width: 100%;
+}
+.photo-loaded { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2); border-radius: var(--r-md); background: var(--surface); }
+.photo-loaded img { width: 72px; height: 56px; object-fit: cover; border-radius: var(--r-sm); display: block; }
+.photo-loaded .meta { flex: 1; font-size: var(--t-15); }
+.photo-loaded .meta span { display: block; color: var(--text-2); font-size: var(--t-14); }
+.pod .note { margin: var(--s-3) 0 0; color: var(--text-2); font-size: var(--t-14); }
+
+/* ── Escritorio (≥900 px): dos opciones para revisar ───────────────────────────────────────────────────────── */
+/* transform hace que lo fijo (modal SOS, hojas) quede dentro del marco o de la columna, no en toda la ventana. */
+@media (min-width: 900px) {
+    html[data-desk="marco"] body { background: #050608; display: grid; place-items: center; }
+    html[data-desk="marco"] .app {
+        width: 390px; height: min(844px, calc(100vh - 48px));
+        border-radius: 44px; border: 10px solid #1B1F26; overflow: hidden;
+        background: var(--bg); transform: translateZ(0);
+    }
+    html[data-desk="columna"] .app {
+        width: 100%; max-width: 480px; margin: 0 auto;
+        border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+        transform: translateZ(0);
+    }
+}

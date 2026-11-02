@@ -1,0 +1,4 @@
+/* Entrada de Tailwind: npm run build:css genera css/tailwind.css con solo las clases que usan index.html y js/. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -1,51 +1,31 @@
 /* =====================================================================================================================
- * TruckCar · sistema de diseño
- * Telemática B2B en cabina: fondos pizarra profundos, acciones en azul industrial, ámbar para alertas y verde para
- * estados activos. Alto contraste para leer bajo el sol y objetivos táctiles grandes para usar con el camión detenido.
+ * TruckCar · estilos de componentes
+ * Todos los valores salen de css/tokens.css. Los nombres de abajo son alias de compatibilidad para los componentes
+ * existentes; el código nuevo usa directamente los tokens semánticos (--color-*, --space-*, --radius-*, --elev-*).
  * ===================================================================================================================== */
 
 :root {
-    color-scheme: dark;
+    --bg: var(--color-bg);
+    --surface: var(--color-surface);
+    --surface-2: var(--color-surface);
+    --surface-3: var(--color-elevated);
+    --border: var(--color-border);
+    --border-strong: var(--color-border-elevated);
 
-    /* Superficies */
-    --bg: #020617;            /* slate-950 */
-    --surface: #0f172a;       /* slate-900 */
-    --surface-2: #162036;
-    --surface-3: #1e293b;     /* slate-800 */
-    --border: rgba(148, 163, 184, 0.14);
-    --border-strong: rgba(148, 163, 184, 0.28);
+    --text: var(--color-text);
+    --text-muted: var(--color-text-secondary);
+    --text-faint: var(--color-text-secondary);
 
-    /* Texto (contraste >= 7:1 sobre --bg salvo --text-faint) */
-    --text: #f1f5f9;
-    --text-muted: #a3b1c6;
-    --text-faint: #8796ad;
+    --primary: var(--color-accent);
+    --primary-hi: var(--color-accent);
+    --primary-lo: var(--color-accent-pressed);
+    --warning: var(--color-warn);
+    --success: var(--color-ok);
+    --danger: var(--color-sos);
 
-    /* Semántica */
-    --primary: #2563eb;
-    --primary-hi: #3b82f6;
-    --primary-lo: #1d4ed8;
-    --warning: #f59e0b;
-    --success: #10b981;
-    --danger: #ef4444;
-
-    /* Movimiento: curvas con más energía que las nativas de CSS */
-    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* hojas tipo iOS */
-    --dur-press: 140ms;
-    --dur-ui: 220ms;
-    --dur-sheet: 420ms;
-
-    /* Elevación */
-    --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 30px -12px rgba(0, 0, 0, 0.65);
-    --shadow-float: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 24px 48px -16px rgba(0, 0, 0, 0.8);
-    --radius-card: 20px;
-
-    /* Áreas seguras (notch, isla dinámica, indicador de inicio) */
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-left: env(safe-area-inset-left, 0px);
-    --safe-right: env(safe-area-inset-right, 0px);
+    --shadow-card: var(--elev-1);
+    --shadow-float: var(--elev-3);
+    --radius-card: var(--radius-lg);
 }
 
 /* ------------------------------------------------------------------ base móvil */
@@ -70,8 +50,10 @@ body {
     padding: 0;
     background: var(--bg);
     color: var(--text);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
-    font-feature-settings: 'cv11', 'ss01';      /* Inter: 1 y a de lectura rápida */
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+    font-variant-numeric: var(--font-numeric);
     overflow: hidden;
 }
 
@@ -91,19 +73,24 @@ button:not(:disabled), [role="button"], .tappable {
     transition-timing-function: var(--ease-out);
 }
 button:not(:disabled):active, [role="button"]:active, .tappable:active {
-    scale: 0.97;
+    scale: var(--press-scale);
 }
 
 :focus-visible {
-    outline: 2px solid var(--primary-hi);
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
-    border-radius: 10px;
+    border-radius: var(--radius-sm);
 }
 
-/* Mono con cifras tabulares: los contadores y coordenadas no bailan al cambiar */
+::selection { background: var(--color-accent-soft); color: var(--color-text); }
+input, textarea { caret-color: var(--color-accent); }
+
+/* Sin monoespaciada en la interfaz: las cifras (velocidad, peso, coordenadas) usan la sans con números tabulares para
+   que no bailen al cambiar. .font-mono queda como alias en el marcado existente. */
 .mono-font, .font-mono {
-    font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace !important;
-    font-variant-numeric: tabular-nums;
+    font-family: var(--font-sans) !important;
+    font-variant-numeric: var(--font-numeric);
+    letter-spacing: 0;
 }
 .tnum { font-variant-numeric: tabular-nums; }
 
@@ -133,11 +120,11 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
 }
 
 /* Gris de apoyo con más contraste bajo luz solar (slate-500 queda en ~4:1 sobre el fondo) */
-.text-slate-500 { color: var(--text-faint) !important; }
+.text-slate-500 { color: var(--color-text-secondary) !important; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+::-webkit-scrollbar-thumb { background: var(--color-pressed); border-radius: var(--radius-pill); }
 
 /* Contenedores con scroll propio: rebotan sin arrastrar la página */
 .overflow-y-auto, .overflow-auto { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
@@ -150,26 +137,35 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
 .safe-x { padding-left: var(--safe-left) !important; padding-right: var(--safe-right) !important; }
 
 /* ------------------------------------------------------------------ marco de demostración vs. teléfono real */
+/* Escritorio: columna centrada de 480 px a toda la altura, sin marco de teléfono (no imita un aparato). Solo el modo
+   horizontal de la demostración ("Rotar") conserva un contorno para simular el teléfono girado. */
 .phone-frame {
     transition: max-width 0.35s var(--ease-in-out), max-height 0.35s var(--ease-in-out);
-    max-width: 440px;
+    max-width: 480px;
     max-height: 100%;
     height: 100%;
-    border-radius: 32px;
-    border: 3px solid #1e293b;
-    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    border-radius: 0;
+    border: 0;
+    border-left: var(--border-subtle);
+    border-right: var(--border-subtle);
+    box-shadow: none;
 }
+body[data-view="driver"] #app-main,
+body[data-view="login"] #app-main { padding: 0 !important; }
 .phone-frame.landscape-mode {
     max-width: 860px;
     max-height: 480px;
+    border: var(--border-elevated);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--elev-3);
 }
 .coordinator-frame {
     max-width: 100% !important;
     max-height: 100% !important;
     width: 100% !important;
     height: 100% !important;
-    border-radius: 16px !important;
-    border: 1px solid #1e293b !important;
+    border-radius: var(--radius-lg) !important;
+    border: var(--border-subtle) !important;
 }
 
 /* En un teléfono (o instalada) la app ocupa toda la pantalla: sin marco simulado ni herramientas de demostración. */
@@ -182,55 +178,53 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
         border-radius: 0 !important;
         box-shadow: none !important;
     }
-    .demo-only { display: none !important; }
     /* El conductor tiene su propia barra superior: la de la marca sobra en el teléfono */
     body[data-view="driver"] #top-nav { display: none !important; }
 }
 
 /* ------------------------------------------------------------------ componentes */
 .card {
-    background: linear-gradient(180deg, rgba(30, 41, 59, 0.55), rgba(15, 23, 42, 0.9));
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card);
-    box-shadow: var(--shadow-card);
+    background: var(--color-surface);
+    border: var(--border-subtle);
+    border-radius: var(--radius-lg);
 }
+/* Lo único que flota sobre el mapa: vidrio grafito con respaldo sólido donde no hay backdrop-filter. */
 .card-float {
-    background: rgba(15, 23, 42, 0.82);
-    border: 1px solid var(--border-strong);
-    box-shadow: var(--shadow-float);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    background: var(--color-glass);
+    border: var(--border-elevated);
+    box-shadow: var(--elev-3);
+    backdrop-filter: blur(var(--blur-glass));
+    -webkit-backdrop-filter: blur(var(--blur-glass));
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .card-float { background: var(--color-glass-solid); }
 }
 
-/* Botón principal gigante: se usa con el camión detenido y guantes puestos */
+/* Botón principal (hojas, formulario de publicar): ámbar plano, sin degradado ni halo de color. */
 .btn-cta {
-    min-height: 58px;
+    min-height: 56px;
     width: 100%;
-    border-radius: 18px;
-    background: linear-gradient(180deg, var(--primary-hi), var(--primary));
-    color: #fff;
-    font-weight: 800;
-    font-size: 15px;
-    letter-spacing: -0.01em;
+    border-radius: var(--radius-md);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    font-weight: var(--weight-bold);
+    font-size: var(--text-body);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px -10px rgba(37, 99, 235, 0.7);
+    gap: var(--space-2);
+    transition: transform var(--dur-press) var(--ease-out);
 }
+.btn-cta:active { background: var(--color-accent-pressed); transform: scale(var(--press-scale)); }
 .btn-cta:disabled { opacity: 0.55; }
-.btn-cta.is-success {
-    background: linear-gradient(180deg, #14c48d, var(--success));
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px -10px rgba(16, 185, 129, 0.65);
-}
 .btn-secondary {
     min-height: 48px;
-    border-radius: 16px;
-    background: var(--surface-3);
-    border: 1px solid var(--border-strong);
-    color: var(--text);
-    font-weight: 700;
-    font-size: 13px;
+    border-radius: var(--radius-md);
+    background: var(--color-elevated);
+    border: var(--border-elevated);
+    color: var(--color-text);
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-footnote);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -247,69 +241,95 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
     border-radius: 999px;
     font-size: 11px;
     font-weight: 700;
-    border: 1px solid var(--border-strong);
-    background: rgba(15, 23, 42, 0.7);
+    border: var(--border-elevated);
+    background: var(--color-elevated);
 }
 
-/* Barra de pestañas del conductor */
+/* Barra inferior del conductor: seis pestañas iguales de 56 px más el área segura, fondo sólido y un micro-borde
+   superior. Inactiva: ícono de trazo y gris. Activa: ícono relleno, ámbar y una píldora al 15 % detrás del ícono; sin
+   línea superior ni otro indicador. */
+.driver-tabbar {
+    flex: none;
+    height: calc(var(--tabbar-height) + var(--safe-bottom));
+    padding: 0 calc(var(--space-2) + var(--safe-right)) var(--safe-bottom) calc(var(--space-2) + var(--safe-left));
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    background: var(--color-bg);
+    border-top: var(--border-subtle);
+}
 .driver-tab {
     position: relative;
-    flex: 1;
-    min-height: 52px;
+    isolation: isolate;
+    min-height: var(--touch-min);
+    height: var(--tabbar-height);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
-    border-radius: 14px;
-    color: var(--text-faint);
-    font-size: 10.5px;
-    font-weight: 600;
+    gap: 2px;
+    color: var(--color-icon-inactive);
+    font-size: var(--text-tab);          /* 12 px: única excepción al mínimo de 14 px */
+    font-weight: var(--weight-medium);
+    line-height: 1.2;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
 }
-.driver-tab i { font-size: 17px; }
-.driver-tab.is-active { color: #93c5fd; font-weight: 800; }
+.driver-tab svg { width: 24px; height: 24px; fill: currentColor; flex: none; }
+.driver-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.driver-tab.is-active { color: var(--color-accent); }
 .driver-tab.is-active::before {
     content: '';
     position: absolute;
-    top: 3px;
-    width: 18px;
-    height: 3px;
-    border-radius: 3px;
-    background: var(--primary-hi);
+    top: 6px;
+    left: 50%;
+    width: 52px;
+    height: 28px;
+    margin-left: -26px;
+    border-radius: 14px;
+    background: var(--color-accent-soft);
+    z-index: -1;
 }
+.driver-tab:active { color: var(--color-text); }
 .driver-tab-badge {
     position: absolute;
-    top: 7px;
-    right: calc(50% - 16px);
+    top: 6px;
+    right: calc(50% - 22px);
     width: 9px;
     height: 9px;
     border-radius: 999px;
-    background: var(--warning);
-    box-shadow: 0 0 0 2px var(--surface);
+    background: var(--color-warn);
+    box-shadow: 0 0 0 2px var(--color-bg);
 }
-.driver-tab-primary {
-    min-height: 52px;
-    min-width: 64px;
-    padding: 0 12px;
-    border-radius: 18px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    color: #fff;
-    font-size: 10.5px;
-    font-weight: 800;
-    background: linear-gradient(180deg, var(--primary-hi), var(--primary));
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 10px 22px -10px rgba(37, 99, 235, 0.8);
+/* Acciones guardadas sin señal: número sobre el ícono de Offline (en el teléfono no hay tooltip). */
+.driver-tab-count {
+    position: absolute;
+    top: 4px;
+    left: calc(50% + 4px);
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--radius-pill);
+    display: grid;
+    place-items: center;
+    background: var(--color-warn);
+    color: var(--color-bg);
+    font-size: var(--text-tab);
+    font-weight: var(--weight-bold);
+    line-height: 1;
+    box-shadow: 0 0 0 2px var(--color-bg);
 }
-.driver-tab-primary i { font-size: 17px; }
+.sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 @media (hover: hover) and (pointer: fine) {
-    .driver-tab:hover { color: var(--text); }
+    .driver-tab:hover { color: var(--color-text); }
+    .driver-tab.is-active:hover { color: var(--color-accent); }
 }
 
 /* Los toasts del conductor aparecen sobre la barra de pestañas */
-body[data-view="driver"] .toaster { --toaster-offset: 68px; }
+body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) + var(--space-3)); }
 
 /* Paso a paso del viaje y del formulario de envío */
 .stepper { display: flex; align-items: center; gap: 6px; }
@@ -319,46 +339,33 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     background: var(--surface-3); color: var(--text-muted); border: 1px solid var(--border-strong);
     transition: background-color var(--dur-ui) var(--ease-out), color var(--dur-ui) var(--ease-out);
 }
-.stepper-dot.is-done { background: var(--success); color: #022c22; border-color: transparent; }
-.stepper-dot.is-current { background: var(--primary); color: #fff; border-color: transparent; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.25); }
+.stepper-dot.is-done { background: var(--color-ok); color: var(--color-bg); border-color: transparent; }
+.stepper-dot.is-current { background: var(--color-accent); color: var(--color-on-accent); border-color: transparent; box-shadow: 0 0 0 4px var(--color-accent-soft); }
 .stepper-line { flex: 1; height: 3px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .stepper-line > span { display: block; height: 100%; background: var(--success); transform-origin: left; transition: transform 500ms var(--ease-out); }
 
-/* Indicador de red, cola offline y telemetría */
-.net-pill {
+/* Indicador de red: punto pequeño y texto, sin píldora ni fondo tintado. Sin señal o reconectando es una advertencia
+   (triángulo y texto, nunca solo color). */
+.net-status {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    padding: 5px 11px 5px 9px;
-    border-radius: 999px;
-    font-size: 11.5px;
-    font-weight: 700;
-    letter-spacing: -0.005em;
-    border: 1px solid transparent;
+    gap: var(--space-2);
+    min-width: 0;
+    font-size: var(--text-caption);
+    font-weight: var(--weight-medium);
+    color: var(--color-text-secondary);
     white-space: nowrap;
-    transition: background-color var(--dur-ui) var(--ease-out), color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out);
 }
-.net-pill[data-state="online"] { background: rgba(16, 185, 129, 0.12); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3); }
-.net-pill[data-state="syncing"] { background: rgba(37, 99, 235, 0.16); color: #93c5fd; border-color: rgba(59, 130, 246, 0.4); }
-.net-pill[data-state="offline"] { background: rgba(245, 158, 11, 0.14); color: #fcd34d; border-color: rgba(245, 158, 11, 0.42); }
-.net-pill[data-state="reconnecting"] { background: rgba(245, 158, 11, 0.1); color: #fde68a; border-color: rgba(245, 158, 11, 0.3); }
-.net-dot { width: 8px; height: 8px; border-radius: 999px; background: currentColor; position: relative; flex: none; }
-.net-pill[data-state="online"] .net-dot::after,
-.net-pill[data-state="syncing"] .net-dot::after {
-    content: '';
-    position: absolute;
-    inset: -4px;
-    border-radius: 999px;
-    border: 2px solid currentColor;
-    opacity: 0;
-    animation: net-ping 2.2s var(--ease-out) infinite;
-}
-@keyframes net-ping {
-    0% { transform: scale(0.6); opacity: 0.55; }
-    80%, 100% { transform: scale(1.5); opacity: 0; }
-}
-.net-spin { animation: net-spin 900ms linear infinite; }
-@keyframes net-spin { to { transform: rotate(360deg); } }
+.net-status > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.net-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--color-text-secondary); flex: none; }
+.net-status[data-state="online"] .net-dot { background: var(--color-ok); }
+.net-status[data-state="syncing"] .net-dot { background: var(--color-accent); }
+.net-dot.is-busy { animation: net-blink 1.2s ease-in-out infinite; }
+@keyframes net-blink { 50% { opacity: 0.35; } }
+.net-status[data-state="offline"],
+.net-status[data-state="reconnecting"] { color: var(--color-warn); font-weight: var(--weight-semibold); }
+.net-warn { width: 18px; height: 18px; fill: currentColor; flex: none; }
+@media (prefers-reduced-motion: reduce) { .net-dot.is-busy { animation: none; } }
 
 /* ------------------------------------------------------------------ transiciones de pantalla */
 /* Solo al cambiar de pantalla (app.js marca la vista nueva): los re-render del refresco automático no animan. */
@@ -382,9 +389,7 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     position: fixed;
     inset: 0;
     z-index: 2500;
-    background: rgba(2, 6, 23, 0.6);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: rgb(var(--graphite-950) / 0.64);
     opacity: 0;
     transition: opacity var(--dur-sheet) var(--ease-drawer);
     display: flex;
@@ -398,12 +403,12 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     max-height: calc(100dvh - var(--safe-top) - 24px);
     display: flex;
     flex-direction: column;
-    background: linear-gradient(180deg, #172036, var(--surface));
-    border: 1px solid var(--border-strong);
+    background: var(--color-surface);
+    border: var(--border-elevated);
     border-bottom: 0;
-    border-radius: 28px 28px 0 0;
-    box-shadow: 0 -20px 60px -20px rgba(0, 0, 0, 0.8);
-    padding-bottom: calc(16px + var(--safe-bottom));
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: var(--elev-3);
+    padding-bottom: calc(var(--space-4) + var(--safe-bottom));
     transform: translateY(100%);
     transition: transform var(--dur-sheet) var(--ease-drawer);
     will-change: transform;
@@ -412,7 +417,7 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 .sheet.is-dragging { transition: none; }
 .sheet-handle {
     touch-action: none;                         /* el arrastre para cerrar es de la hoja, no del navegador */
-    padding: 10px 0 6px;
+    padding: var(--space-3) 0 var(--space-2);
     display: grid;
     place-items: center;
     cursor: grab;
@@ -422,18 +427,18 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     content: '';
     width: 40px;
     height: 5px;
-    border-radius: 999px;
-    background: rgba(148, 163, 184, 0.45);
+    border-radius: var(--radius-pill);
+    background: var(--color-pressed);
 }
-.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 20px; }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-5); }
 
 /* En pantallas anchas el diálogo flota centrado en vez de subir desde abajo */
 @media (min-width: 768px) {
     .sheet-backdrop { align-items: center; }
     .sheet {
-        border-radius: 24px;
-        border-bottom: 1px solid var(--border-strong);
-        padding-bottom: 16px;
+        border-radius: var(--radius-xl);
+        border-bottom: var(--border-elevated);
+        padding-bottom: var(--space-4);
         transform: translateY(12px) scale(0.97);
         opacity: 0;
         transition: transform 260ms var(--ease-out), opacity 200ms var(--ease-out);
@@ -446,8 +451,8 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 .toaster {
     position: fixed;
     left: 50%;
-    bottom: calc(16px + var(--safe-bottom) + var(--toaster-offset, 0px));
-    width: min(420px, calc(100vw - 24px));
+    bottom: calc(var(--space-4) + var(--safe-bottom) + var(--toaster-offset, 0px));
+    width: min(420px, calc(100vw - 2 * var(--gutter)));
     transform: translateX(-50%);
     z-index: 3000;
     pointer-events: none;
@@ -461,17 +466,15 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     bottom: 0;
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 12px 14px;
-    border-radius: 16px;
-    background: rgba(15, 23, 42, 0.94);
-    border: 1px solid var(--border-strong);
-    box-shadow: var(--shadow-float);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    color: var(--text);
-    font-size: 13px;
-    line-height: 1.35;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--color-elevated);
+    border: var(--border-elevated);
+    box-shadow: var(--elev-3);
+    color: var(--color-text);
+    font-size: var(--text-footnote);
+    line-height: var(--leading-snug);
     pointer-events: auto;
     touch-action: pan-y;                        /* el deslizamiento horizontal descarta; el vertical es del navegador */
     user-select: none;
@@ -485,57 +488,85 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 .toast.is-swiping { transition: none; }
 .toaster[data-expanded="true"] .toast { transform: translateY(calc(-1 * var(--offset))); }
 .toast-icon { flex: none; width: 20px; height: 20px; display: grid; place-items: center; margin-top: 1px; }
-.toast[data-type="success"] .toast-icon { color: var(--success); }
-.toast[data-type="error"] .toast-icon { color: #f87171; }
-.toast[data-type="warning"] .toast-icon { color: var(--warning); }
-.toast[data-type="info"] .toast-icon { color: var(--primary-hi); }
-.toast-title { font-weight: 700; }
-.toast-description { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.toast[data-type="success"] .toast-icon { color: var(--color-ok); }
+.toast[data-type="error"] .toast-icon { color: var(--color-warn); }   /* el rojo es solo del SOS */
+.toast[data-type="warning"] .toast-icon { color: var(--color-warn); }
+.toast[data-type="info"] .toast-icon { color: var(--color-text-secondary); }
+.toast-title { font-weight: var(--weight-semibold); }
+.toast-description { color: var(--color-text-secondary); font-size: var(--text-caption); margin-top: 2px; }
 .toast-action {
     margin-left: auto;
     flex: none;
     align-self: center;
-    padding: 6px 10px;
-    border-radius: 10px;
-    font-size: 12px;
-    font-weight: 700;
-    background: var(--primary);
-    color: #fff;
+    min-height: 36px;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
 }
 
 /* ------------------------------------------------------------------ SOS (mantener para activar) */
-/* En la barra superior del conductor, junto a cerrar sesión: nunca tapa contenido ni botones de acción. */
+/* En la barra superior del conductor, junto a cerrar sesión: nunca tapa contenido ni botones de acción. Pequeño y plano
+   en reposo (cara visible de 40 px dentro de un área táctil de 44 px); mientras se mantiene, se llena de rojo de
+   izquierda a derecha durante 1,5 s. */
 .sos-fab {
     position: absolute;
-    top: calc(var(--safe-top) + 2px);
+    top: calc(var(--safe-top) + 6px);            /* centrado en la cabecera de 56 px */
     right: calc(52px + var(--safe-right));
     z-index: 600;
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
-    display: grid;
-    place-items: center;
-    color: #fff;
-    background: radial-gradient(circle at 35% 30%, #f87171, #dc2626 60%, #991b1b);
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18), 0 8px 18px -8px rgba(220, 38, 38, 0.8);
+    height: var(--touch-min);
+    display: inline-flex;
+    align-items: center;
     touch-action: none;                         /* el gesto de mantener es del botón */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
-.sos-fab .sos-label { font-weight: 900; font-size: 11px; letter-spacing: 0.04em; }
-.sos-ring { position: absolute; inset: -5px; transform: rotate(-90deg); pointer-events: none; }
-.sos-ring circle { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; }
-.sos-fab.is-holding { scale: 1.08; }
+.sos-face {
+    position: relative;
+    height: 40px;
+    padding: 0 var(--space-3);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-sm);
+    background: var(--color-elevated);
+    color: var(--color-sos-text);               /* #FF6369 sobre #1B1F26: 5,7:1 */
+    font-size: var(--text-footnote);
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    isolation: isolate;
+}
+.sos-face svg { width: 20px; height: 20px; fill: currentColor; flex: none; }
+.sos-face::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--color-sos-solid);
+    transform: scaleX(var(--hold, 0));
+    transform-origin: left;
+}
+.sos-fab.is-holding .sos-face { color: var(--color-on-sos); }
+.sos-fab.is-releasing .sos-face::before { transition: transform 220ms var(--ease-out); }
+.sos-fab:focus-visible { outline: none; }
+.sos-fab:focus-visible .sos-face { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .sos-hint {
     position: absolute;
-    top: calc(var(--safe-top) + 54px);
+    top: calc(var(--safe-top) + 60px);
     right: calc(12px + var(--safe-right));
     z-index: 600;
-    padding: 7px 11px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 700;
-    background: rgba(127, 29, 29, 0.95);
-    color: #fee2e2;
-    box-shadow: var(--shadow-float);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    background: var(--color-elevated);
+    color: var(--color-text);
+    border: var(--border-elevated);
+    box-shadow: var(--elev-2);
     opacity: 0;
     transform: translateY(-4px);
     transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
@@ -543,9 +574,75 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
 }
 .sos-hint.is-visible { opacity: 1; transform: none; }
 
+/* SOS activo: rojo pleno sobre toda la app, texto blanco (5,6:1) y etiquetas al 92 % (5,0:1). */
+.sos-modal {
+    position: absolute;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: calc(var(--space-6) + var(--safe-top)) calc(var(--gutter) + var(--safe-right)) calc(var(--space-4) + var(--safe-bottom)) calc(var(--gutter) + var(--safe-left));
+    background: var(--color-sos-solid);
+    color: var(--color-on-sos);
+    font-size: var(--text-body);
+}
+.sos-modal-icon { width: 32px; height: 32px; fill: currentColor; flex: none; }
+.sos-modal h2 {
+    margin: var(--space-6) 0 var(--space-2);
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+}
+.sos-modal p { margin: 0; color: rgba(255, 255, 255, 0.92); }
+.sos-modal p[hidden] { display: none; }
+.sos-line { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-6); font-weight: var(--weight-semibold); }
+.sos-line svg { width: 20px; height: 20px; fill: currentColor; flex: none; margin-top: 3px; }
+.sos-line.is-pending { font-weight: var(--weight-medium); }
+.sos-line b { font-weight: var(--weight-bold); }
+.sos-modal dl { margin: var(--space-6) 0 0; display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); }
+.sos-modal dt { color: rgba(255, 255, 255, 0.92); }
+.sos-modal dd { margin: 0; text-align: right; font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.sos-modal .spacer { flex: 1; min-height: var(--space-6); }
+.sos-call {
+    width: 100%;
+    min-height: 60px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    background: #FFFFFF;
+    color: var(--color-sos-solid);
+    font-size: var(--text-headline);
+    font-weight: var(--weight-bold);
+    touch-action: manipulation;
+    transition: transform var(--dur-press) var(--ease-out);
+}
+.sos-call svg { width: 24px; height: 24px; fill: currentColor; }
+.sos-close {
+    width: 100%;
+    min-height: 52px;
+    margin-top: var(--space-2);
+    color: var(--color-on-sos);
+    font-weight: var(--weight-semibold);
+    touch-action: manipulation;
+}
+.sos-call:active, .sos-close:active { transform: scale(var(--press-scale)); }
+.sos-modal:focus { outline: none; }
+/* Con el SOS activo no se muestra ningún aviso encima: nada puede tapar "Llamar al 123". */
+body.sos-open .toaster { display: none; }
+.sos-modal :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 3px; }
+
+/* Herramientas de simulación: ocultas salvo con ?demo=1 (js/config.js marca <html data-demo="1">). */
+html:not([data-demo="1"]) .demo-only { display: none !important; }
+/* El inicio de sesión no lleva la barra de la demostración (marca, roles, voz): solo el formulario, como el prototipo. */
+body[data-view="login"] #top-nav { display: none !important; }
+
 /* Herramienta de prueba "Simular GPS" activa: imposible de confundir con el GPS real. */
-.sim-toggle.is-active { background: #f59e0b; color: #0f172a; border-color: #fbbf24; }
-.sim-toggle.is-active i { color: #0f172a; }
+.sim-toggle.is-active { background: var(--color-warn); color: var(--color-bg); border-color: var(--color-warn); }
+.sim-toggle.is-active i { color: var(--color-bg); }
 
 /* SOS en la torre de control: franja roja fija sobre el panel hasta que un coordinador lo atienda. */
 .sos-alerts {
@@ -569,10 +666,10 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     gap: 10px;
     padding: 9px 10px 9px 12px;
     border-radius: 16px;
-    color: #fff;
-    background: linear-gradient(180deg, #dc2626, #b91c1c);
-    border: 1px solid rgba(254, 202, 202, 0.35);
-    box-shadow: 0 12px 28px -10px rgba(220, 38, 38, 0.75);
+    color: var(--color-on-sos);
+    background: var(--color-sos-solid);             /* rojo pleno: solo el SOS lo usa */
+    border: 1px solid rgb(255 255 255 / 0.2);
+    box-shadow: var(--elev-3);
     animation: sos-in 260ms var(--ease-out);
 }
 .sos-alert-icon { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 999px; background: rgba(255, 255, 255, 0.18); }
@@ -584,8 +681,8 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     border-radius: 11px;
     font-size: 12.5px;
     font-weight: 800;
-    color: #991b1b;
-    background: #fff;
+    color: var(--color-sos-solid);
+    background: #FFFFFF;
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
@@ -599,40 +696,84 @@ body[data-view="driver"] .toaster { --toaster-offset: 68px; }
     .sos-alert, .sos-alert-icon i { animation: none; }
 }
 
-/* Seguimiento público (?track=): sin barra de roles ni herramientas de demostración, a pantalla completa. */
+/* Seguimiento público (?track=): sin barra de roles, herramientas de demostración ni voz (no hay navegación que
+   narrar), a pantalla completa. Mismo sistema que la app del conductor. */
 body[data-mode="public-tracking"] #role-switcher,
+body[data-mode="public-tracking"] #voice-btn,
 body[data-mode="public-tracking"] .demo-only { display: none !important; }
 body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius: 16px; }
-.public-truck-pin {
-    width: 36px;
-    height: 36px;
-    border-radius: 999px;
-    display: grid;
-    place-items: center;
-    color: #fff;
-    background: var(--primary, #2563eb);
-    border: 3px solid #fff;
-    box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.7);
-}
-
-/* Cuadrícula de reporte vial: un toque por tipo */
-.report-tile {
-    min-height: 96px;
-    border-radius: 18px;
+.public-track { height: 100%; width: 100%; overflow-y: auto; background: var(--color-bg); color: var(--color-text); }
+.public-track-col {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: var(--space-4) var(--gutter) calc(var(--space-6) + var(--safe-bottom));
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-size: 12.5px;
-    font-weight: 700;
-    color: var(--text);
-    background: var(--surface-3);
-    border: 1px solid var(--border);
+    gap: var(--space-4);
 }
-.report-tile i { font-size: 22px; }
-.report-tile.is-sent { background: rgba(16, 185, 129, 0.16); border-color: rgba(16, 185, 129, 0.45); }
+.public-track-head { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-2); }
+.public-track-head .secondary { margin: 0; }
+.public-track-title {
+    margin: 0;
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+    font-variant-numeric: tabular-nums;
+}
+.public-track-empty-title { margin: 0 0 var(--space-2); font-size: var(--text-headline); font-weight: var(--weight-bold); }
+.public-track-map-card { background: var(--color-surface); border-radius: var(--radius-lg); overflow: hidden; }
+/* Alto fijo en CSS (no en una clase de Tailwind): Leaflet mide el contenedor al crearse. */
+.public-track-map { height: 280px; width: 100%; }
+@media (min-width: 768px) { .public-track-map { height: 360px; } }
+.public-track-position { padding: var(--space-3) var(--space-4); }
+.public-track-when { flex-basis: 100%; padding-left: calc(8px + var(--space-2)); color: var(--color-text-secondary); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
+/* Escritorio: datos y avance a la izquierda, el mapa grande a la derecha. */
+@media (min-width: 1024px) {
+    .public-track-col {
+        max-width: 1080px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+        grid-auto-flow: row dense;
+        column-gap: var(--space-8);
+        align-items: start;
+        padding-top: var(--space-8);
+    }
+    .public-track-col > * { grid-column: 1; }
+    .public-track-col > .public-track-map-card { grid-column: 2; grid-row: 1 / span 6; position: sticky; top: 0; }
+    .public-track-map { height: 560px; }
+}
+.public-track-foot { margin: 0; text-align: center; }
+.public-track .list-title { margin-top: var(--space-4); margin-bottom: 0; }
+.track-steps { margin: 0; padding: 0; list-style: none; }
+.track-step { position: relative; display: flex; align-items: center; gap: var(--space-3); min-height: var(--row-min); padding: var(--space-3) var(--space-4); }
+.track-step + .track-step::before { content: ''; position: absolute; top: 0; left: calc(var(--space-4) + 48px); right: 0; border-top: var(--border-subtle); }
+.track-step-mark {
+    width: 36px; height: 36px; flex: none; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--color-elevated); color: var(--color-text-secondary);
+}
+.track-step-mark .ui-icon { width: 20px; height: 20px; }
+.track-step.is-done .track-step-mark { color: var(--color-text); }
+.track-step-text { display: flex; flex-direction: column; min-width: 0; font-size: var(--text-body); color: var(--color-text-secondary); }
+.track-step-text b { font-weight: var(--weight-semibold); }
+.track-step.is-done .track-step-text b { color: var(--color-text); }
+.track-step-text span { font-size: var(--text-caption); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+/* El camión: claro sobre el mapa oscuro, con borde del fondo para despegarlo de las calles. */
+.public-truck-pin {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--color-text);
+    color: var(--color-bg);
+    border: 3px solid var(--color-bg);
+    box-shadow: var(--elev-2);
+}
+.public-truck-pin .ui-icon { width: 22px; height: 22px; }
 
+/* Cuadrícula de reporte vial: un toque por tipo */
 /* Banner de instalación de la PWA */
 .install-banner {
     position: fixed;
@@ -646,67 +787,81 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .install-banner.is-visible { transform: translate(-50%, 0); }
 
 /* ------------------------------------------------------------------ mapa y piezas existentes */
-.glow-emerald { box-shadow: 0 0 20px rgba(16, 185, 129, 0.35); }
-.glow-amber { box-shadow: 0 0 20px rgba(245, 158, 11, 0.35); }
-.glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.35); }
-.glow-blue { box-shadow: 0 0 22px rgba(37, 99, 235, 0.4); }
-
+/* Sin tesela (sin señal y sin copia guardada): el fondo oscuro del mapa, sin cuadros rotos. */
 .leaflet-container {
-    background-color: #0b1220 !important;
+    background-color: var(--color-bg) !important;
     font-family: inherit;
 }
-.leaflet-popup-content-wrapper {
-    background: #1e293b !important;
-    color: #f8fafc !important;
-    border-radius: 14px !important;
-    border: 1px solid #334155;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+/* Atribución obligatoria: siempre visible y legible (gris secundario 6:1 sobre su fondo). Los controles de cada
+   pantalla se colocan por encima de ella (--map-attribution-space). */
+.leaflet-control-attribution.leaflet-control {
+    margin: 0 0 var(--space-2) var(--space-2);
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgb(var(--graphite-950) / 0.82);
+    color: var(--color-text-secondary);
+    font-size: var(--text-tab);
+    line-height: 1.4;
+    white-space: nowrap;                 /* una sola línea: los controles de cada pantalla quedan por encima */
 }
-.leaflet-popup-tip { background: #1e293b !important; }
+.leaflet-control-attribution a { color: var(--color-text-secondary); text-decoration: none; }
+:root { --map-attribution-space: 36px; }
+
+/* Marcadores de la ruta: distintos por forma, no por color. */
+/* Zoom sobre el mapa oscuro: superficie elevada, no el blanco de Leaflet. */
+.leaflet-bar { border: var(--border-elevated) !important; box-shadow: var(--elev-2) !important; border-radius: var(--radius-md) !important; overflow: hidden; }
+.leaflet-bar a, .leaflet-bar a:hover {
+    width: var(--touch-min) !important; height: var(--touch-min) !important; line-height: var(--touch-min) !important;
+    background: var(--color-elevated); color: var(--color-text); border-bottom-color: var(--color-border) !important;
+}
+.leaflet-bar a:active { background: var(--color-pressed); }
+.leaflet-bar a.leaflet-disabled { background: var(--color-surface); color: var(--color-text-disabled); }
+
+.map-pin { background: none; border: 0; }
+.map-pin-origin {
+    display: block; width: 20px; height: 20px; border-radius: 50%;
+    border: 4px solid var(--color-text); background: var(--color-bg);
+    box-shadow: 0 0 0 2px var(--color-bg);
+}
+.map-pin-stop {
+    display: block; width: 12px; height: 12px; border-radius: 50%;
+    border: 3px solid var(--color-text); background: var(--color-bg);
+}
+.map-pin-destination {
+    display: grid; place-items: center; width: 32px; height: 40px;
+    color: var(--color-bg); background: var(--color-text);
+    clip-path: path("M16 40 C16 40 0 24 0 16 A16 16 0 1 1 32 16 C32 24 16 40 16 40 Z");
+}
+.map-pin-destination svg { width: 18px; height: 18px; fill: currentColor; margin-top: -8px; }
+.map-popup-sub { color: var(--color-text-secondary); font-size: var(--text-caption); }
+.leaflet-popup-content-wrapper {
+    background: var(--color-elevated) !important;
+    color: var(--color-text) !important;
+    border-radius: var(--radius-md) !important;
+    border: var(--border-elevated);
+    box-shadow: var(--elev-3) !important;
+}
+.leaflet-popup-tip { background: var(--color-elevated) !important; }
 
 .login-input {
-    background: #020617;
-    border: 1px solid #334155;
-    border-radius: 0.85rem;
+    background: var(--color-bg);
+    border: var(--border-elevated);
+    border-radius: var(--radius-md);
     padding: 0.65rem 0.85rem;
-    font-size: 0.8rem;
-    color: #e2e8f0;
+    font-size: var(--text-caption);
+    color: var(--color-text);
     outline: none;
     transition: border-color var(--dur-press) var(--ease-out), box-shadow var(--dur-press) var(--ease-out);
 }
 .login-input:focus {
-    border-color: var(--primary-hi);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 3px var(--color-focus-soft);
 }
 .login-input[aria-invalid="true"] {
-    border-color: rgba(239, 68, 68, 0.7);
+    border-color: var(--color-warn);
 }
-.field-hint { font-size: 11px; color: #fca5a5; min-height: 14px; }
+.field-hint { font-size: var(--text-caption); color: var(--color-warn); min-height: 14px; }
 
-.hud-pill {
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92));
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-}
-.speed-gauge {
-    background: radial-gradient(circle, #0f172a 40%, #020617 100%);
-    border: 3px solid #1e293b;
-}
-.speed-limit-sign {
-    width: 44px;
-    height: 44px;
-    border: 3.5px solid #dc2626;
-    background: white;
-    color: #0f172a;
-    border-radius: 50%;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 17px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-}
 .landscape-nav-grid { display: grid; grid-template-columns: 290px 1fr 220px; height: 100%; }
 .landscape-overlay-left {
     position: absolute; top: 12px; left: 12px; bottom: 12px; width: 290px; z-index: 500;
@@ -726,3 +881,531 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     button:not(:disabled):active, [role="button"]:active, .tappable:active { scale: 1; }
     .sheet, .toast, .install-banner, .stepper-line > span { transition-duration: 1ms !important; }
 }
+
+/* ================================================================== fase 3A: cabecera, Vehículo, Carga y Rutas */
+/* Estructura del prototipo B: listas agrupadas sin tarjetas anidadas, cifras grandes, estado como texto con punto. */
+
+.app-header {
+    flex: none;
+    z-index: 50;
+    height: calc(var(--header-height) + var(--safe-top));
+    padding: var(--safe-top) calc(4px + var(--safe-right)) 0 calc(var(--gutter) + var(--safe-left));
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    background: var(--color-bg);
+    border-bottom: var(--border-subtle);
+}
+.wordmark { font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: -0.01em; color: var(--color-text); flex: none; }
+.app-header-spacer { flex: 1; min-width: 96px; }                 /* deja el sitio del botón SOS (montado aparte) */
+.header-icon-btn {
+    width: var(--touch-min); height: var(--touch-min); flex: none;
+    display: grid; place-items: center; border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+}
+.header-icon-btn:active { background: var(--color-elevated); }
+
+.ui-icon { width: 24px; height: 24px; fill: currentColor; flex: none; }
+
+.screen-scroll {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-6) calc(var(--gutter) + var(--safe-right)) var(--space-8) calc(var(--gutter) + var(--safe-left));
+}
+.large-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+}
+.secondary { color: var(--color-text-secondary); font-size: var(--text-footnote); }
+
+/* Lista agrupada (Ajustes de iOS): una superficie, filas con línea fina con sangría. */
+.list-title {
+    margin: var(--space-8) 0 var(--space-2) var(--space-4);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-secondary);
+}
+.list { background: var(--color-surface); border-radius: var(--radius-md); }
+.list-row {
+    position: relative;
+    min-height: var(--row-min);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-body);
+    line-height: 1.3;
+}
+.list-row + .list-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: var(--space-4);
+    right: 0;
+    border-top: var(--border-subtle);
+}
+.list-label { flex: 1; min-width: 0; color: var(--color-text); }
+.list-value {
+    min-width: 0;
+    max-width: 62%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    text-align: right;
+    color: var(--color-text-secondary);
+}
+.list-value.is-strong { color: var(--color-text); font-weight: var(--weight-semibold); }
+.list-note { color: var(--color-text-secondary); }
+.list-value .warn-line { font-size: var(--text-body); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; background: var(--color-text-secondary); }
+.dot.ok { background: var(--color-ok); }
+
+.warn-line { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--color-warn); font-weight: var(--weight-semibold); font-size: var(--text-footnote); text-align: left; }
+.warn-line svg { width: 20px; height: 20px; fill: currentColor; flex: none; margin-top: 1px; }
+.warn-sub { color: var(--color-text-secondary); font-weight: var(--weight-medium); }
+.notice { margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-surface); }
+.notice p { margin: var(--space-1) 0 0 28px; color: var(--color-text-secondary); font-size: var(--text-footnote); }
+
+.status-line {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 var(--space-2);
+    font-size: var(--text-footnote);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text);
+}
+.status-sub { color: var(--color-text-secondary); font-weight: var(--weight-medium); }
+
+/* Placa colombiana de carga: amarilla, texto negro, nunca partida en dos líneas. */
+.vehicle-id { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-5); }
+.plate {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 132px;
+    height: 46px;
+    padding: 0 var(--space-4);
+    border-radius: 6px;
+    background: #F2C200;
+    color: #111111;
+    border: 2px solid #111111;
+    box-shadow: inset 0 0 0 2px #F2C200, inset 0 0 0 3px rgba(17, 17, 17, 0.55);
+    font-size: 1.625rem;
+    font-weight: var(--weight-bold);
+    letter-spacing: 0.06em;
+    line-height: 1;
+    white-space: nowrap;
+}
+.vehicle-model { font-size: var(--text-body); font-weight: var(--weight-bold); }
+
+/* Carga: origen y destino grandes con un riel, el flete como número protagonista. */
+.trip { display: grid; grid-template-columns: 20px 1fr; column-gap: var(--space-3); margin-top: var(--space-6); }
+.trip-rail { display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+.trip-stop { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--color-text); flex: none; }
+.trip-stop.is-end { background: var(--color-text); }
+.trip-line { width: 2px; flex: 1; min-height: 32px; margin: 6px 0; background: var(--color-border-elevated); }
+.trip-leg { padding-bottom: var(--space-6); min-width: 0; }
+.trip-leg:last-child { padding-bottom: 0; }
+.place-label { font-size: var(--text-caption); font-weight: var(--weight-semibold); color: var(--color-text-secondary); }
+.place {
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+    overflow-wrap: anywhere;
+}
+.place-sub { font-size: var(--text-footnote); color: var(--color-text-secondary); }
+.fare { margin-top: var(--space-8); padding-top: var(--space-6); border-top: var(--border-subtle); }
+.fare-amount {
+    font-size: var(--text-display);
+    font-weight: var(--weight-bold);
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+}
+.fare-amount small { margin-left: var(--space-1); font-size: var(--text-body); font-weight: var(--weight-semibold); letter-spacing: 0; color: var(--color-text-secondary); }
+
+/* Acción principal fija sobre la barra inferior, con un degradado que indica que hay más contenido debajo. */
+.screen-actions {
+    position: sticky;
+    z-index: 2;
+    bottom: calc(-1 * var(--space-8));
+    margin: var(--space-6) calc(-1 * var(--gutter)) calc(-1 * var(--space-8));
+    padding: var(--space-3) var(--gutter) var(--space-4);
+    display: grid;
+    gap: var(--space-1);
+    background: var(--color-bg);
+    border-top: var(--border-subtle);
+}
+.screen-actions::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 32px;
+    background: linear-gradient(to bottom, rgb(var(--graphite-950) / 0), var(--color-bg));
+    pointer-events: none;
+}
+.btn-accent, .btn-quiet {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border-radius: var(--radius-md);
+    font-size: var(--text-body);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-press) var(--ease-out);
+}
+.btn-accent { min-height: 56px; background: var(--color-accent); color: var(--color-on-accent); font-weight: var(--weight-bold); }
+.btn-accent:active { background: var(--color-accent-pressed); transform: scale(var(--press-scale)); }
+.btn-quiet { min-height: 48px; color: var(--color-text); font-weight: var(--weight-semibold); }
+.btn-quiet:active { background: var(--color-elevated); transform: scale(var(--press-scale)); }
+.btn-accent:disabled, .btn-quiet:disabled { opacity: 0.55; transform: none; }
+.btn-accent .ui-icon, .btn-quiet .ui-icon { width: 22px; height: 22px; }
+.btn-accent:focus-visible, .btn-quiet:focus-visible, .header-icon-btn:focus-visible, .map-tool:focus-visible {
+    outline: 2px solid var(--color-focus); outline-offset: 2px;
+}
+
+.spinner {
+    width: 20px; height: 20px; flex: none; border-radius: 50%;
+    border: 2px solid currentColor; border-right-color: transparent;
+    animation: net-spin 800ms linear infinite;
+}
+@keyframes net-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+
+/* Estado vacío: anclado arriba, ícono neutro en un círculo, qué pasa y qué hacer. */
+.empty-state { margin-top: var(--space-4); padding: var(--space-8) var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); text-align: center; }
+.empty-mark { width: 64px; height: 64px; margin: 0 auto var(--space-4); border-radius: 50%; display: grid; place-items: center; background: var(--color-elevated); color: var(--color-text); }
+.empty-mark .ui-icon { width: 32px; height: 32px; }
+.empty-state h2 { margin: 0 0 var(--space-2); font-size: var(--text-headline); font-weight: var(--weight-bold); letter-spacing: -0.01em; }
+.empty-state p { max-width: 32ch; margin: 0 auto var(--space-4); color: var(--color-text-secondary); font-size: var(--text-footnote); }
+.empty-state .btn-quiet { width: auto; display: inline-flex; padding: 0 var(--space-5); background: var(--color-elevated); }
+
+/* Telemetría como texto: punto verde al transmitir; sin posición o sin transmitir, triángulo y texto. */
+.telemetry-inline { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0 var(--space-2); }
+.telemetry-main { color: var(--color-text); }
+.telemetry-warn { display: inline-flex; align-items: center; gap: 6px; color: var(--color-warn); font-weight: var(--weight-semibold); }
+.telemetry-warn svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
+.telemetry-sub { color: var(--color-text-secondary); }
+
+/* Rutas: mapa a pantalla completa con una hoja inferior fija. */
+.route-screen { position: relative; height: 100%; overflow: hidden; }
+.route-map { position: absolute; inset: 0; }
+.route-map .leaflet-bottom { bottom: var(--map-bottom-inset, 0px); }
+.map-tools { position: absolute; top: var(--space-4); right: calc(var(--space-4) + var(--safe-right)); z-index: 500; display: grid; gap: var(--space-2); }
+.map-tool {
+    width: var(--touch-min); height: var(--touch-min);
+    display: grid; place-items: center;
+    border-radius: var(--radius-md);
+    background: var(--color-elevated);
+    border: var(--border-elevated);
+    color: var(--color-text);
+    box-shadow: var(--elev-2);
+}
+.map-tool:active { background: var(--color-pressed); }
+.map-tool .ui-icon { width: 22px; height: 22px; }
+.route-sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 600;
+    max-height: 72%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-5) calc(var(--gutter) + var(--safe-right)) var(--space-4) calc(var(--gutter) + var(--safe-left));
+    background: var(--color-surface);
+    border-top: var(--border-elevated);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: 0 -12px 32px -12px rgba(0, 0, 0, 0.7);
+}
+.route-title { margin: 0; font-size: var(--text-headline); font-weight: var(--weight-bold); letter-spacing: -0.01em; }
+.route-figures { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1) var(--space-6); margin: var(--space-3) 0 var(--space-1); }
+.figure { font-size: var(--text-title); font-weight: var(--weight-bold); letter-spacing: var(--tracking-display); line-height: var(--leading-tight); }
+.figure small { margin-left: 2px; font-size: var(--text-footnote); font-weight: var(--weight-semibold); letter-spacing: 0; color: var(--color-text-secondary); }
+.figure.is-none { font-size: var(--text-body); color: var(--color-text-secondary); font-weight: var(--weight-semibold); }
+.route-sheet .secondary { margin: 0 0 var(--space-3); }
+.route-sheet .list { margin-top: var(--space-3); background: var(--color-elevated); }
+.route-sheet .notice { background: var(--color-elevated); }
+.sheet-actions-row { margin-top: var(--space-4); }
+
+/* ================================================================== fase 4A: Alertas, Offline y entrega (POD) */
+
+/* Filtros con desplazamiento horizontal, sin barra visible; el borde derecho se desvanece para indicar que hay más. */
+.filters {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: var(--space-4) calc(-1 * var(--gutter)) 0;
+    padding: 0 var(--gutter);
+    scroll-padding: 0 var(--gutter);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+.filters::-webkit-scrollbar { display: none; }
+.filter {
+    flex: none;
+    min-height: 40px;
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-pill);
+    border: var(--border-subtle);
+    color: var(--color-text-secondary);
+    font-size: var(--text-footnote);
+    font-weight: var(--weight-semibold);
+    white-space: nowrap;
+    touch-action: manipulation;
+}
+.filter[aria-pressed="true"] { background: var(--color-elevated); color: var(--color-text); border-color: transparent; }
+.filter:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.alerts-loading { margin-top: var(--space-6); }
+.alerts-loading .status-line { gap: var(--space-2); margin-bottom: var(--space-3); color: var(--color-text-secondary); }
+.skeleton-row { height: 72px; margin-top: var(--space-2); border-radius: var(--radius-md); background: var(--color-surface); animation: skeleton 1.4s ease-in-out infinite; }
+@keyframes skeleton { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .skeleton-row { animation: none; } }
+.empty-state .btn-accent { margin-top: var(--space-2); }
+.empty-meta { margin: var(--space-4) 0 0 !important; font-size: var(--text-caption) !important; }
+
+.alert-list { margin-top: var(--space-6); background: var(--color-surface); border-radius: var(--radius-md); }
+.alert-item { position: relative; padding: var(--space-4); }
+.alert-item + .alert-item::before { content: ''; position: absolute; top: 0; left: var(--space-4); right: 0; border-top: var(--border-subtle); }
+.alert-item h2 { margin: 0; font-size: var(--text-body); font-weight: var(--weight-semibold); line-height: var(--leading-snug); }
+.alert-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); font-size: var(--text-caption); color: var(--color-text-secondary); }
+.alert-verified { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text); }
+.alert-text { margin: var(--space-2) 0 0; font-size: var(--text-footnote); color: var(--color-text-secondary); }
+.alert-foot { margin-top: var(--space-2); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.alert-confirm { width: auto; min-height: 44px; padding: 0 var(--space-3); }
+
+/* Offline */
+.list-foot { margin: var(--space-2) var(--space-4) 0; font-size: var(--text-caption); color: var(--color-text-secondary); }
+.list-button { width: 100%; text-align: left; color: var(--color-text); touch-action: manipulation; }
+.list-button:active { background: var(--color-elevated); }
+.list-button .ui-icon { width: 18px; height: 18px; color: var(--color-text-secondary); }
+
+/* Entrega (POD): la hoja es una columna con cabecera, campos que se desplazan y "Confirmar entrega" fijo abajo. */
+.pod-form { padding-bottom: 0 !important; }
+.pod-head { flex: none; display: flex; align-items: flex-start; gap: var(--space-3); padding: 0 var(--space-2) var(--space-3) var(--gutter); }
+.pod-head > div { flex: 1; }
+.pod-head h2 { margin: 0 0 var(--space-1); font-size: var(--text-title); font-weight: var(--weight-bold); letter-spacing: var(--tracking-display); line-height: var(--leading-tight); }
+.pod-fields { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--gutter) var(--space-4); }
+.pod-footer {
+    flex: none;
+    padding: var(--space-3) var(--gutter) calc(var(--space-4) + var(--safe-bottom));
+    border-top: var(--border-subtle);
+    background: var(--color-surface);
+}
+.field { display: block; margin-top: var(--space-4); }
+.field-label { display: block; margin-bottom: var(--space-2); font-size: var(--text-caption); font-weight: var(--weight-semibold); color: var(--color-text-secondary); }
+.field-req { font-weight: var(--weight-medium); }
+.field-input {
+    width: 100%;
+    min-height: 52px;
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-md);
+    border: var(--border-elevated);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font: inherit;
+    font-size: var(--text-body);
+    outline: none;
+}
+/* Texto de ejemplo de todos los campos: gris secundario (6:1), legible bajo el sol; Firefox le baja la opacidad. */
+::placeholder { color: var(--color-text-secondary); opacity: 1; }
+.field-input:focus { border-color: var(--color-focus); box-shadow: 0 0 0 3px var(--color-focus-soft); }
+.field-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.field-row .field-label { margin-bottom: 0; }
+.field-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 var(--space-2); color: var(--color-text); font-size: var(--text-footnote); font-weight: var(--weight-semibold); }
+.field-link .ui-icon { width: 18px; height: 18px; }
+.field-help { margin: var(--space-2) 0 0; font-size: var(--text-caption); color: var(--color-text-secondary); }
+.pod-signature { display: block; width: 100%; height: 168px; margin-top: var(--space-1); border-radius: var(--radius-md); background: #FFFFFF; cursor: crosshair; }
+.pod-hash { font-size: var(--text-caption); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.pod-photo-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.pod-photo-slot {
+    flex: 1;
+    min-width: 200px;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--color-border-elevated);
+    color: var(--color-text);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+}
+.pod-photo { margin: var(--space-3) 0 0; }
+.pod-photo img { display: block; width: 100%; max-height: 220px; object-fit: cover; border-radius: var(--radius-md); }
+.pod-photo figcaption { margin-top: var(--space-1); }
+.pod-error { margin-top: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-bg); }
+.pod-error p { margin: var(--space-1) 0 0 28px; font-size: var(--text-footnote); color: var(--color-text-secondary); }
+
+/* Franja de sincronización bajo la cabecera: actualizando en gris; un fallo, triángulo y texto (nunca rojo). */
+.sync-banner {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 36px;
+    padding: 0 var(--gutter);
+    font-size: var(--text-caption);
+    color: var(--color-text-secondary);
+    border-bottom: var(--border-subtle);
+    background: var(--color-bg);
+}
+.sync-banner .spinner { width: 14px; height: 14px; }
+.sync-banner.is-warn { justify-content: space-between; color: var(--color-warn); font-weight: var(--weight-semibold); }
+.sync-text { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.sync-text svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
+.sync-retry { flex: none; min-height: 36px; padding: 0 var(--space-2); color: var(--color-text); font-weight: var(--weight-semibold); }
+
+/* ================================================================== fase 4B: inicio de sesión y hoja de reportar */
+
+/* Inicio de sesión: título grande, campos con rótulo y "Entrar" en ámbar plano; sin degradado, halo ni tinte. */
+.login-screen {
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    background: var(--color-bg);
+    padding: calc(var(--space-10) + var(--safe-top)) calc(var(--gutter) + var(--safe-right)) calc(var(--space-6) + var(--safe-bottom)) calc(var(--gutter) + var(--safe-left));
+}
+.login-form { width: 100%; max-width: 432px; margin: auto; }
+.login-mark { width: 56px; height: 56px; border-radius: 14px; display: block; }
+.login-form h1 {
+    margin: var(--space-6) 0 var(--space-2);
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+}
+.login-lead { margin: 0 0 var(--space-4); color: var(--color-text-secondary); font-size: var(--text-body); }
+.login-error { margin: 0 0 var(--space-2); }
+.login-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.login-pair .field { min-width: 0; }
+.login-password { position: relative; display: block; }
+.login-password .field-input { padding-right: 52px; }
+.login-password .header-icon-btn { position: absolute; right: 4px; top: 4px; }
+.login-submit { margin-top: var(--space-6); }
+.login-alt { margin: var(--space-6) 0 0; text-align: center; color: var(--color-text-secondary); font-size: var(--text-footnote); }
+.login-alt button {
+    min-height: 44px; padding: 0 var(--space-1);
+    color: var(--color-text); font-weight: var(--weight-bold);
+    text-decoration: underline; text-underline-offset: 3px;
+}
+.login-api { margin: var(--space-6) 0 0; text-align: center; font-size: var(--text-tab); color: var(--color-text-disabled); overflow-wrap: anywhere; }
+select.field-input { appearance: none; -webkit-appearance: none; }
+
+/* Hojas: cabecera con título, subtítulo y cerrar de 44 px. */
+.sheet-head { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-1) 0 var(--space-4); }
+.sheet-title { margin: 0 0 var(--space-1); font-size: var(--text-headline); font-weight: var(--weight-bold); letter-spacing: -0.01em; line-height: var(--leading-snug); color: var(--color-text); }
+.sheet-subtitle { margin: 0; font-size: var(--text-footnote); color: var(--color-text-secondary); line-height: var(--leading-snug); }
+.sheet-head .header-icon-btn { margin: -8px -8px 0 0; }
+.sheet-note { margin: var(--space-4) 0 0; font-size: var(--text-caption); color: var(--color-text-secondary); }
+
+/* Hoja de reportar: los 7 tipos en una cuadrícula de 4 columnas, íconos neutros (el texto dice qué es). */
+.report-gps { margin-bottom: var(--space-3); }
+.report-gps .status-line { gap: var(--space-2); }
+.report-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+.report-tile {
+    min-height: 92px;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    background: var(--color-elevated);
+    color: var(--color-text);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    line-height: 1.2;
+    text-align: center;
+    touch-action: manipulation;
+    transition: transform var(--dur-press) var(--ease-out);
+}
+.report-tile svg { width: 28px; height: 28px; fill: currentColor; flex: none; }
+.report-tile:active { background: var(--color-pressed); transform: scale(var(--press-scale)); }
+.report-tile:disabled { opacity: 0.45; }
+.report-tile.is-preset { box-shadow: inset 0 0 0 2px var(--color-text); }
+.report-tile.is-sent { opacity: 1; }
+.report-tile.is-sent svg { color: var(--color-ok); }
+.report-tile:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.report-detail { margin-top: var(--space-3); }
+.report-detail summary {
+    list-style: none; cursor: pointer; min-height: 44px;
+    display: flex; align-items: center; gap: var(--space-2);
+    font-size: var(--text-footnote); font-weight: var(--weight-semibold); color: var(--color-text-secondary);
+}
+.report-detail summary::-webkit-details-marker { display: none; }
+.report-detail summary svg { width: 18px; height: 18px; fill: currentColor; }
+.report-detail summary svg:last-child { transition: transform var(--dur-ui) var(--ease-out); }
+.report-detail[open] summary svg:last-child { transform: rotate(180deg); }
+.report-detail-input { min-height: 72px; padding: var(--space-3) var(--space-4); resize: none; }
+
+/* ================================================================== fase 5: Torre de control y "Mis envíos" */
+
+/* Marcadores de la flota y de las alertas con la paleta nueva: verde = en tránsito, ámbar = descanso o peligro,
+   grafito = disponible o informativo. El rojo queda solo para el SOS. */
+.fleet-pin {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    color: var(--color-text);
+    background: rgb(var(--graphite-600));
+    border: 2px solid var(--color-bg);
+    box-shadow: var(--elev-2);
+}
+.fleet-pin.is-transit { background: var(--color-ok); color: var(--color-bg); }
+.fleet-pin.is-rest { background: var(--color-warn); color: var(--color-bg); }
+.fleet-heading { position: absolute; top: -7px; right: -7px; font-size: 12px; color: var(--color-text); filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.8)); }
+.fleet-plate {
+    margin-top: 2px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--color-bg);
+    border: var(--border-elevated);
+    color: var(--color-text);
+    font-size: var(--text-tab);
+    font-weight: var(--weight-bold);
+    white-space: nowrap;
+}
+.fleet-legend { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: rgb(var(--graphite-600)); border: 2px solid var(--color-bg); }
+.fleet-legend.is-transit { background: var(--color-ok); }
+.fleet-legend.is-rest { background: var(--color-warn); }
+.alert-pin {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    color: var(--color-text);
+    background: var(--color-elevated);
+    border: 2px solid rgb(var(--graphite-400));
+    box-shadow: var(--elev-2);
+}
+.alert-pin.is-warn { color: var(--color-warn); border-color: var(--color-warn); }
+
+/* Estado de un envío: texto con un punto (o triángulo si pide atención), sin chip teñido. */
+.status-badge { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; font-size: var(--text-caption); font-weight: var(--weight-semibold); color: var(--color-text); }
+.status-badge.is-warn { color: var(--color-warn); }

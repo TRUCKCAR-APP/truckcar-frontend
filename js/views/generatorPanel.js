@@ -24,15 +24,16 @@ window.GeneratorPanel = (function () {
 
     /** Status visible para el generador: mientras la carga está AVAILABLE manda el estado de la asignación. */
     const STATUS = {
-        AVAILABLE: { label: 'AVAILABLE', text: 'Buscando conductor', style: 'bg-sky-500/15 text-sky-300 border-sky-500/40' },
-        PROPOSED: { label: 'PROPOSED', text: 'Propuesta a conductor', style: 'bg-amber-500/15 text-amber-300 border-amber-500/40' },
-        NOTIFIED: { label: 'NOTIFIED', text: 'Conductor notificado', style: 'bg-orange-500/15 text-orange-300 border-orange-500/40' },
-        NO_DRIVERS: { label: 'SIN CONDUCTOR', text: 'Sin conductores elegibles', style: 'bg-rose-500/15 text-rose-300 border-rose-500/40' },
-        ASSIGNED: { label: 'ASSIGNED', text: 'Aceptada por el conductor', style: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/40' },
-        IN_TRANSIT: { label: 'IN_TRANSIT', text: 'En ruta', style: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' },
-        DELIVERED: { label: 'DELIVERED', text: 'Entregada', style: 'bg-teal-500/20 text-teal-200 border-teal-400/50' },
-        CANCELLED: { label: 'CANCELLED', text: 'Cancelada', style: 'bg-slate-600/30 text-slate-300 border-slate-500/50' }
+        AVAILABLE: { label: 'Disponible', text: 'Buscando conductor', tone: '' },
+        PROPOSED: { label: 'Propuesta', text: 'Propuesta a conductor', tone: '' },
+        NOTIFIED: { label: 'Notificada', text: 'Conductor notificado', tone: '' },
+        NO_DRIVERS: { label: 'Sin conductor', text: 'Sin conductores elegibles', tone: 'warn' },
+        ASSIGNED: { label: 'Aceptada', text: 'Aceptada por el conductor', tone: '' },
+        IN_TRANSIT: { label: 'En tránsito', text: 'En ruta', tone: 'ok' },
+        DELIVERED: { label: 'Entregada', text: 'Entregada', tone: 'ok' },
+        CANCELLED: { label: 'Cancelada', text: 'Cancelada', tone: '' }
     };
+    const truckTypeLabel = (code) => (TRUCK_TYPES.find(([key]) => key === code) || [code, code || '—'])[1];
     const FILTERS = ['ALL', 'AVAILABLE', 'PROPOSED', 'NOTIFIED', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'];
 
     function statusKey(load) {
@@ -61,9 +62,13 @@ window.GeneratorPanel = (function () {
             : null;
     }
 
+    /** Estado como texto con un punto; "sin conductor" es una advertencia: triángulo y texto. Sin chips teñidos. */
     function badge(load) {
         const status = STATUS[statusKey(load)];
-        return `<span class="px-2 py-0.5 border rounded-md text-[10px] font-mono font-bold whitespace-nowrap ${status.style}" title="${status.text}">${status.label}</span>`;
+        const mark = status.tone === 'warn'
+            ? '<i class="fas fa-triangle-exclamation text-warn-500"></i>'
+            : `<span class="dot${status.tone ? ' ' + status.tone : ''}" aria-hidden="true"></span>`;
+        return `<span class="status-badge${status.tone === 'warn' ? ' is-warn' : ''}" title="${status.text}">${mark}${status.label}</span>`;
     }
 
     function formatDate(value) {
@@ -100,7 +105,7 @@ window.GeneratorPanel = (function () {
     function field(name, label, control, { required = false, touched, errors }) {
         const error = touched.has(name) ? errors[name] : '';
         return `<label class="text-[11px] space-y-1 block">
-            <span class="font-bold text-slate-300">${label}${required ? ' <span class="text-rose-400">*</span>' : ''}</span>
+            <span class="font-bold text-slate-300">${label}${required ? ' <span class="text-slate-400 font-medium">· obligatorio</span>' : ''}</span>
             ${control.replace('<input ', `<input aria-invalid="${Boolean(error)}" `).replace('<select ', `<select aria-invalid="${Boolean(error)}" `)}
             <span class="field-hint block" data-hint="${name}" aria-live="polite">${error ? window.ui.escape(error) : ''}</span>
         </label>`;
@@ -135,7 +140,7 @@ window.GeneratorPanel = (function () {
             `<datalist id="truckcar-cities">${CITIES.map(c => `<option value="${c.city}">${c.department}</option>`).join('')}</datalist>
              ${field('originCity', 'Origen', `<input name="originCity" list="truckcar-cities" value="${esc(d.originCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
              ${field('destinationCity', 'Destino', `<input name="destinationCity" list="truckcar-cities" value="${esc(d.destinationCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
-             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot text-brand-400"></i> ${origin && destination && origin !== destination
+             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot"></i> ${origin && destination && origin !== destination
                 ? esc(origin.city + ', ' + origin.department + ' → ' + destination.city + ', ' + destination.department)
                 : 'Las coordenadas del trayecto salen del catálogo de ciudades.'}</p>`,
             `${field('offeredBudget', 'Presupuesto ofrecido (COP)', `<input name="offeredBudget" type="number" inputmode="numeric" min="1000" step="1000" value="${esc(d.offeredBudget)}" class="login-input w-full text-xs" placeholder="5000000" enterkeyhint="done">`, { ...opts, required: true })}
@@ -144,7 +149,7 @@ window.GeneratorPanel = (function () {
                 <div class="flex justify-between gap-2"><span class="text-slate-400">Carga</span><b class="text-right truncate">${esc(d.cargoDescription || '—')}</b></div>
                 <div class="flex justify-between gap-2"><span class="text-slate-400">Peso</span><b>${esc(d.weightTons || '—')} t</b></div>
                 <div class="flex justify-between gap-2"><span class="text-slate-400">Trayecto</span><b class="text-right">${esc((origin ? origin.city : '—') + ' → ' + (destination ? destination.city : '—'))}</b></div>
-                <div class="flex justify-between gap-2"><span class="text-slate-400">Presupuesto</span><b class="text-emerald-300 font-mono">${esc(money)}</b></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Presupuesto</span><b class="text-white font-mono">${esc(money)}</b></div>
              </div>`
         ];
         const last = step === FORM_STEPS.length - 1;
@@ -152,13 +157,13 @@ window.GeneratorPanel = (function () {
             <form onsubmit="event.preventDefault(); window.generatorCtrl.${last ? 'publish()' : 'nextStep()'}" oninput="window.generatorCtrl.updateDraft(event)" onchange="window.generatorCtrl.updateDraft(event)" onfocusout="window.generatorCtrl.touch(event)"
                   class="card p-4 flex flex-col gap-3 overflow-y-auto" novalidate>
                 <div class="flex items-center gap-2 border-b border-slate-800 pb-2.5">
-                    <i class="fas fa-square-plus text-brand-400"></i>
-                    <h2 class="font-extrabold text-sm text-white">Publicar nueva carga</h2>
+                    <i class="fas fa-square-plus text-slate-400"></i>
+                    <h2 class="font-bold text-sm text-white">Publicar nueva carga</h2>
                     <span class="ml-auto text-[10px] text-slate-400 font-mono">Paso ${step + 1}/${FORM_STEPS.length}</span>
                 </div>
                 <div class="stepper" aria-label="Pasos del formulario">${stepper}</div>
                 <div class="space-y-2" data-form-step="${step}">${steps[step]}</div>
-                ${state.generatorFormError ? `<p class="text-[11px] text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-2">${esc(state.generatorFormError)}</p>` : ''}
+                ${state.generatorFormError ? `<p class="text-xs font-semibold text-warn-500 flex items-start gap-2" role="alert"><i class="fas fa-triangle-exclamation mt-0.5"></i><span>${esc(state.generatorFormError)}</span></p>` : ''}
                 <div class="flex gap-2 mt-auto pt-1">
                     ${step > 0 ? '<button type="button" onclick="window.generatorCtrl.prevStep()" class="btn-secondary px-4"><i class="fas fa-arrow-left"></i></button>' : ''}
                     <button type="submit" ${busy ? 'disabled' : ''} class="btn-cta !min-h-[46px] !text-[13px] flex-1">
@@ -185,25 +190,25 @@ window.GeneratorPanel = (function () {
             <div class="card p-4 flex flex-col gap-3 overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
-                        <i class="fas fa-boxes-stacked text-indigo-400"></i>
-                        <h2 class="font-extrabold text-sm text-white">Mis envíos</h2>
+                        <i class="fas fa-boxes-stacked text-slate-400"></i>
+                        <h2 class="font-bold text-sm text-white">Mis envíos</h2>
                     </div>
-                    <button onclick="window.generatorCtrl.refresh()" class="text-slate-400 hover:text-emerald-400 text-xs" title="Actualizar ahora">
+                    <button onclick="window.generatorCtrl.refresh()" class="w-9 h-9 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs" title="Actualizar ahora" aria-label="Actualizar los envíos">
                         <i class="fas fa-rotate ${state.dataStatus.loading ? 'fa-spin' : ''}"></i>
                     </button>
                 </div>
                 <div class="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por estado">
                     ${FILTERS.map(key => `
                         <button onclick="window.generatorCtrl.setFilter('${key}')" aria-pressed="${filter === key}"
-                                class="px-2 py-1 rounded-lg text-[10px] font-bold border transition ${filter === key ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'}">
-                            ${key === 'ALL' ? 'Todos' : key} <span class="font-mono opacity-80">${counts[key]}</span>
+                                class="px-3 py-1.5 rounded-full text-xs font-semibold border transition ${filter === key ? 'bg-slate-800 border-transparent text-white' : 'border-slate-700 text-slate-400 hover:text-white'}">
+                            ${key === 'ALL' ? 'Todos' : STATUS[key].label} <span class="font-mono opacity-80">${counts[key]}</span>
                         </button>
                     `).join('')}
                 </div>
                 <div class="flex-1 overflow-y-auto space-y-2 pr-1">
                     ${visible.length ? visible.map(l => `
                         <button onclick="window.generatorCtrl.select(${l.backendId})"
-                                class="w-full text-left p-3 rounded-xl border transition ${l.backendId === selectedId ? 'bg-indigo-950/40 border-indigo-500/60' : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800'}">
+                                class="w-full text-left p-3 rounded-xl border transition ${l.backendId === selectedId ? 'bg-slate-800 border-slate-400' : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800'}">
                             <div class="flex items-center justify-between gap-2">
                                 <span class="font-mono text-[11px] font-bold text-slate-300">${esc(l.id)}</span>
                                 ${badge(l)}
@@ -229,7 +234,7 @@ window.GeneratorPanel = (function () {
         const esc = window.ui.escape;
         return `
             <li class="flex gap-2.5">
-                <span class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] ${done ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-slate-500 border border-slate-700'}"><i class="fas ${icon}"></i></span>
+                <span class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] ${done ? 'bg-ok-500 text-graphite-950' : 'bg-slate-800 text-slate-500 border border-slate-700'}"><i class="fas ${icon}"></i></span>
                 <div class="text-[11px] leading-tight pt-0.5">
                     <div class="font-bold ${done ? 'text-white' : 'text-slate-500'}">${title}</div>
                     <div class="text-slate-400">${done && when ? esc(formatDate(when)) : done ? '' : 'Pendiente'}${extra ? ' · ' + esc(extra) : ''}</div>
@@ -264,12 +269,12 @@ window.GeneratorPanel = (function () {
                 <div id="generator-map-container" class="h-44 rounded-xl overflow-hidden border border-slate-800 shrink-0" aria-label="Mapa del envío"></div>
                 ${load.status === 'ASSIGNED' || load.status === 'IN_TRANSIT' ? `
                     <div class="flex items-center justify-between gap-2 text-[10px]">
-                        <p id="shipment-truck-line" class="text-emerald-300 truncate">${truckLine(truck)}</p>
+                        <p id="shipment-truck-line" class="text-slate-200 truncate">${truckLine(truck)}</p>
                         <span data-telemetry-status class="shrink-0 flex items-center gap-1 text-slate-400"></span>
                     </div>` : ''}
                 <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                     <div><span class="text-slate-500 block">Trayecto</span><b class="text-white">${esc(load.origin.city)} → ${esc(load.destination.city)}</b></div>
-                    <div><span class="text-slate-500 block">Peso / camión</span><b class="text-white">${esc(load.netWeight)} t · ${esc(load.requiredTruckType)}</b></div>
+                    <div><span class="text-slate-500 block">Peso / camión</span><b class="text-white">${esc(load.netWeight)} t · ${esc(truckTypeLabel(load.requiredTruckType))}</b></div>
                     <div><span class="text-slate-500 block">Presupuesto</span><b class="text-white">${esc(load.freightPayment)}</b></div>
                     <div><span class="text-slate-500 block">Conductor</span><b class="text-white">${esc(currentDriver(load) ? currentDriver(load).name : '—')}</b>${currentDriver(load) && currentDriver(load).plate ? ` <span class="font-mono text-slate-400">${esc(currentDriver(load).plate)}</span>` : ''}</div>
                 </div>
@@ -284,15 +289,15 @@ window.GeneratorPanel = (function () {
                 </ol>
                 <div class="flex flex-col gap-2 pt-1">
                     ${load.status === 'DELIVERED' ? `
-                        <button onclick="window.generatorCtrl.showProofOfDelivery(${load.backendId})" class="w-full py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold">
+                        <button onclick="window.generatorCtrl.showProofOfDelivery(${load.backendId})" class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 text-graphite-950 rounded-xl text-xs font-bold">
                             <i class="fas fa-file-signature"></i> Ver prueba de entrega (POD)
                         </button>` : ''}
                     ${load.status !== 'CANCELLED' ? `
                         <button onclick="window.generatorCtrl.shareTracking(${load.backendId})" class="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold">
-                            <i class="fas fa-link text-brand-400"></i> Generar enlace de seguimiento público
+                            <i class="fas fa-link"></i> Generar enlace de seguimiento público
                         </button>` : ''}
                     ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
-                        <button onclick="window.generatorCtrl.cancel(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-60 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold">
+                        <button onclick="window.generatorCtrl.cancel(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white border border-slate-700 rounded-xl text-xs font-bold">
                             <i class="fas ${state.busyAction === 'cancel' ? 'fa-spinner fa-spin' : 'fa-ban'}"></i> Cancelar envío
                         </button>` : ''}
                 </div>
@@ -336,26 +341,26 @@ window.GeneratorPanel = (function () {
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
                 <header class="min-h-16 px-4 lg:px-6 py-2 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between z-30 shrink-0 gap-x-4 gap-y-2">
                     <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-b from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-lg shadow-brand-900/50">
+                        <div class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100">
                             <i class="fas fa-industry text-lg"></i>
                         </div>
                         <div class="min-w-0">
-                            <h1 class="text-[15px] lg:text-base font-extrabold text-white tracking-tight">Mis envíos</h1>
+                            <h1 class="text-[15px] lg:text-base font-bold text-white tracking-tight">Mis envíos</h1>
                             <p class="text-xs text-slate-400 truncate flex items-center gap-2"><span data-network-status class="lg:hidden"></span> Última ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
                         </div>
                     </div>
                     ${state.sessionRole === 'GENERADOR' ? '' : window.CoordinatorPanel.renderTabs(state)}
                     <div class="flex items-center gap-3">
                         <div class="px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
-                            <span class="text-[10px] uppercase text-slate-400 font-bold block">En curso</span>
-                            <span class="text-sm font-black text-emerald-400 font-mono" data-count="${active}" data-count-key="gen-active">${active}</span>
+                            <span class="text-xs text-slate-400 font-medium block">En curso</span>
+                            <span class="text-sm font-bold text-white font-mono" data-count="${active}" data-count-key="gen-active">${active}</span>
                         </div>
                         <div class="px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
-                            <span class="text-[10px] uppercase text-slate-400 font-bold block">Entregadas</span>
-                            <span class="text-sm font-black text-teal-300 font-mono" data-count="${delivered}" data-count-key="gen-delivered">${delivered}</span>
+                            <span class="text-xs text-slate-400 font-medium block">Entregadas</span>
+                            <span class="text-sm font-bold text-white font-mono" data-count="${delivered}" data-count-key="gen-delivered">${delivered}</span>
                         </div>
                         <div class="hidden md:block text-xs font-bold text-slate-200 pl-3 border-l border-slate-800">${esc(user ? user.firstName + ' ' + user.lastName : 'Generador')}</div>
-                        <button onclick="window.app.logout()" class="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-rose-400 text-xs" title="Cerrar sesión" aria-label="Cerrar sesión"><i class="fas fa-right-from-bracket"></i></button>
+                        <button onclick="window.app.logout()" class="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-white text-xs" title="Cerrar sesión" aria-label="Cerrar sesión"><i class="fas fa-right-from-bracket"></i></button>
                     </div>
                 </header>
                 ${window.ui.syncBanner(state)}

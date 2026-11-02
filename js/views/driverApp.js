@@ -3,7 +3,14 @@ window.DriverApp = {
     STATUS_LABELS: {
         PROPOSED: 'Propuesta', NOTIFIED: 'Propuesta', AVAILABLE: 'Disponible', ASSIGNED: 'Aceptada',
         IN_TRANSIT: 'En tránsito', DELIVERED: 'Entregada', CANCELLED: 'Cancelada',
-        DISPONIBLE: 'Disponible', EN_TRANSITO: 'En tránsito', DESCANSO: 'En descanso', SIN_VEHICULO: 'Sin vehículo'
+        DISPONIBLE: 'Disponible', EN_TRANSITO: 'En tránsito', DESCANSO: 'En descanso', SIN_VEHICULO: 'Sin vehículo',
+        // Asignación y flota (Torre de control y "Mis envíos").
+        ACCEPTED: 'Aceptada', REJECTED: 'Rechazada', TIMEOUT: 'Sin respuesta a tiempo',
+        UNASSIGNED_NO_DRIVERS: 'Sin conductores disponibles', ACTIVO: 'Activo', INACTIVO: 'Inactivo', DESCONOCIDO: 'Sin estado',
+        // Decisiones del motor de asignación (AI-powered-fleet-allocation, AllocationStatus).
+        SUCCESSFUL: 'Conductor seleccionado', NO_DRIVERS_AVAILABLE: 'Sin conductores disponibles',
+        DEGRADED_USING_CACHE: 'Con datos guardados', RECOMMENDATION_PENDING: 'Recomendación pendiente',
+        ASSIGNMENT_CONFLICT: 'Rechazada por conflicto', ASSIGNMENT_FAILED: 'Asignación sin respuesta'
     },
 
     statusLabel(code) {
@@ -32,17 +39,14 @@ window.DriverApp = {
 
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative select-none">
-                <div class="safe-top bg-slate-900/95 border-b border-slate-800 z-50 shrink-0">
-                    <div class="h-12 pl-3 pr-1.5 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2 min-w-0">
-                            <img src="assets/icon.svg" alt="" class="w-7 h-7 rounded-lg shrink-0">
-                            <span data-network-status aria-live="polite" class="min-w-0"></span>
-                        </div>
-                        <button onclick="window.app.logout()" class="w-10 h-10 rounded-xl grid place-items-center text-slate-400 hover:text-rose-300" title="Cerrar sesión" aria-label="Cerrar sesión">
-                            <i class="fas fa-right-from-bracket"></i>
-                        </button>
-                    </div>
-                </div>
+                <header class="app-header">
+                    <span class="wordmark">TruckCar</span>
+                    <span data-network-status aria-live="polite" class="min-w-0"></span>
+                    <span class="app-header-spacer"></span>
+                    <button onclick="window.app.logout()" class="header-icon-btn" title="Cerrar sesión" aria-label="Cerrar sesión">
+                        ${this.icon('sign-out')}
+                    </button>
+                </header>
 
                 ${window.ui.syncBanner(state)}
 
@@ -51,38 +55,49 @@ window.DriverApp = {
                 </div>
 
                 ${(isLandscape && currentScreen === 'navigation') ? '' : `
-                    <nav class="safe-bottom bg-slate-900/95 border-t border-slate-800 z-40 shrink-0" aria-label="Secciones del conductor">
-                        <div class="h-16 px-1 flex items-center justify-around">
-                            <button onclick="window.store.setState({ driverScreen: 'profile' })" ${currentScreen === 'profile' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'profile' ? 'is-active' : ''}">
-                                <i class="fas fa-truck"></i>
-                                <span>Vehículo</span>
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'assigned_load' })" ${currentScreen === 'assigned_load' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'assigned_load' ? 'is-active' : ''}">
-                                <i class="fas fa-clipboard-list"></i>
-                                <span>Carga</span>
-                                ${window.DriverApp.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>' : ''}
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'route_overview' })" ${currentScreen === 'route_overview' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'route_overview' ? 'is-active' : ''}">
-                                <i class="fas fa-route"></i>
-                                <span>Rutas</span>
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'navigation' })" ${currentScreen === 'navigation' ? 'aria-current="page"' : ''} class="driver-tab-primary">
-                                <i class="fas fa-location-arrow"></i>
-                                <span>Navegar</span>
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'alerts' })" ${currentScreen === 'alerts' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'alerts' ? 'is-active' : ''}">
-                                <i class="fas fa-shield-alt"></i>
-                                <span>Alertas</span>
-                            </button>
-                            <button onclick="window.store.setState({ driverScreen: 'offline' })" ${currentScreen === 'offline' ? 'aria-current="page"' : ''} class="driver-tab ${currentScreen === 'offline' ? 'is-active' : ''}">
-                                <i class="fas fa-download"></i>
-                                <span>Offline</span>
-                            </button>
-                        </div>
+                    <nav class="driver-tabbar z-40" aria-label="Secciones del conductor">
+                        ${this.TABS.map(([screen, label, icon]) => this.tabButton(currentScreen, screen, label, icon)).join('')}
                     </nav>
                 `}
             </div>
         `;
+    },
+
+    /** Pestañas: [pantalla, etiqueta, ícono de Phosphor (assets/icons.svg; la activa usa su variante -fill)]. */
+    TABS: [
+        ['profile', 'Vehículo', 'truck'],
+        ['assigned_load', 'Carga', 'package'],
+        ['route_overview', 'Rutas', 'path'],
+        ['navigation', 'Navegar', 'navigation-arrow'],
+        ['alerts', 'Alertas', 'bell'],
+        ['offline', 'Offline', 'cloud-arrow-down']
+    ],
+
+    tabButton(currentScreen, screen, label, icon) {
+        const active = currentScreen === screen;
+        const badge = screen === 'assigned_load' && this.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>'
+            : screen === 'offline' ? this.offlineBadgeHtml() : '';
+        return `
+            <button onclick="window.store.setState({ driverScreen: '${screen}' })" ${active ? 'aria-current="page"' : ''} class="driver-tab ${active ? 'is-active' : ''}">
+                <svg aria-hidden="true"><use href="assets/icons.svg#${icon}${active ? '-fill' : ''}"></use></svg>
+                <span>${label}</span>${badge}
+            </button>`;
+    },
+
+    /**
+     * Acciones guardadas sin señal: número sobre el ícono de Offline (en el teléfono no hay tooltip). El número es
+     * visual; los lectores de pantalla oyen el texto completo junto al nombre de la pestaña.
+     */
+    offlineBadgeHtml() {
+        const pending = window.OfflineQueue ? window.OfflineQueue.status().pending || 0 : 0;
+        if (!pending) return '<span data-offline-badge hidden></span>';
+        const text = pending + (pending === 1 ? ' acción guardada sin enviar' : ' acciones guardadas sin enviar');
+        return `<span data-offline-badge><span class="driver-tab-count" aria-hidden="true">${pending > 99 ? '99+' : pending}</span><span class="sr-only">, ${text}</span></span>`;
+    },
+
+    /** Actualiza el contador de la pestaña Offline en sitio (la cola cambia sin que se repinte la pantalla). */
+    renderOfflineBadge() {
+        document.querySelectorAll('[data-offline-badge]').forEach(el => { el.outerHTML = this.offlineBadgeHtml(); });
     },
 
     hasPendingLoad() {
@@ -105,15 +120,62 @@ window.DriverApp = {
         return routes && routes.optimal ? routes.optimal.distance : '—';
     },
 
+    /** Tipos de camión del backend con su nombre corriente en Colombia. */
+    TRUCK_TYPES: {
+        TRACTOMULA_3S3: 'Tractocamión 3S3', TRACTOMULA_3S2: 'Tractocamión 3S2', MINIMULA: 'Minimula',
+        DOBLETROQUE: 'Doble troque', CUATRO_MANOS: 'Cuatro manos', SENCILLO: 'Sencillo', TURBO: 'Turbo',
+        REFRIGERADO: 'Refrigerado'
+    },
+
+    truckTypeLabel(code) {
+        if (!code || code === '—') return 'Sin información';
+        return this.TRUCK_TYPES[code] || this.statusLabel(code);
+    },
+
+    icon(name, cls = '') {
+        return `<svg class="ui-icon ${cls}" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
+    },
+
+    /** Número con coma decimal (es-CO) y unidad; sin dato, "Sin información". */
+    number(value, digits, unit) {
+        if (typeof value !== 'number' || Number.isNaN(value)) return 'Sin información';
+        return value.toLocaleString('es-CO', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + (unit ? ' ' + unit : '');
+    },
+
+    /** Placa colombiana como se lee en el camión: "TDK 410". */
+    plateText(plate) {
+        return String(plate || '').replace(/[-\s]+/g, ' ').trim();
+    },
+
+    /** Fila de una lista agrupada: rótulo a la izquierda, valor a la derecha. valueHtml ya viene escapado. */
+    listRow(label, valueHtml, strong = false) {
+        return `<div class="list-row"><span class="list-label">${window.ui.escape(label)}</span><span class="list-value${strong ? ' is-strong' : ''}">${valueHtml}</span></div>`;
+    },
+
+    /** Estado como texto con un punto: verde solo para lo que está en curso y bien; gris para lo demás. */
+    dotText(text, tone = '') {
+        return `<span class="dot${tone ? ' ' + tone : ''}" aria-hidden="true"></span>${window.ui.escape(text)}`;
+    },
+
+    /** Advertencia: siempre triángulo y texto, nunca solo color. */
+    warnLine(text, sub = '') {
+        return `<div class="warn-line">${this.icon('warning-fill')}<span>${window.ui.escape(text)}${sub ? ` <span class="warn-sub">${window.ui.escape(sub)}</span>` : ''}</span></div>`;
+    },
+
+    spinner() {
+        return '<span class="spinner" aria-hidden="true"></span>';
+    },
+
+    /** Estado vacío anclado arriba, con un ícono neutro, qué pasa y qué hacer. */
     renderEmptyState(icon, title, text, actionHtml = '') {
         return `
-            <div class="h-full flex flex-col items-center justify-center text-center p-6 gap-3">
-                <div class="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 text-xl">
-                    <i class="fas ${icon}"></i>
+            <div class="screen-scroll">
+                <div class="empty-state">
+                    <div class="empty-mark">${icon === 'loading' ? this.spinner() : this.icon(icon)}</div>
+                    <h2>${title}</h2>
+                    <p>${text}</p>
+                    ${actionHtml}
                 </div>
-                <h3 class="font-bold text-white text-sm">${title}</h3>
-                <p class="text-xs text-slate-400 max-w-xs">${text}</p>
-                ${actionHtml}
             </div>
         `;
     },
@@ -123,113 +185,70 @@ window.DriverApp = {
         const driver = window.TruckCarData.currentDriver;
         if (!driver) {
             return state.dataStatus.loading
-                ? this.renderEmptyState('fa-spinner fa-spin', 'Cargando perfil', 'Consultando User-Identity y fleets-drivers...')
-                : this.renderEmptyState('fa-user-slash', 'Perfil no disponible', 'No se pudo cargar el perfil del conductor.',
-                    '<button onclick="window.app.reloadData()" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold">Reintentar</button>');
+                ? this.renderEmptyState('loading', 'Cargando el perfil', 'Consultando sus datos y los del vehículo.')
+                : this.renderEmptyState('warning', 'No se pudo cargar el perfil', 'Revise la señal e intente de nuevo.',
+                    `<button onclick="window.app.reloadData()" class="btn-quiet">${this.icon('arrows-clockwise')}Reintentar</button>`);
         }
         const v = driver.vehicle;
-        const fixed = (value, digits) => (typeof value === 'number' ? value.toFixed(digits) : '—');
-        const initials = (driver.name || 'C').split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+        const load = window.TruckCarData.activeLoadOrder;
+        const status = this.statusLabel(driver.status) + (load && load.status === 'IN_TRANSIT' ? ' · ' + load.id : '');
+        const rating = typeof driver.rating === 'number' ? this.number(driver.rating, 1) + ' de 5' : 'Sin información';
+        const yes = (on, onText, offText) => this.dotText(on ? onText : offText, on ? 'ok' : '');
 
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4 pb-24">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
-                            <i class="fas fa-truck text-emerald-400"></i> Perfil del Vehículo y Conductor
-                        </h2>
-                        <p class="text-xs text-slate-400">Parámetros técnicos para el cálculo seguro de ruteo y gálibo</p>
-                    </div>
-                    ${v ? `<span class="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold font-mono">${esc(v.plate)}</span>` : ''}
-                </div>
+            <div class="screen-scroll">
+                <h1 class="large-title">Vehículo</h1>
+                ${v ? `
+                    <div class="vehicle-id">
+                        <span class="plate" aria-label="Placa ${esc(v.plate)}">${esc(this.plateText(v.plate))}</span>
+                        <div class="min-w-0">
+                            <div class="vehicle-model">${esc(v.brand && v.brand !== '—' ? v.brand : 'Modelo sin información')}</div>
+                            <div class="secondary">${esc(this.truckTypeLabel(v.category))}</div>
+                        </div>
+                    </div>` : `
+                    <div class="notice">
+                        ${this.warnLine('Sin vehículo registrado')}
+                        <p>La torre de control debe registrar su vehículo para planear rutas compatibles con su altura y peso.</p>
+                    </div>`}
 
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-4">
-                    <div class="w-14 h-14 rounded-full bg-emerald-600/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-300 font-black">${esc(initials)}</div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center justify-between">
-                            <h3 class="font-bold text-white text-base truncate">${esc(driver.name)}</h3>
-                            <span class="text-xs text-amber-400 font-bold"><i class="fas fa-star"></i> ${esc(driver.rating)}</span>
-                        </div>
-                        <p class="text-xs text-slate-400 truncate">${esc(driver.email || '')} · Licencia: <span class="font-mono text-slate-300">${esc(driver.licenseNumber)}</span></p>
-                        <div class="mt-2 flex items-center gap-2 flex-wrap">
-                            <span class="text-[11px] px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-mono">
-                                Horas hoy: <b class="${driver.hoursDrivenToday > 6 ? 'text-amber-400' : 'text-emerald-400'}">${esc(driver.hoursDrivenToday)}h / ${esc(driver.maxDailyHours)}h</b>
-                            </span>
-                            ${driver.restRequired
-                                ? '<span class="text-[10px] text-amber-400 font-bold"><i class="fas fa-bed"></i> Descanso requerido</span>'
-                                : `<span class="text-[10px] text-emerald-400 font-bold"><i class="fas fa-check-circle"></i> ${esc(window.DriverApp.statusLabel(driver.status))}</span>`}
-                        </div>
-                    </div>
+                <h2 class="list-title">Conductor</h2>
+                <div class="list">
+                    ${this.listRow('Nombre', esc(driver.name), true)}
+                    ${this.listRow('Licencia', esc(driver.licenseNumber && driver.licenseNumber !== '—' ? driver.licenseNumber : 'Sin información'))}
+                    ${this.listRow('Calificación', esc(rating))}
+                    ${this.listRow('Viajes completados', esc(driver.tripsCompleted))}
+                    ${this.listRow('Horas de conducción hoy', esc(this.number(driver.hoursDrivenToday, 1, 'h') + ' de ' + this.number(driver.maxDailyHours, 0, 'h')))}
+                    ${driver.restRequired ? this.listRow('Descanso', this.warnLine('Descanso requerido')) : ''}
+                    ${this.listRow('Estado', this.dotText(status, driver.status === 'EN_TRANSITO' ? 'ok' : ''))}
                 </div>
 
                 ${v ? `
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-                            <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Gálibo Máximo (Altura)</span>
-                                <i class="fas fa-ruler-vertical text-indigo-400"></i>
-                            </div>
-                            <div class="mt-2 flex items-baseline gap-1">
-                                <span class="text-2xl font-extrabold text-white font-mono">${fixed(v.height, 2)}</span>
-                                <span class="text-xs text-slate-400">metros</span>
-                            </div>
-                        </div>
-
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-                            <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Peso bruto actual</span>
-                                <i class="fas fa-weight-hanging text-amber-400"></i>
-                            </div>
-                            <div class="mt-2 flex items-baseline gap-1">
-                                <span class="text-2xl font-extrabold text-white font-mono">${fixed(v.grossWeight, 1)}</span>
-                                <span class="text-xs text-slate-400">Toneladas</span>
-                            </div>
-                            <span class="text-[10px] text-amber-400 mt-1 font-medium"><i class="fas fa-balance-scale"></i> Tara ${fixed(v.tareWeight, 1)} + carga ${fixed(v.netCargoWeight, 1)} Ton</span>
-                        </div>
-
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-                            <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Tipo de Vehículo</span>
-                                <i class="fas fa-road text-blue-400"></i>
-                            </div>
-                            <div class="mt-2">
-                                <span class="text-sm font-bold text-white">${esc(v.category)}</span>
-                            </div>
-                            <span class="text-[10px] text-slate-400 mt-1">${esc(v.brand)}</span>
-                        </div>
-
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-                            <div class="flex items-center justify-between text-slate-400 text-xs">
-                                <span>Carga a bordo</span>
-                                <i class="fas fa-boxes-stacked text-purple-400"></i>
-                            </div>
-                            <div class="mt-2">
-                                <span class="text-sm font-bold text-white font-mono">${fixed(v.netCargoWeight, 1)} Ton</span>
-                            </div>
-                            <span class="text-[10px] text-slate-400 mt-1">${esc(driver.tripsCompleted)} viajes completados</span>
-                        </div>
+                    <h2 class="list-title">Dimensiones y peso</h2>
+                    <div class="list">
+                        ${this.listRow('Gálibo (altura)', esc(this.number(v.height, 2, 'm')), true)}
+                        ${this.listRow('Tara', esc(this.number(v.tareWeight, 1, 't')))}
+                        ${this.listRow('Carga a bordo', esc(this.number(v.netCargoWeight, 1, 't')))}
+                        ${this.listRow('Peso bruto actual (tara + carga)', esc(this.number(v.grossWeight, 1, 't')), true)}
                     </div>
 
-                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                        <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">Certificaciones & Permisos</h4>
-                        <div class="flex flex-wrap gap-2">
-                            ${v.hazmatAuthorized ? '<span class="px-2.5 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5"><i class="fas fa-certificate"></i> Mercancías Peligrosas (HAZMAT)</span>' : ''}
-                            ${v.coldChainCertified ? '<span class="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5"><i class="fas fa-snowflake"></i> Cadena de Frío</span>' : ''}
-                            ${v.electronicTollTagActive ? '<span class="px-2.5 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5"><i class="fas fa-tag"></i> TAG Telepeaje</span>' : ''}
-                            ${v.runtValid ? '<span class="px-2.5 py-1 bg-slate-500/10 text-slate-300 border border-slate-500/30 rounded-lg text-xs font-medium flex items-center gap-1.5"><i class="fas fa-id-card"></i> RUNT vigente</span>' : ''}
-                            ${(v.badges || []).map(b => `<span class="px-2.5 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-medium">${esc(b)}</span>`).join('')}
-                            ${!v.hazmatAuthorized && !v.coldChainCertified && !v.electronicTollTagActive && !v.runtValid && !(v.badges || []).length ? '<span class="text-xs text-slate-500">Sin certificaciones registradas</span>' : ''}
-                        </div>
-                    </div>
-                ` : `
-                    <div class="bg-slate-900 border border-dashed border-amber-500/40 rounded-2xl p-4 text-xs text-amber-300">
-                        <b>Sin vehículo registrado.</b> fleets-drivers no tiene estado para el conductor
-                        <span class="font-mono">${esc(driver.id)}</span>. Registre el vehículo con
-                        <span class="font-mono">POST /api/v1/fleets-drivers/state</span> usando ese driverId.
-                    </div>
-                `}
+                    <h2 class="list-title">Documentos y permisos</h2>
+                    <div class="list">
+                        ${this.listRow('RUNT', yes(v.runtValid, 'Vigente', 'No vigente'))}
+                        ${this.listRow('TAG de telepeaje', yes(v.electronicTollTagActive, 'Activo', 'Inactivo'))}
+                        ${this.listRow('Cadena de frío', yes(v.coldChainCertified, 'Certificado', 'No certificado'))}
+                        ${this.listRow('Mercancías peligrosas', yes(v.hazmatAuthorized, 'Autorizado', 'No autorizado'))}
+                        ${(v.badges || []).map(b => this.listRow(b, this.dotText('Activo', 'ok'))).join('')}
+                    </div>` : ''}
             </div>
         `;
+    },
+
+    /** Distancia por carretera de la ruta (OSRM, la misma línea del mapa), si ya se calculó. */
+    roadDistanceKm() {
+        const guided = window.RouteGuidance && window.RouteGuidance.route;
+        if (guided && guided.totalM) return Math.round(guided.totalM / 1000);
+        const summary = window.mapCtrl && window.mapCtrl.routeSummary;
+        return summary ? Math.round(summary.distanceKm) : null;
     },
 
     renderAssignedLoadScreen(state) {
@@ -242,241 +261,150 @@ window.DriverApp = {
                           driverName: lastDelivery.load.assignedDriverName, vehiclePlate: lastDelivery.load.assignedVehiclePlate,
                           tripStartedAt: lastDelivery.load.tripStartedAt };
             return `
-                <div class="h-full overflow-y-auto p-4 space-y-3">
-                    <div class="text-center space-y-1">
-                        <h3 class="font-extrabold text-white text-sm">Viaje finalizado</h3>
-                        <p class="text-xs text-slate-400">La carga quedó en DELIVERED. Cuando el motor le proponga otra aparecerá aquí.</p>
+                <div class="screen-scroll">
+                    <h1 class="large-title">Viaje finalizado</h1>
+                    <p class="secondary">La carga quedó entregada. Cuando el sistema le proponga otra aparecerá aquí.</p>
+                    ${lastDelivery.pendingSync ? `<div class="notice">${this.warnLine('Entrega guardada sin señal', '· la firma, la foto y el registro se enviarán al reconectar.')}</div>` : ''}
+                    <div class="mt-6">${window.PodUI.receiptHtml(pod, lastDelivery.load)}</div>
+                    <div class="screen-actions">
+                        <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Buscar nueva carga</button>
                     </div>
-                    ${lastDelivery.pendingSync ? `
-                        <div class="p-2.5 bg-amber-500/10 border border-amber-500/40 rounded-xl text-[11px] text-amber-200 flex items-center gap-2">
-                            <i class="fas fa-cloud-arrow-up"></i>
-                            Entrega guardada en el teléfono sin señal: la firma, la foto y el registro se enviarán al reconectar.
-                        </div>` : ''}
-                    ${window.PodUI.receiptHtml(pod, lastDelivery.load)}
-                    <button onclick="window.app.refreshAssignment()" class="btn-cta"><i class="fas fa-rotate"></i> Buscar nueva carga</button>
                 </div>
             `;
         }
         if (!load) {
-            return this.renderEmptyState('fa-clipboard-check', 'Sin carga asignada',
-                'Cuando el motor de asignación le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
-                '<button onclick="window.app.refreshAssignment()" class="btn-secondary px-5 mt-1"><i class="fas fa-rotate"></i> Consultar de nuevo</button>');
+            return this.renderEmptyState('package', 'Sin carga asignada',
+                'Cuando el sistema le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
+                `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`);
         }
+        const raw = load.raw || {};
         const pending = load.status === 'AVAILABLE'
             && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED');
         const inTransit = load.status === 'IN_TRANSIT';
         const busy = state.busyAction;
-        const badge = pending ? load.assignmentStatus : load.status;
-        const title = pending ? 'Nueva Carga Propuesta' : inTransit ? 'Viaje en Curso' : 'Carga Aceptada';
+        const statusCode = pending ? load.assignmentStatus : load.status;
+        const startedAt = inTransit && load.tripStartedAt
+            ? ' · salió ' + new Date(load.tripStartedAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) : '';
+        const km = this.roadDistanceKm();
+        const budget = Number(raw.offeredBudget);
+        const busyIcon = (action, icon) => (busy === action ? this.spinner() : this.icon(icon));
+
+        const actions = load.assignmentStatus === 'PROPOSED' && pending ? `
+                <div class="notice">${this.warnLine('Propuesta en proceso de notificación', '· podrá aceptarla o rechazarla cuando llegue la notificación.')}</div>
+                <div class="screen-actions">
+                    <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Consultar estado</button>
+                </div>`
+            : pending ? `
+                <div class="screen-actions">
+                    <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('accept', 'check-circle')}Aceptar carga y ver ruta</button>
+                    <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('reject', 'x-circle')}Rechazar</button>
+                </div>`
+            : inTransit ? `
+                <div class="screen-actions">
+                    <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${this.icon('navigation-arrow-fill')}Continuar navegación</button>
+                    <button onclick="window.app.finishTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('deliver', 'flag-checkered')}Llegué: registrar entrega</button>
+                </div>`
+            : `
+                <div class="screen-actions">
+                    <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('start-trip', 'navigation-arrow-fill')}Iniciar viaje</button>
+                    <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="btn-quiet">${this.icon('path')}Ver ruta planeada</button>
+                </div>`;
 
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4 pb-24" data-stagger>
-                ${window.DriverActions.tripProgressHtml(load)}
-                <div class="flex items-center justify-between">
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="px-2 py-0.5 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded text-[10px] font-bold font-mono">
-                                ${esc(window.DriverApp.statusLabel(badge))}
-                            </span>
-                            <span class="text-xs text-slate-400">Orden #${esc(load.id)}</span>
-                        </div>
-                        <h2 class="text-lg font-extrabold text-white mt-1">${title}</h2>
-                        <p class="text-[11px] text-slate-400">${esc(load.customer || '')}</p>
+            <div class="screen-scroll">
+                <p class="status-line">${this.dotText(this.statusLabel(statusCode), inTransit ? 'ok' : '')}<span class="status-sub"> · ${esc(load.id)}${esc(startedAt)}</span></p>
+
+                <div class="trip">
+                    <div class="trip-rail"><span class="trip-stop"></span><span class="trip-line"></span></div>
+                    <div class="trip-leg">
+                        <div class="place-label">Origen</div>
+                        <div class="place">${esc(load.origin.city || load.origin.name || 'Sin información')}</div>
+                        <div class="place-sub">${esc(raw.originDepartment || '')}</div>
+                    </div>
+                    <div class="trip-rail"><span class="trip-stop is-end"></span></div>
+                    <div class="trip-leg">
+                        <div class="place-label">Destino</div>
+                        <div class="place">${esc(load.destination.city || load.destination.name || 'Sin información')}</div>
+                        <div class="place-sub">${esc([raw.destinationDepartment, km != null ? km + ' km por carretera' : ''].filter(Boolean).join(' · '))}</div>
                     </div>
                 </div>
 
-                <div class="card p-4 space-y-3">
-                    <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
-                        <div>
-                            <span class="text-[10px] text-slate-400 uppercase font-bold">Tipo de Carga</span>
-                            <div class="font-bold text-sm text-white">${esc(load.cargoType)}</div>
-                            <span class="text-[10px] text-slate-400 font-mono">${esc(load.requiredTruckType || '')}</span>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-[10px] text-slate-400 uppercase font-bold">Flete Ofrecido</span>
-                            <div class="font-black text-base text-emerald-400 font-mono">${esc(load.freightPayment)}</div>
-                        </div>
-                    </div>
-
-                    <div class="space-y-2 text-xs">
-                        <div class="flex items-start gap-2">
-                            <div class="w-5 text-emerald-400 text-center mt-0.5"><i class="fas fa-circle-dot"></i></div>
-                            <div class="flex-1">
-                                <div class="text-slate-400 text-[10px]">ORIGEN (publicada ${esc(load.scheduledDeparture)})</div>
-                                <div class="font-semibold text-slate-200">${esc(load.origin.name)}</div>
-                            </div>
-                        </div>
-                        <div class="border-l border-dashed border-slate-700 ml-2.5 h-3"></div>
-                        <div class="flex items-start gap-2">
-                            <div class="w-5 text-blue-400 text-center mt-0.5"><i class="fas fa-location-dot"></i></div>
-                            <div class="flex-1">
-                                <div class="text-slate-400 text-[10px]">DESTINO (${esc(load.estimatedDuration)} aprox)</div>
-                                <div class="font-semibold text-slate-200">${esc(load.destination.name)}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800 text-center">
-                        <div class="p-2 bg-slate-800/50 rounded-xl">
-                            <span class="text-[10px] text-slate-400 block">Peso Neto</span>
-                            <span class="font-mono font-bold text-xs text-slate-200">${esc(load.netWeight)} Ton</span>
-                        </div>
-                        <div class="p-2 bg-slate-800/50 rounded-xl">
-                            <span class="text-[10px] text-slate-400 block">Distancia</span>
-                            <span class="font-mono font-bold text-xs text-slate-200">${esc(load.totalDistance)}</span>
-                        </div>
-                        <div class="p-2 bg-slate-800/50 rounded-xl">
-                            <span class="text-[10px] text-slate-400 block">Volumen</span>
-                            <span class="font-mono font-bold text-xs text-slate-200">${load.volumeM3 != null ? esc(load.volumeM3) + ' m³' : '—'}</span>
-                        </div>
-                    </div>
+                <div class="fare">
+                    <div class="place-label">Flete</div>
+                    <div class="fare-amount">${Number.isFinite(budget) ? '$ ' + esc(budget.toLocaleString('es-CO', { maximumFractionDigits: 0 })) + '<small>COP</small>' : 'Sin información'}</div>
+                    <div class="place-sub">${esc(load.customer || '')}</div>
                 </div>
 
-                ${load.assignmentStatus === 'PROPOSED' ? `
-                    <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs text-amber-300 flex items-start gap-2">
-                        <i class="fas fa-bell mt-0.5"></i>
-                        <div>
-                            <b>Propuesta en proceso de notificación.</b> Podrá aceptar o rechazar cuando el servicio
-                            de Notifications confirme el envío (estado NOTIFIED).
-                            <button onclick="window.app.refreshAssignment()" class="block mt-1 underline font-bold">Consultar estado</button>
-                        </div>
-                    </div>
-                ` : pending ? `
-                    <div class="space-y-2.5 pt-1">
-                        <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-cta">
-                            <i class="fas ${busy === 'accept' ? 'fa-circle-notch fa-spin' : 'fa-circle-check'} text-lg"></i> Aceptar carga y ver ruta
-                        </button>
-                        <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-secondary w-full !text-rose-300 !border-rose-500/30">
-                            <i class="fas ${busy === 'reject' ? 'fa-circle-notch fa-spin' : 'fa-circle-xmark'}"></i> Rechazar
-                        </button>
-                    </div>
-                ` : inTransit ? `
-                    <div id="driver-telemetry-badge" class="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-[11px] text-slate-200" aria-live="polite">
-                        <span class="inline-block w-2 h-2 rounded-full bg-slate-500"></span> Preparando telemetría…
-                    </div>
-                    <div class="space-y-2.5 pt-1">
-                        <button onclick="window.app.finishTrip()" ${busy ? 'disabled' : ''} class="btn-cta is-success">
-                            <i class="fas ${busy === 'deliver' ? 'fa-circle-notch fa-spin' : 'fa-flag-checkered'} text-lg"></i> Llegué a destino · registrar entrega
-                        </button>
-                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-secondary w-full">
-                            <i class="fas fa-location-arrow"></i> Continuar navegación
-                        </button>
-                    </div>
-                ` : `
-                    <div class="space-y-2.5 pt-1">
-                        <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-cta">
-                            <i class="fas ${busy === 'start-trip' ? 'fa-circle-notch fa-spin' : 'fa-truck-moving'} text-lg"></i> Iniciar viaje
-                        </button>
-                        <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="btn-secondary w-full">
-                            <i class="fas fa-route"></i> Ver ruta planeada
-                        </button>
-                    </div>
-                `}
+                <h2 class="list-title">Detalle de la carga</h2>
+                <div class="list">
+                    ${this.listRow('Mercancía', esc(load.cargoType || 'Sin información'))}
+                    ${this.listRow('Peso', esc(this.number(Number(load.netWeight), 1, 't')), true)}
+                    ${load.volumeM3 != null ? this.listRow('Volumen', esc(this.number(Number(load.volumeM3), 1, 'm³'))) : ''}
+                    ${this.listRow('Vehículo requerido', esc(this.truckTypeLabel(load.requiredTruckType)))}
+                    ${inTransit ? this.listRow('Posición', '<span id="driver-telemetry-badge" class="telemetry-inline" aria-live="polite">Preparando la telemetría…</span>') : ''}
+                </div>
+                ${actions}
             </div>
         `;
+    },
+
+    /**
+     * Restricciones, alertas en la ruta y riesgo (que decide la aptitud para el vehículo). Hoy ninguno tiene una fuente
+     * fiable: una sola fila lo dice, sin repetir "Sin información". Un dato real sale en su propia fila; lo que siga sin
+     * fuente queda agrupado.
+     */
+    routeFactsHtml(opt) {
+        const esc = window.ui.escape;
+        const facts = [];
+        const missing = [];
+        const warnings = opt.warnings || [];
+        if (warnings.length) facts.push(this.listRow('Restricciones', esc(warnings.join(' · '))));
+        else missing.push('restricciones');
+        missing.push('alertas', 'riesgo');   // la API de alertas no filtra por ruta y el riesgo de Route-AI es un valor por defecto
+        if (missing.length) {
+            const label = missing.join(', ').replace(/, ([^,]*)$/, ' y $1');
+            facts.push(`<div class="list-row"><span class="list-label">${esc(label.charAt(0).toUpperCase() + label.slice(1))}<span class="list-note"> · sin fuente de datos todavía</span></span></div>`);
+        }
+        return facts.join('');
     },
 
     renderRouteOverviewScreen(state) {
         const esc = window.ui.escape;
         const routes = window.TruckCarData.routes;
         const errors = state.dataStatus.errors || {};
+        const load = window.TruckCarData.activeLoadOrder;
         if (!routes || !routes.optimal) {
-            const reason = !window.TruckCarData.activeLoadOrder
+            const reason = !load
                 ? 'Necesita una carga asignada para planear la ruta.'
                 : !(window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle)
-                    ? 'Registre su vehículo en fleets-drivers para que Route-AI calcule una ruta compatible.'
-                    : (errors.routes ? 'Route-AI respondió con error: ' + esc(errors.routes) : 'Calculando ruta con Route-AI...');
-            return this.renderEmptyState('fa-route', 'Ruta no disponible', reason,
-                window.TruckCarData.activeLoadOrder ? '<button onclick="window.TruckCarService.loadRoutePlan({ force: true }).then(() => window.store.setState({}))" class="px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold">Planear ruta</button>' : '');
+                    ? 'Su vehículo no está registrado: sin altura ni peso no se puede planear una ruta segura.'
+                    : (errors.routes ? 'El servicio de rutas respondió con un error: ' + esc(errors.routes) : 'Calculando la ruta…');
+            return this.renderEmptyState('path', 'Ruta no disponible', reason,
+                load ? `<button onclick="window.TruckCarService.loadRoutePlan({ force: true }).then(() => window.store.setState({}))" class="btn-quiet">${this.icon('arrows-clockwise')}Planear ruta</button>` : '');
         }
         const opt = routes.optimal;
         const rej = routes.rejectedAlternate;
+        const title = load ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) : opt.title;
+        const inTransit = load && load.status === 'IN_TRANSIT';
 
         return `
-            <div class="h-full flex flex-col relative">
-                <div class="h-44 w-full relative bg-slate-900">
-                    <div id="overview-map-container" class="w-full h-full"></div>
-                    <div class="absolute top-3 left-3 z-[400] flex gap-2">
-                        <span class="px-2.5 py-1 bg-slate-950/80 backdrop-blur text-emerald-400 font-mono text-[11px] font-bold rounded-lg border border-slate-700 shadow">
-                            <i class="fas fa-shield-halved"></i> ${esc(opt.name)}
-                        </span>
-                    </div>
-                    <button onclick="window.mapCtrl.fitAllRoute()" class="absolute bottom-3 right-3 z-[400] p-2 bg-slate-900/90 text-white rounded-xl border border-slate-700 shadow text-xs">
-                        <i class="fas fa-expand"></i>
-                    </button>
+            <div class="route-screen">
+                <div id="overview-map-container" class="route-map" aria-label="Mapa de la ruta ${esc(title)}"></div>
+                <div class="map-tools">
+                    <button type="button" onclick="window.mapCtrl.centerOnPosition()" class="map-tool" aria-label="Centrar en mi posición">${this.icon('crosshair')}</button>
+                    <button type="button" onclick="window.mapCtrl.fitAllRoute()" class="map-tool" aria-label="Ver la ruta completa">${this.icon('corners-out')}</button>
                 </div>
 
-                <div class="flex-1 overflow-y-auto p-4 space-y-3">
-                    <div class="bg-slate-900 border-2 border-emerald-500/50 rounded-2xl p-4 shadow-lg shadow-emerald-950/40 relative">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="flex items-center gap-2 min-w-0">
-                                <span class="w-3 h-3 shrink-0 rounded-full bg-emerald-500 animate-pulse"></span>
-                                <h3 class="font-bold text-white text-sm truncate">${esc(opt.title)}</h3>
-                            </div>
-                            <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 font-extrabold text-[10px] rounded uppercase font-mono">Recomendada</span>
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-2 py-2 my-1 border-y border-slate-800 text-center font-mono">
-                            <div>
-                                <span class="text-[10px] text-slate-400 block font-sans">Distancia</span>
-                                <span class="font-bold text-sm text-emerald-400">${esc(opt.distance)}</span>
-                            </div>
-                            <div>
-                                <span class="text-[10px] text-slate-400 block font-sans">Tiempo Est.</span>
-                                <span class="font-bold text-sm text-white">${esc(opt.eta)}</span>
-                            </div>
-                            <div>
-                                <span class="text-[10px] text-slate-400 block font-sans">Alertas</span>
-                                <span class="font-bold text-sm text-white">${esc(opt.hazards)}</span>
-                            </div>
-                        </div>
-
-                        <div class="space-y-1.5 mt-3">
-                            ${opt.features.map(f => `
-                                <div class="flex items-center gap-2 text-xs text-slate-300">
-                                    <i class="fas fa-check-circle text-emerald-400 text-[11px]"></i>
-                                    <span>${esc(f)}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-
-                        ${(opt.warnings || []).map(w => `
-                            <div class="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300 flex items-center gap-2">
-                                <i class="fas fa-triangle-exclamation text-amber-400"></i><span>${esc(w)}</span>
-                            </div>
-                        `).join('')}
-
-                        ${opt.aiRecommendation ? `
-                            <div class="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-[11px] text-emerald-300 flex items-start gap-2">
-                                <i class="fas fa-robot text-emerald-400 mt-0.5"></i>
-                                <span>${esc(opt.aiRecommendation)}</span>
-                            </div>
-                        ` : ''}
+                <section class="route-sheet" data-route-sheet aria-label="Ruta de la carga">
+                    <h1 class="route-title">${esc(title)}</h1>
+                    <div class="route-figures" data-route-figures>${window.mapCtrl.routeFiguresHtml()}</div>
+                    <p class="secondary">Tiempo estimado para auto</p>
+                    <div class="list">${this.routeFactsHtml(opt)}</div>
+                    ${rej ? `<div class="notice">${this.warnLine('Corredor descartado: ' + rej.title, '· ' + rej.rejectionReasons.join(' · '))}</div>` : ''}
+                    <div class="sheet-actions-row">
+                        <button onclick="window.app.startNavigation()" class="btn-accent">${this.icon('navigation-arrow-fill')}${inTransit ? 'Continuar navegación' : 'Iniciar viaje y navegación'}</button>
                     </div>
-
-                    ${rej ? `
-                        <div class="bg-slate-900/60 border border-rose-900/40 rounded-2xl p-3.5">
-                            <div class="flex items-center justify-between mb-2">
-                                <h4 class="text-xs font-bold text-rose-400 flex items-center gap-1.5">
-                                    <i class="fas fa-ban"></i> ${esc(rej.title)}
-                                </h4>
-                                <span class="text-[10px] text-rose-400 font-mono font-bold">Ruta Descartada</span>
-                            </div>
-                            <div class="space-y-1 text-xs text-slate-400">
-                                ${rej.rejectionReasons.map(r => `
-                                    <div class="flex items-start gap-1.5 text-rose-300/80 text-[11px]">
-                                        <i class="fas fa-times-circle text-rose-500 mt-0.5 shrink-0"></i>
-                                        <span>${esc(r)}</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-
-                    <button onclick="window.app.startNavigation()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/40 transition transform active:scale-98">
-                        <i class="fas fa-play"></i> ${window.TruckCarData.activeLoadOrder && window.TruckCarData.activeLoadOrder.status === 'IN_TRANSIT' ? 'Continuar navegación' : 'Iniciar viaje y navegación'}
-                    </button>
-                </div>
+                </section>
             </div>
         `;
     },
@@ -490,120 +418,69 @@ window.DriverApp = {
         const esc = window.ui.escape;
         const s = window.RouteGuidance.snapshot();
         const hud = window.RouteGuidance.hudText(s);
-        const speed = s.speed == null ? '—' : s.speed;
-        const offRoute = `<div data-nav-offroute ${s.offRoute ? '' : 'hidden'} class="mt-2 px-2.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[11px] font-semibold flex items-center gap-1.5">
-            <i class="fas fa-triangle-exclamation"></i> Fuera de la ruta: recalculando desde su posición.</div>`;
+        const vehicle = window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle;
+        const load = window.TruckCarData.activeLoadOrder;
+        const km = this.roadDistanceKm();
+        const routeLine = load
+            ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) + (km != null ? ' · ' + km + ' km' : '')
+            : 'Sin carga en tránsito';
+        const voice = state.voiceEnabled;
 
-        if (isLandscape) {
-            return `
-                <div class="h-full w-full relative bg-slate-950 overflow-hidden">
-                    <div id="live-nav-map-container" class="w-full h-full absolute inset-0"></div>
-
-                    <div class="landscape-overlay-left pointer-events-none">
-                        <div class="hud-pill rounded-2xl p-3.5 shadow-2xl border border-slate-700/60 pointer-events-auto">
-                            <div class="flex items-center gap-3">
-                                <div class="w-12 h-12 rounded-xl bg-brand-600 text-white flex items-center justify-center text-xl shadow-lg shrink-0">
-                                    <i data-nav-icon class="fas ${s.icon}"></i>
-                                </div>
-                                <div class="min-w-0">
-                                    <div data-nav-distance class="text-2xl font-black text-white font-mono">${esc(hud.distance)}</div>
-                                    <div data-nav-instruction class="text-xs text-slate-200 font-semibold line-clamp-2 leading-tight">${esc(hud.instruction)}</div>
-                                    <div data-nav-street class="text-[10px] text-slate-400 truncate">${esc(hud.street)}</div>
-                                </div>
-                            </div>
-                            ${offRoute}
-                        </div>
-
-                        <div class="flex items-center gap-3 pointer-events-auto">
-                            <div class="hud-pill rounded-2xl p-3 flex items-center gap-3 border border-slate-700/60 shadow-xl">
-                                <div class="text-center">
-                                    <div data-nav-speed class="text-3xl font-black text-emerald-400 font-mono">${speed}</div>
-                                    <div class="text-[9px] uppercase font-bold text-slate-400">km/h</div>
-                                </div>
-                            </div>
-
-                            <button onclick="window.app.toggleVoice()" class="hud-pill p-3.5 rounded-2xl border border-slate-700/60 text-white shadow-xl flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}" aria-label="Activar o silenciar la voz">
-                                <i class="fas ${state.voiceEnabled ? 'fa-volume-up text-lg' : 'fa-volume-mute text-lg'}"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="landscape-overlay-right pointer-events-none">
-                        <div class="flex flex-col gap-2 pointer-events-auto items-end">
-                            <button onclick="window.app.openReportModal('scale')" class="w-11 h-11 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-2xl flex items-center justify-center text-sm border-2 border-white/40 transition transform hover:scale-110 active:scale-90" title="Reportar Báscula">
-                                <i class="fas fa-weight-hanging"></i>
-                            </button>
-                            <button onclick="window.app.openReportModal('bridge')" class="w-11 h-11 bg-rose-600 hover:bg-rose-500 text-white rounded-full shadow-2xl flex items-center justify-center text-sm border-2 border-white/40 transition transform hover:scale-110 active:scale-90" title="Alerta Gálibo">
-                                <i class="fas fa-ruler-vertical"></i>
-                            </button>
-                            <button onclick="window.app.openReportModal('police')" class="w-11 h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-2xl flex items-center justify-center text-sm border-2 border-white/40 transition transform hover:scale-110 active:scale-90" title="Retén Policial">
-                                <i class="fas fa-shield-alt"></i>
-                            </button>
-                        </div>
-
-                        <div class="hud-pill rounded-2xl p-3 border border-slate-700/60 shadow-xl pointer-events-auto w-full">
-                            <div class="text-right font-mono mb-2">
-                                <span class="text-xs text-slate-400 block font-sans">Destino: ${esc(window.DriverApp.destinationLabel())}</span>
-                                <span class="text-sm font-bold text-white">Faltan <span data-nav-remaining class="text-emerald-400">${esc(s.remaining)}</span></span>
-                            </div>
-                            <button onclick="window.app.finishTrip()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition">
-                                <i class="fas fa-flag-checkered"></i> Llegué
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
+        // Un solo HUD para vertical y horizontal: tarjeta superior de vidrio (maniobra, altura y peso bruto, avisos),
+        // panel vertical derecho y barra del viaje. Sin límite de velocidad: no hay fuente para ese dato.
         return `
-            <div class="h-full flex flex-col relative bg-slate-950">
-                <div class="bg-gradient-to-b from-slate-900 to-slate-900/90 border-b border-slate-800 p-3.5 z-20 shadow-xl">
-                    <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-2xl bg-brand-600 text-white flex items-center justify-center text-xl shadow-lg shadow-brand-900/50 shrink-0">
-                            <i data-nav-icon class="fas ${s.icon}"></i>
+            <div class="nav-screen${isLandscape ? ' is-landscape' : ''}">
+                <div class="nav-map-area">
+                    <div id="live-nav-map-container" class="route-map" aria-label="Mapa de navegación"></div>
+
+                    <section class="hud-card" aria-label="Próxima maniobra">
+                        <button type="button" class="hud-turn" onclick="window.app.repeatInstruction()" aria-label="Repetir la instrucción en voz alta">
+                            <span class="hud-arrow"><svg class="ui-icon" aria-hidden="true"><use data-nav-glyph href="assets/icons.svg#${esc(s.glyph)}"></use></svg></span>
+                            <span class="hud-text" aria-live="polite">
+                                <span data-nav-distance class="hud-distance">${esc(hud.distance)}</span>
+                                <span data-nav-instruction class="hud-instruction">${esc(hud.instruction)}</span>
+                                <span data-nav-street class="hud-street">${esc(hud.street)}</span>
+                            </span>
+                        </button>
+                        <div class="hud-meta">
+                            <div><div class="k">Altura del vehículo</div><div class="v">${esc(vehicle ? this.number(vehicle.height, 2, 'm') : 'Sin información')}</div></div>
+                            <div><div class="k">Peso bruto</div><div class="v">${esc(vehicle ? this.number(vehicle.grossWeight, 1, 't') : 'Sin información')}</div></div>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <div data-nav-distance class="text-xl font-black text-white font-mono">${esc(hud.distance)}</div>
-                            <p data-nav-instruction class="text-xs text-slate-200 font-medium leading-tight line-clamp-2">${esc(hud.instruction)}</p>
-                            <span data-nav-street class="text-[10px] text-slate-400 block truncate">${esc(hud.street)}</span>
-                        </div>
-                        <button onclick="window.app.repeatInstruction()" class="w-10 h-10 shrink-0 rounded-xl bg-slate-800/80 border border-slate-700/50 text-slate-300 flex items-center justify-center" aria-label="Repetir la instrucción">
-                            <i class="fas fa-volume-up"></i>
-                        </button>
-                    </div>
-                    ${offRoute}
-                </div>
+                        <div class="hud-row" data-nav-offroute ${s.offRoute ? '' : 'hidden'}>${this.warnLine('Fuera de la ruta', '· recalculando desde su posición')}</div>
+                        <div class="hud-row hud-gps" id="driver-telemetry-badge" aria-live="polite"></div>
+                    </section>
 
-                <div class="flex-1 relative">
-                    <div id="driver-telemetry-badge" class="absolute top-2 left-2 right-2 z-[500] flex flex-wrap items-center gap-1.5 px-3 py-1.5 bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl text-[10px] text-slate-200 shadow-lg" aria-live="polite"></div>
-                    <div id="live-nav-map-container" class="w-full h-full"></div>
-
-                    <div class="absolute bottom-4 left-4 z-[400] speed-gauge rounded-2xl p-2.5 shadow-2xl border border-slate-700 text-center min-w-[75px]">
-                        <div data-nav-speed class="text-2xl font-black text-emerald-400 font-mono">${speed}</div>
-                        <div class="text-[9px] font-bold uppercase text-slate-400">km/h</div>
-                    </div>
-
-                    <div class="absolute bottom-4 right-4 z-[400] flex flex-col items-center gap-2">
-                        <button onclick="window.app.toggleVoice()" class="w-11 h-11 bg-slate-900/90 text-white rounded-full shadow-xl border border-slate-700 flex items-center justify-center transition active:scale-95 ${state.voiceEnabled ? 'text-emerald-400' : 'text-slate-500'}" aria-label="Activar o silenciar la voz">
-                            <i class="fas ${state.voiceEnabled ? 'fa-volume-up' : 'fa-volume-mute'}"></i>
-                        </button>
-                        <button onclick="window.app.openReportModal()" class="w-14 h-14 bg-amber-500 text-slate-950 font-bold rounded-full shadow-2xl shadow-amber-900/50 flex items-center justify-center text-xl border-2 border-white/80" aria-label="Reportar novedad en la vía">
-                            <i class="fas fa-bullhorn"></i>
-                        </button>
+                    <div class="hud-panel">
+                        <div class="hud-speed" aria-label="Velocidad actual"><b data-nav-speed>${s.speed == null ? '—' : s.speed}</b><span>km/h</span></div>
+                        <button type="button" class="hud-btn" onclick="window.mapCtrl.centerOnPosition()" aria-label="Centrar en mi posición">${this.icon('crosshair')}</button>
+                        <button type="button" class="hud-btn${voice ? '' : ' is-off'}" onclick="window.app.toggleVoice()" aria-pressed="${voice ? 'true' : 'false'}" aria-label="${voice ? 'Silenciar la voz de navegación' : 'Activar la voz de navegación'}">${this.icon(voice ? 'speaker-high' : 'speaker-slash')}</button>
+                        <button type="button" class="hud-btn" onclick="window.app.openReportModal()" aria-label="Reportar novedad en la vía">${this.icon('megaphone')}</button>
                     </div>
                 </div>
 
-                <div class="p-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-2 z-20">
-                    <div class="text-xs font-mono text-slate-300 min-w-0">
-                        <span data-nav-step class="text-slate-400 text-[10px] block font-sans">${s.stepCount ? 'Paso ' + s.stepNumber + ' de ' + s.stepCount : 'Ruta real'}</span>
-                        <b class="block truncate">${esc(window.DriverApp.destinationLabel())}: <span data-nav-remaining>${esc(s.remaining)}</span></b>
+                <div class="trip-bar">
+                    <div class="trip-remaining">
+                        <b>Faltan <span data-nav-remaining>${esc(s.remaining)}</span></b>
+                        <span data-nav-eta>${esc(s.remainingTime === '—' ? 'Tiempo sin información' : s.remainingTime + ' · estimado para auto')}</span>
+                        <span>${esc(routeLine)}</span>
                     </div>
-                    <button onclick="window.app.finishTrip()" class="shrink-0 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg shadow-emerald-900/40">
-                        <i class="fas fa-flag-checkered"></i> Llegué
-                    </button>
+                    <button type="button" onclick="window.app.finishTrip()" class="btn-trip">${this.icon('flag-checkered')}Llegué</button>
                 </div>
             </div>
         `;
+    },
+
+    /** Filtros de Alertas: [tipo, etiqueta]. */
+    ALERT_FILTERS: [
+        ['all', 'Todas'], ['scale', 'Básculas'], ['bridge', 'Gálibos bajos'],
+        ['police', 'Retenes'], ['rest', 'Paradores'], ['danger', 'Incidentes']
+    ],
+
+    /** "Actualizado hace 1 min" a partir de la última sincronización. */
+    updatedAgo(iso) {
+        if (!iso) return '';
+        const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+        return 'Actualizado ' + (s < 60 ? 'hace un momento' : s < 3600 ? 'hace ' + Math.round(s / 60) + ' min' : 'hace ' + Math.round(s / 3600) + ' h');
     },
 
     renderAlertsScreen(state) {
@@ -611,155 +488,150 @@ window.DriverApp = {
         const allAlerts = window.TruckCarData.communityAlerts || [];
         const filter = state.alertFilter || 'all';
         const alerts = filter === 'all' ? allAlerts : allAlerts.filter(a => a.type === filter);
-        const filters = [
-            ['all', 'Todos'], ['scale', 'Básculas'], ['bridge', 'Gálibos Bajos'],
-            ['police', 'Retenes'], ['rest', 'Paradores 24h'], ['danger', 'Incidentes']
-        ];
+        const errors = state.dataStatus.errors || {};
+        const loading = state.dataStatus.loading && !allAlerts.length && !errors.alerts;
+        const retry = `<button onclick="window.TruckCarService.loadAlerts().then(() => window.store.setState({}))" class="btn-accent">${this.icon('arrows-clockwise')}Reintentar</button>`;
+        const report = `<button onclick="window.app.openReportModal()" class="btn-accent">${this.icon('megaphone')}Reportar novedad</button>`;
+
+        let body;
+        if (loading) {
+            // Cargando: esqueleto de la lista, no el vacío (no se afirma que no haya reportes).
+            body = `
+                <section aria-busy="true" aria-label="Cargando alertas" class="alerts-loading">
+                    <p class="status-line">${this.spinner()}<span class="status-sub">Buscando reportes cerca de usted…</span></p>
+                    <div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
+                </section>`;
+        } else if (errors.alerts && !allAlerts.length) {
+            // Error: distinto del vacío, con la causa y cómo seguir.
+            body = `
+                <section class="empty-state" aria-labelledby="alerts-error-title">
+                    <div class="empty-mark">${this.icon('wifi-slash')}</div>
+                    <h2 id="alerts-error-title">No se pudieron cargar las alertas</h2>
+                    <p>El servidor no respondió. Puede que no haya señal; los reportes de otros conductores aparecerán al reconectar.</p>
+                    ${retry}
+                </section>`;
+        } else if (!alerts.length) {
+            // Vacío: no afirma que la vía sea segura, solo que no hay reportes.
+            body = `
+                <section class="empty-state" aria-labelledby="alerts-empty-title">
+                    <div class="empty-mark">${this.icon('megaphone')}</div>
+                    <h2 id="alerts-empty-title">${filter === 'all' ? 'Sin reportes recientes' : 'Sin reportes de este tipo'}</h2>
+                    <p>No hay reportes activos de otros conductores${filter === 'all' ? '' : ' de este tipo'}. Si ve algo en la vía, avise a los demás.</p>
+                    ${report}
+                    ${state.dataStatus.lastSync ? `<p class="empty-meta">${esc(this.updatedAgo(state.dataStatus.lastSync))}</p>` : ''}
+                </section>`;
+        } else {
+            body = `
+                ${errors.alerts ? `<div class="notice">${this.warnLine('No se pudieron actualizar', '· se muestran los últimos reportes recibidos.')}</div>` : ''}
+                <div class="alert-list">
+                    ${alerts.map(a => `
+                        <article class="alert-item">
+                            <h2>${esc(a.title)}</h2>
+                            <p class="alert-meta">${esc([a.badge, a.timeAgo, a.upvotes + (Number(a.upvotes) === 1 ? ' confirmación' : ' confirmaciones')].filter(Boolean).join(' · '))}${a.verified ? ` <span class="alert-verified">${this.dotText('Validada', 'ok')}</span>` : ''}</p>
+                            ${a.description ? `<p class="alert-text">${esc(a.description)}</p>` : ''}
+                            <div class="alert-foot">
+                                <span class="secondary">${esc(a.author || '')}</span>
+                                <button onclick="window.app.upvoteAlert(${Number(a.id)})" class="btn-quiet alert-confirm">${this.icon('check-circle')}Confirmar</button>
+                            </div>
+                        </article>`).join('')}
+                </div>
+                <div class="screen-actions">${report}</div>`;
+        }
+
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
-                            <i class="fas fa-bullhorn text-amber-400"></i> Alertas de Carretera
-                        </h2>
-                        <p class="text-xs text-slate-400">Reportes de Community-Alerts (validadas con 3 confirmaciones)</p>
-                    </div>
-                    <button onclick="window.app.openReportModal()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow transition">
-                        <i class="fas fa-plus"></i> Reportar
-                    </button>
+            <div class="screen-scroll">
+                <h1 class="large-title">Alertas</h1>
+                <p class="secondary">Reportes de otros conductores en la vía.</p>
+                <div class="filters" role="group" aria-label="Filtrar alertas">
+                    ${this.ALERT_FILTERS.map(([key, label]) => `
+                        <button type="button" onclick="window.store.setState({ alertFilter: '${key}' })" aria-pressed="${filter === key}" class="filter">${label}</button>`).join('')}
                 </div>
-
-                <div class="flex gap-1.5 overflow-x-auto pb-1 text-xs">
-                    ${filters.map(([key, label]) => `
-                        <button onclick="window.store.setState({ alertFilter: '${key}' })" class="px-3 py-1 rounded-lg shrink-0 ${filter === key ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
-                            ${label}${key === 'all' ? ' (' + allAlerts.length + ')' : ''}
-                        </button>
-                    `).join('')}
-                </div>
-
-                <div class="space-y-3">
-                    ${alerts.length ? alerts.map(a => `
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2">
-                            <div class="flex items-start justify-between">
-                                <div class="flex items-center gap-2">
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                        a.type === 'scale' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' :
-                                        a.type === 'bridge' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
-                                        a.type === 'police' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                                        a.type === 'danger' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
-                                        'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                    }">${esc(a.badge)}</span>
-                                    <span class="text-[11px] text-slate-400">${esc(a.timeAgo)}</span>
-                                    ${a.verified ? '<span class="text-[10px] text-emerald-400 font-bold"><i class="fas fa-circle-check"></i> Validada</span>' : ''}
-                                </div>
-                                <span class="text-xs text-emerald-400 font-bold flex items-center gap-1">
-                                    <i class="fas fa-thumbs-up"></i> ${esc(a.upvotes)}
-                                </span>
-                            </div>
-
-                            <h3 class="font-bold text-white text-sm">${esc(a.title)}</h3>
-                            <p class="text-xs text-slate-300 leading-relaxed">${esc(a.description)}</p>
-
-                            <div class="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
-                                <span><i class="fas fa-user-circle"></i> ${esc(a.author)}</span>
-                                <button onclick="window.app.upvoteAlert(${Number(a.id)})" class="text-emerald-400 hover:underline font-medium">
-                                    Confirmar Alerta
-                                </button>
-                            </div>
-                        </div>
-                    `).join('') : `
-                        <div class="p-6 text-center text-xs text-slate-400 bg-slate-900 border border-dashed border-slate-800 rounded-2xl">
-                            No hay alertas activas${filter === 'all' ? '' : ' de este tipo'}.
-                        </div>
-                    `}
-                </div>
+                ${body}
             </div>
         `;
     },
 
+    /** Lo que espera en la cola, agrupado como lo entiende el conductor. */
+    QUEUE_GROUPS: [
+        ['alert.sos', 'SOS', 'Ninguno'],
+        ['position', 'Posiciones del viaje', 'Ninguna'],
+        ['alert.reported alert.confirmed', 'Reportes de la vía', 'Ninguno'],
+        ['trip.started', 'Inicios de viaje', 'Ninguno'],
+        ['trip.delivered', 'Entregas', 'Ninguna']
+    ],
+    QUEUE_LABELS: {
+        'position': 'Posición del viaje', 'trip.started': 'Inicio de viaje', 'trip.delivered': 'Entrega',
+        'alert.reported': 'Reporte de la vía', 'alert.confirmed': 'Confirmación de reporte', 'alert.sos': 'SOS'
+    },
+
+    /** "hoy 3:40 a. m.", "mañana 4:30 a. m." o "8 nov, 3:40 a. m.": hasta cuándo dura el mapa guardado. */
+    shortDateTime(ms) {
+        const d = new Date(ms);
+        const time = d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+        const day = (offset) => { const x = new Date(); x.setDate(x.getDate() + offset); return x.toDateString(); };
+        if (d.toDateString() === day(0)) return 'hoy ' + time;
+        if (d.toDateString() === day(1)) return 'mañana ' + time;
+        if (d.toDateString() === day(-1)) return 'ayer ' + time;
+        const month = d.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '');
+        return d.getDate() + ' ' + month + ', ' + time;
+    },
+
     renderOfflineScreen(state) {
         const esc = window.ui.escape;
-        const off = window.TruckCarData.offlineSyncData;
+        const off = window.TruckCarData.offlineSyncData || {};
         // Estado real de la cola durable (IndexedDB); se vuelve a pintar en cada cambio (app.js).
         const queue = window.OfflineQueue ? window.OfflineQueue.status()
             : { pending: 0, byKind: {}, rejected: [], lastSyncAt: null, lastError: null, nextRetryAt: null };
+        const offline = !navigator.onLine || Boolean(state.isOffline);
+        const known = new Set(this.QUEUE_GROUPS.flatMap(([kinds]) => kinds.split(' ')));
+        const other = Object.entries(queue.byKind).filter(([kind]) => !known.has(kind)).reduce((sum, [, n]) => sum + n, 0);
+        const rows = this.QUEUE_GROUPS
+            .map(([kinds, label, none]) => [label, kinds.split(' ').reduce((sum, k) => sum + (queue.byKind[k] || 0), 0), none])
+            .filter(([label, count]) => count > 0 || label !== 'SOS' && label !== 'Inicios de viaje');
+        if (other) rows.push(['Otros', other, '']);
+        const mapUntil = off.cachedTiles > 0 && off.cachedTilesExpiry
+            ? 'Guardado hasta ' + this.shortDateTime(off.cachedTilesExpiry)
+            : off.cachedTiles === 0 ? 'Sin mapa guardado todavía' : 'Consultando…';
+        const app = navigator.serviceWorker && navigator.serviceWorker.controller
+            ? this.dotText('Disponible sin señal', 'ok') : this.dotText('Se guarda al abrirla con señal');
+        const demo = Boolean(window.TruckCarConfig && window.TruckCarConfig.demoTools);
+
         return `
-            <div class="h-full overflow-y-auto p-4 space-y-4">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-extrabold text-white flex items-center gap-2">
-                            <i class="fas fa-download text-emerald-400"></i> Modo Offline & Sincronización
-                        </h2>
-                        <p class="text-xs text-slate-400">Navegación continua en zonas sin cobertura celular</p>
-                    </div>
-                </div>
+            <div class="screen-scroll">
+                <h1 class="large-title">Conexión</h1>
+                ${offline
+                    ? this.warnLine('Sin señal', '· lo que haga se guarda en el teléfono y se envía al recuperar la señal.')
+                    : `<p class="status-line">${this.dotText('En línea', 'ok')}<span class="status-sub"> · ${queue.pending ? 'enviando lo guardado' : 'lo que haga se envía al momento'}</span></p>`}
 
-                <div class="p-3.5 bg-slate-900 border ${state.isOffline ? 'border-amber-500/60 bg-amber-500/5' : 'border-slate-800'} rounded-2xl flex items-center justify-between">
-                    <div>
-                        <div class="font-bold text-sm text-white flex items-center gap-2">
-                            <i class="fas ${state.isOffline ? 'fa-plane-slash text-amber-400' : 'fa-signal text-emerald-400'}"></i>
-                            Estado de Conectividad
-                        </div>
-                        <p class="text-xs text-slate-400 mt-0.5">${state.isOffline ? 'Sin señal en carretera (Operando en Offline)' : 'Conectado a Red 4G LTE'}</p>
-                    </div>
-                    <button onclick="window.app.toggleOfflineSimulation()" class="px-3.5 py-2 rounded-xl text-xs font-bold transition ${state.isOffline ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/40'}">
-                        ${state.isOffline ? 'Reconectar Red' : 'Simular Pérdida de Señal'}
-                    </button>
+                <h2 class="list-title">${offline ? 'Por enviar al recuperar la señal' : 'Por enviar'}</h2>
+                <div class="list">
+                    ${rows.map(([label, count, none]) => this.listRow(label, count ? String(count) : esc(none), count > 0)).join('')}
                 </div>
+                ${queue.lastError ? `<div class="notice">${this.warnLine('El último envío falló', '· ' + queue.lastError + (queue.nextRetryAt ? '. Reintento a las ' + new Date(queue.nextRetryAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) : ''))}</div>` : ''}
+                ${queue.rejected.length ? `<div class="notice">${this.warnLine('El servidor rechazó ' + queue.rejected.length + (queue.rejected.length === 1 ? ' evento' : ' eventos'))}
+                    <p>${queue.rejected.map(r => esc((this.QUEUE_LABELS[r.kind] || r.kind) + ': ' + r.reason)).join('<br>')}</p></div>` : ''}
 
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
-                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                        <span>Mapas y aplicación disponibles sin señal</span>
-                        <span class="text-emerald-400 font-mono text-[11px]">${off.cachedTiles == null ? '…' : off.cachedTiles + ' teselas'}</span>
-                    </h3>
-                    <p class="text-[11px] text-slate-400">El Service Worker guarda la aplicación y las zonas del mapa que ya recorrió; se pueden consultar sin cobertura.</p>
+                <h2 class="list-title">Guardado en el teléfono</h2>
+                <div class="list">
+                    ${this.listRow('Aplicación', app)}
+                    ${this.listRow('Mapa de la zona del viaje', esc(mapUntil))}
+                    ${this.listRow('Última sincronización', esc(queue.lastSyncAt ? this.shortDateTime(new Date(queue.lastSyncAt).getTime()) : 'Sin sincronizar todavía'))}
                 </div>
+                <p class="list-foot">El mapa se guarda solo en las zonas que ya vio y vence cuando lo indica el proveedor del mapa.</p>
 
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Cola de sincronización (${queue.pending})</h3>
-                        <span class="text-[10px] ${queue.pending ? 'text-amber-400 animate-pulse' : 'text-emerald-400'} font-mono">
-                            ${queue.pending ? 'Se envía al reconectar' : 'Todo sincronizado'}
-                        </span>
-                    </div>
-                    <div class="space-y-2">
-                        ${Object.keys(queue.byKind).length ? Object.entries(queue.byKind).map(([kind, count]) => `
-                            <div class="p-2 bg-slate-800/40 border border-slate-700/30 rounded-xl flex items-center justify-between text-xs">
-                                <span class="text-slate-300"><i class="fas ${KIND_ICONS[kind] || 'fa-circle'} text-slate-500 mr-1"></i> ${esc(KIND_LABELS[kind] || kind)}</span>
-                                <span class="text-[10px] text-slate-400 font-mono">${count}</span>
-                            </div>
-                        `).join('') : '<p class="text-[11px] text-slate-500">No hay eventos pendientes.</p>'}
-                    </div>
-                    <div class="text-[10px] text-slate-500 font-mono space-y-0.5">
-                        <div>Última sincronización: ${queue.lastSyncAt ? esc(new Date(queue.lastSyncAt).toLocaleString('es-CO')) : '—'}</div>
-                        ${queue.nextRetryAt ? `<div>Próximo intento: ${esc(new Date(queue.nextRetryAt).toLocaleTimeString('es-CO'))}</div>` : ''}
-                        ${queue.lastError ? `<div class="text-amber-300">Último error: ${esc(queue.lastError)}</div>` : ''}
-                    </div>
-                    ${queue.rejected.length ? `
-                        <div class="p-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-[11px] text-rose-200 space-y-1">
-                            <div class="font-bold">Eventos rechazados por el servidor</div>
-                            ${queue.rejected.map(r => `<div>${esc(KIND_LABELS[r.kind] || r.kind)}: ${esc(r.reason)}</div>`).join('')}
-                        </div>` : ''}
-                    <button onclick="window.OfflineQueue.flush()" ${state.isOffline || !queue.pending ? 'disabled' : ''} class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition">
-                        <i class="fas fa-rotate"></i> Sincronizar ahora
-                    </button>
-                </div>
+                ${demo ? `
+                    <h2 class="list-title">Herramientas de prueba</h2>
+                    <div class="list">
+                        <button type="button" onclick="window.app.toggleOfflineSimulation()" class="list-row list-button">
+                            <span class="list-label">${state.isOffline ? 'Terminar la simulación sin señal' : 'Simular pérdida de señal'}</span>${this.icon('caret-right')}
+                        </button>
+                    </div>` : ''}
+
+                ${queue.pending ? `
+                    <div class="screen-actions">
+                        <button onclick="window.OfflineQueue.flush()" class="btn-accent">${this.icon('arrows-clockwise')}${offline ? 'Reintentar ahora' : 'Enviar ahora'}</button>
+                    </div>` : ''}
             </div>
         `;
     }
-};
-
-const KIND_LABELS = {
-    'position': 'Posiciones GPS',
-    'trip.started': 'Inicio de viaje',
-    'trip.delivered': 'Entrega con firma y foto',
-    'alert.reported': 'Alertas reportadas',
-    'alert.confirmed': 'Confirmaciones de alertas'
-};
-const KIND_ICONS = {
-    'position': 'fa-location-dot',
-    'trip.started': 'fa-truck-moving',
-    'trip.delivered': 'fa-file-signature',
-    'alert.reported': 'fa-triangle-exclamation',
-    'alert.confirmed': 'fa-thumbs-up'
 };

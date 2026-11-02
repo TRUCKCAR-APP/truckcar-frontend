@@ -30,6 +30,8 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - name: CSS de Tailwind al día con index.html, js/ y tailwind.config.cjs
+        run: npm run build:css && git diff --exit-code -- css/tailwind.css
       - name: Sintaxis de los scripts
         run: npm run check
       - name: ESLint

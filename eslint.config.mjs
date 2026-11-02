@@ -25,8 +25,17 @@ export default [
     },
   },
   {
+    // Prototipo estático del rediseño (docs/redesign/prototipo): scripts de navegador sueltos.
+    files: ["docs/**/*.js"],
+    languageOptions: { ecmaVersion: 2022, sourceType: "script", globals: { ...globals.browser, L: "readonly" } },
+  },
+  {
     files: ["sw.js"],
     languageOptions: { ecmaVersion: 2022, sourceType: "script", globals: globals.serviceworker },
+  },
+  {
+    files: ["tailwind.config.cjs"],
+    languageOptions: { ecmaVersion: 2022, sourceType: "commonjs", globals: globals.node },
   },
   {
     files: ["test/**/*.mjs", "scripts/**/*.mjs", "eslint.config.mjs"],
