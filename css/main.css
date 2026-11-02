@@ -696,22 +696,82 @@ body[data-view="login"] #top-nav { display: none !important; }
     .sos-alert, .sos-alert-icon i { animation: none; }
 }
 
-/* Seguimiento público (?track=): sin barra de roles ni herramientas de demostración, a pantalla completa. */
+/* Seguimiento público (?track=): sin barra de roles, herramientas de demostración ni voz (no hay navegación que
+   narrar), a pantalla completa. Mismo sistema que la app del conductor. */
 body[data-mode="public-tracking"] #role-switcher,
+body[data-mode="public-tracking"] #voice-btn,
 body[data-mode="public-tracking"] .demo-only { display: none !important; }
 body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius: 16px; }
+.public-track { height: 100%; width: 100%; overflow-y: auto; background: var(--color-bg); color: var(--color-text); }
+.public-track-col {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: var(--space-4) var(--gutter) calc(var(--space-6) + var(--safe-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.public-track-head { display: flex; flex-direction: column; gap: var(--space-1); padding-top: var(--space-2); }
+.public-track-head .secondary { margin: 0; }
+.public-track-title {
+    margin: 0;
+    font-size: var(--text-large-title);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-display);
+    line-height: var(--leading-tight);
+    font-variant-numeric: tabular-nums;
+}
+.public-track-empty-title { margin: 0 0 var(--space-2); font-size: var(--text-headline); font-weight: var(--weight-bold); }
+.public-track-map-card { background: var(--color-surface); border-radius: var(--radius-lg); overflow: hidden; }
+/* Alto fijo en CSS (no en una clase de Tailwind): Leaflet mide el contenedor al crearse. */
+.public-track-map { height: 280px; width: 100%; }
+@media (min-width: 768px) { .public-track-map { height: 360px; } }
+.public-track-position { padding: var(--space-3) var(--space-4); }
+.public-track-when { flex-basis: 100%; padding-left: calc(8px + var(--space-2)); color: var(--color-text-secondary); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
+/* Escritorio: datos y avance a la izquierda, el mapa grande a la derecha. */
+@media (min-width: 1024px) {
+    .public-track-col {
+        max-width: 1080px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+        grid-auto-flow: row dense;
+        column-gap: var(--space-8);
+        align-items: start;
+        padding-top: var(--space-8);
+    }
+    .public-track-col > * { grid-column: 1; }
+    .public-track-col > .public-track-map-card { grid-column: 2; grid-row: 1 / span 6; position: sticky; top: 0; }
+    .public-track-map { height: 560px; }
+}
+.public-track-foot { margin: 0; text-align: center; }
+.public-track .list-title { margin-top: var(--space-4); margin-bottom: 0; }
+.track-steps { margin: 0; padding: 0; list-style: none; }
+.track-step { position: relative; display: flex; align-items: center; gap: var(--space-3); min-height: var(--row-min); padding: var(--space-3) var(--space-4); }
+.track-step + .track-step::before { content: ''; position: absolute; top: 0; left: calc(var(--space-4) + 48px); right: 0; border-top: var(--border-subtle); }
+.track-step-mark {
+    width: 36px; height: 36px; flex: none; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--color-elevated); color: var(--color-text-secondary);
+}
+.track-step-mark .ui-icon { width: 20px; height: 20px; }
+.track-step.is-done .track-step-mark { color: var(--color-text); }
+.track-step-text { display: flex; flex-direction: column; min-width: 0; font-size: var(--text-body); color: var(--color-text-secondary); }
+.track-step-text b { font-weight: var(--weight-semibold); }
+.track-step.is-done .track-step-text b { color: var(--color-text); }
+.track-step-text span { font-size: var(--text-caption); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+/* El camión: claro sobre el mapa oscuro, con borde del fondo para despegarlo de las calles. */
 .public-truck-pin {
-    width: 36px;
-    height: 36px;
-    border-radius: 999px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
     display: grid;
     place-items: center;
-    color: #fff;
     background: var(--color-text);
     color: var(--color-bg);
     border: 3px solid var(--color-bg);
-    box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.7);
+    box-shadow: var(--elev-2);
 }
+.public-truck-pin .ui-icon { width: 22px; height: 22px; }
 
 /* Cuadrícula de reporte vial: un toque por tipo */
 /* Banner de instalación de la PWA */
@@ -1164,7 +1224,8 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     font-size: var(--text-body);
     outline: none;
 }
-.field-input::placeholder { color: var(--color-text-disabled); }
+/* Texto de ejemplo de todos los campos: gris secundario (6:1), legible bajo el sol; Firefox le baja la opacidad. */
+::placeholder { color: var(--color-text-secondary); opacity: 1; }
 .field-input:focus { border-color: var(--color-focus); box-shadow: 0 0 0 3px var(--color-focus-soft); }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .field-row .field-label { margin-bottom: 0; }

@@ -16,6 +16,7 @@ Auditoría inicial: [AUDITORIA.md](AUDITORIA.md) (10/20). Auditoría final: [AUD
 | 4B | Inicio de sesión y hoja de reportar | Hecha |
 | 5 | Torre de control, "Mis envíos", hojas de confirmación y barra de demostración: paleta, mayúsculas y estados | Hecha |
 | Cierre | Auditoría final, guion de la demostración y lista de verificación para el despliegue | Hecho |
+| 6 | Seguimiento público en el sistema, texto de ejemplo de los campos, Tailwind compilado y variante desplegada de la demo | Hecha |
 
 ## 1. Paleta: antes y después
 
@@ -73,8 +74,9 @@ que la nombra ("Fuera de la ruta", "Sin señal").
   SOS): por completo en tokens, Manrope y Phosphor.
 - **Torre de control, "Mis envíos", hojas de confirmación y barra de la demostración:** en la paleta, sin mayúsculas
   y con estados en español. Conservan su estructura y Font Awesome, como se acordó en la fase 5.
-- **Seguimiento público:** quedó fuera del rediseño. Solo hereda la red de seguridad de colores. Es el primer
-  hallazgo P1 de la [auditoría final](AUDITORIA-FINAL.md).
+- **Seguimiento público** (fase 6): en el sistema de la app. Mapa oscuro del proveedor configurado, Phosphor, estado
+  con punto y textos de 14 px o más. Era el primer hallazgo P1 de la [auditoría final](AUDITORIA-FINAL.md).
+- **Tailwind** (fase 6): compilado en el despliegue (`css/tailwind.css`), sin `cdn.tailwindcss.com`. Era el otro P1.
 
 ## 2. Tarjeta unificada del HUD
 
@@ -178,6 +180,7 @@ pantalla y estado. Están en JPEG, de 300 a 500 KB cada una, y el texto sigue le
 | 4A | [fase-4a/resumen-app-actual-390x844.jpg](fase-4a/resumen-app-actual-390x844.jpg) |
 | 4B | [fase-4b/resumen-app-actual-390x844.jpg](fase-4b/resumen-app-actual-390x844.jpg) |
 | 5 | [fase-5/resumen-app-actual-390x844.jpg](fase-5/resumen-app-actual-390x844.jpg) |
+| 6 | [fase-6/resumen-app-actual-390x844.jpg](fase-6/resumen-app-actual-390x844.jpg) |
 
 **Prototipo, dirección B** ([`prototipo/capturas/`](prototipo/capturas/), cada captura rotulada con pantalla y
 estado):
@@ -306,6 +309,26 @@ sesión y la hoja de reportar cerrada y abierta. Todas las diferencias me parece
 - **Cola offline:** [cola-390x844.jpg](fase-5/cola-390x844.jpg).
 - **Modal SOS:** [sos-390x844.jpg](fase-5/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-5/sos-sin-senal-390x844.jpg).
 
+**Fase 6: seguimiento público.** Como lo abre un cliente, sin sesión:
+- [390×844](fase-6/seguimiento-publico-390x844.jpg) y el avance más abajo
+  ([390×844](fase-6/seguimiento-publico-avance-390x844.jpg)).
+- [1440×900](fase-6/seguimiento-publico-1440x900.jpg): datos y avance a la izquierda, mapa a la derecha.
+- Antes: [390×844](final/seguimiento-publico-390x844.jpg) y [1440×900](final/seguimiento-publico-1440x900.jpg).
+
+**Fase 6: Tailwind compilado, antes y después.** Las mismas 26 pantallas en los 4 tamaños (104 capturas en PNG, con las
+teselas del mapa tapadas), primero con el CDN y después con `css/tailwind.css`, comparadas píxel a píxel:
+- **72 idénticas.**
+- **28 con diferencias de 118 a 636 píxeles:** todas son horas del reloj que avanzó entre las dos corridas ("Última
+  sincronización", la hora del SOS, "Actualizada el…", "hoy 6:22"). Revisadas una por una.
+- **Navegar con rumbo, en los 4 tamaños:** cambia el mapa, que en esa vista gira con el rumbo y no queda tapado, y el
+  camión simulado avanzó (59 y 56 km/h). La tarjeta, el panel, la barra del viaje y la barra inferior son iguales.
+- **Ninguna diferencia visible por el CSS**, así que el cambio se aplicó.
+
+**Verificación de la fase 6:**
+- **POD:** [pod-390x844.jpg](fase-6/pod-390x844.jpg).
+- **Cola offline:** [cola-390x844.jpg](fase-6/cola-390x844.jpg).
+- **Modal SOS:** [sos-390x844.jpg](fase-6/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-6/sos-sin-senal-390x844.jpg).
+
 ## 5b. Probado y no probado
 
 Todo lo verificado hasta ahora se probó en el **navegador de escritorio** (Chrome con Playwright) contra la pila local
@@ -390,7 +413,19 @@ Para probar en un teléfono hay dos caminos:
 
 11. **Decisiones de asignación con la placa vieja.** La ventana "Criterios de la decisión de asignación" de la Torre muestra
     "Ana Torres (TDK-410)": es una decisión guardada antes del cambio de placa a `TKR-527`. AI-powered-fleet-allocation
-    copia la placa en cada decisión. Es historial: no se corrige.
+    copia la placa en cada decisión. *Corregido en los datos locales (cierre):* el script de datos cambia la placa en
+    las decisiones y las cargas guardadas de Ana, solo con su id y la placa vieja exacta.
+
+12. **Seguimiento público con la cronología al revés.** "Conductor asignado 2:46 p. m." aparecía antes de "Envío
+    publicado 4:45 p. m.", y "En ruta" a las 9:40 p. m. del día anterior. La carga 88 se rehízo varias veces en la
+    demo y cada vez quedaban horas de un intento distinto. *Corregido en los datos locales (fase 6):* el script de
+    datos deja publicado ≤ asignado ≤ en ruta ≤ ahora y lo comprueba al final. El backend no impide horas fuera de
+    orden: no se tocó.
+
+13. **"Posición en vivo" con una lectura vieja.** El seguimiento público dice "Posición en vivo" aunque la última
+    lectura tenga 26 minutos (5:54 a. m. a las 6:20 a. m.). La vista no tiene un límite de antigüedad para "en
+    vivo". *No se cambió:* decidir a partir de cuántos minutos deja de ser "en
+    vivo" es una decisión de producto.
 
 **Decisión de producto abierta: reportar en la vía sin GPS.**
 - **Hoy:** sin una lectura de GPS de los últimos 2 minutos, la hoja de reportar pide una nueva. Mientras no llega,
@@ -696,6 +731,49 @@ Cómo usarlo:
     - La app del conductor (`driverApp.js`, `telemetry.js`) ya no usa Font Awesome.
     - La vista pública de seguimiento no estaba en el alcance: solo hereda la red de seguridad de colores.
 
+- **Fase 6: decisiones**
+  - **Seguimiento público con el sistema de la app** (`js/views/publicTracking.js`):
+    - El mapa es el del proveedor de `js/config.js` (Stadia; CARTO como plan B), con la atribución abajo a la
+      izquierda, como en la app. Ya no tiene su propia capa clara de OpenStreetMap. Sus teselas las guarda el
+      Service Worker como las de la app.
+    - Título `CARGA-88` grande; "Seguimiento de envío" en gris, sin mayúsculas. El estado es texto con punto ("En
+      ruta"), sin chip teñido.
+    - Los datos van en una lista (origen, destino, carga, vehículo con la placa enmascarada), y el avance en otra con
+      íconos Phosphor neutros. Lo que aún no pasa se lee en gris secundario (6:1) con "Todavía no", no con
+      transparencia.
+    - Todo el texto es de 14 px o más, con grises de 6:1 o más. Sin botón de voz: no hay navegación que narrar.
+    - En escritorio, dos columnas: datos y avance a la izquierda, mapa de 560 px a la derecha.
+  - **El camión cortado por el borde superior del mapa:** las teselas no llenaban el mapa (quedaba una franja negra
+    abajo), señal de que Leaflet lo midió antes de tener su alto final. El alto venía de una clase que el CDN de
+    Tailwind aplica cuando ya corrió el script. Ahora el
+    alto está en CSS y el mapa se vuelve a medir y a centrar en el camión cada vez que cambia de tamaño. La captura
+    comprueba que el camión queda entero dentro del mapa.
+  - **Texto de ejemplo de los campos:** gris secundario (6:1) en todos los campos, en lugar de `--color-text-disabled`
+    (3,5:1).
+  - **Tailwind compilado** con la misma versión que servía el CDN (3.4.17, fija en `package.json`):
+    - La configuración que vivía en `index.html` pasó tal cual a `tailwind.config.cjs`.
+    - `npm run build:css` genera `css/tailwind.css` (20 KB) con solo las clases que usan `index.html` y `js/`.
+      Ninguna clase se arma por partes, así que el escáner las encuentra todas.
+    - La hoja va al final del `<head>`, donde el CDN inyectaba la suya: el orden de la cascada no cambia.
+    - El Dockerfile la genera en un paso de construcción con Node. El archivo también va en el repositorio, porque
+      el compose local sirve la carpeta tal cual; la CI falla si no coincide con lo que genera la configuración.
+    - Una prueba impide volver al CDN.
+    - **De paso:** la imagen de Docker no copiaba `fonts/`, así que Manrope habría fallado en Kubernetes. Ya la copia.
+  - **Hosts externos que la app aún pide al cargar** (medido en Chrome sin Service Worker):
+
+    | Host | Qué | Dónde | ¿Lo guarda el Service Worker? |
+    |---|---|---|---|
+    | `cdnjs.cloudflare.com` | Font Awesome: hoja y fuente | Todas las vistas | Sí, en tiempo de ejecución |
+    | `unpkg.com` | Leaflet: hoja y script | Todas las vistas | Sí, en tiempo de ejecución |
+    | `tiles.stadiamaps.com` | Teselas del mapa | Conductor, Torre, seguimiento | Sí: solo las vistas, con vencimiento y tope de 100 MB |
+    | `router.project-osrm.org` | Ruta y guía paso a paso | Conductor | No: sin señal, la guía avisa que no está disponible |
+    | `localhost:8000` (api-gateway) | API y WebSocket | Todas menos el inicio de sesión | No: lo hecho sin señal va a la cola durable |
+
+    - Ya no se piden `cdn.tailwindcss.com` ni las fuentes de Google: Manrope y los íconos Phosphor se sirven desde
+      la app.
+    - Font Awesome y Leaflet solo se guardan después de la primera visita con señal: una instalación nueva sin señal
+      no los tiene.
+
 **Mapa y caché, lo que queda abierto con Stadia**
 - El plan gratuito es solo para uso no comercial: alcanza para la demo académica, no para producción.
 - Consecuencia de la política de caché: si el conductor no abre la app, el mapa sin señal se vacía. Con las cabeceras
@@ -754,6 +832,5 @@ usa el plan B.
   abierta"). La pregunta: ¿se permite reportar con la última posición conocida, marcada con su antigüedad, como ya
   hace el SOS? Si se permite, Community-Alerts debe guardar esa antigüedad.
 
-**Recomendado, no bloqueante**
-- Generar el CSS de Tailwind en el despliegue en lugar del CDN (P1 de la [auditoría final](AUDITORIA-FINAL.md)).
-- Llevar el seguimiento público a la paleta y al mapa configurado (el otro P1).
+Los dos P1 de la [auditoría final](AUDITORIA-FINAL.md) (Tailwind por CDN y el seguimiento público) se resolvieron en la
+fase 6.

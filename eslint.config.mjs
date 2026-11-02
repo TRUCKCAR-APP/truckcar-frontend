@@ -34,6 +34,10 @@ export default [
     languageOptions: { ecmaVersion: 2022, sourceType: "script", globals: globals.serviceworker },
   },
   {
+    files: ["tailwind.config.cjs"],
+    languageOptions: { ecmaVersion: 2022, sourceType: "commonjs", globals: globals.node },
+  },
+  {
     files: ["test/**/*.mjs", "scripts/**/*.mjs", "eslint.config.mjs"],
     languageOptions: { ecmaVersion: 2022, sourceType: "module", globals: globals.node },
   },

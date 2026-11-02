@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { assertLocalGateway, assertLocalContainer, validateState, driverDiff, loadDiff, loadSql, plateSql, transactionSql } from "../scripts/demo/reset-demo.mjs";
+import { assertLocalGateway, assertLocalContainer, validateState, driverDiff, loadDiff, chronologyOk, loadSql, plateSql, transactionSql } from "../scripts/demo/reset-demo.mjs";
 
 const state = () => JSON.parse(readFileSync("scripts/demo/demo-state.json", "utf8"));
 
@@ -61,6 +61,22 @@ test("las horas de la carga van en la zona de Load-Allocation y una salida en el
   const row = { status: "IN_TRANSIT", assigned_driver_id: load.driverId, assigned_vehicle_plate: load.vehiclePlate };
   assert.deepEqual(loadDiff(load, { ...row, trip_started_at: "2026-11-01T21:40:00" }, [], "2026-11-01T22:40:00"), []);
   assert.match(loadDiff(load, { ...row, trip_started_at: "2026-11-02T02:19:16" }, [], "2026-11-01T22:40:00").join(" "), /futuro/);
+});
+
+test("la cronología del seguimiento público queda en orden: publicado, asignado, en ruta", () => {
+  const { load } = state();
+  const row = { status: "IN_TRANSIT", assigned_driver_id: load.driverId, assigned_vehicle_plate: load.vehiclePlate };
+  const ordered = { published_at: "2026-11-01T10:00:00", assigned_at: "2026-11-01T11:00:00", trip_started_at: "2026-11-01T13:00:00" };
+  assert.equal(chronologyOk(ordered), true);
+  assert.deepEqual(loadDiff(load, { ...row, ...ordered }, [], "2026-11-01T22:40:00"), []);
+  // El caso real de la demo: "Conductor asignado 2:46 p. m." antes de "Envío publicado 4:45 p. m.".
+  const broken = { published_at: "2026-11-01T16:45:50", assigned_at: "2026-11-01T14:46:00", trip_started_at: "2026-11-01T21:40:32" };
+  assert.equal(chronologyOk(broken), false);
+  assert.match(loadDiff(load, { ...row, ...broken }, [], "2026-11-02T06:17:00").join(" "), /cronología/);
+  const sql = loadSql(load, "America/Bogota");
+  assert.match(sql, /published_at <= assigned_at AND assigned_at <= trip_started_at/);
+  assert.match(sql, /published_at = CASE [\s\S]*? LEAST\(published_at,/);
+  assert.equal((sql.match(/WHERE/g) || []).length, 2, "sigue con un WHERE por sentencia");
 });
 
 test("la corrección de placa toca solo al conductor de demo y su placa vieja, en la misma transacción que la carga", () => {

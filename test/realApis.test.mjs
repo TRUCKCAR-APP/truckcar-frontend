@@ -161,6 +161,14 @@ test("la vista pública muestra estado y posición sin sesión, y explica un enl
   assert.match(text, /Posición en vivo/);
   assert.match(text, /TDK-•••/);
   assert.equal(w.document.body.dataset.mode, "public-tracking");
+  // Horas y velocidad en su propia línea, sin un "·" suelto al inicio.
+  assert.match(w.document.querySelector(".public-track-when").textContent, /^Actualizada el .* · 62 km\/h$/);
+  assert.equal(w.document.querySelectorAll(".track-step.is-done").length, 3);
+
+  // Mismo sistema que la app: mapa del proveedor configurado, Phosphor, sin mayúsculas, chips teñidos ni texto pequeño.
+  const source = readFileSync("js/views/publicTracking.js", "utf8");
+  assert.match(source, /TruckCarConfig\.map/);
+  assert.doesNotMatch(source, /tile\.openstreetmap\.org|uppercase|fa-|text-\[1[0-3]|rounded-full|emerald|brand-|rose-|amber-/);
 
   const expired = browser({ url: "http://localhost:5500/?track=djF8MzB8.c2lnbmF0dXJl",
     api: { publicTracking: async () => { throw Object.assign(new Error("El enlace de seguimiento no es válido o ya venció"), { status: 410 }); } } });

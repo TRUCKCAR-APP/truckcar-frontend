@@ -38,7 +38,7 @@ del vehículo, las alertas vienen de otros conductores en la misma vía y todo f
 
 ## Capabilities and Constraints
 
-- PWA sin build: HTML, CSS y JavaScript plano, Tailwind por CDN, Leaflet para mapas, Font Awesome hasta el rediseño.
+- PWA de HTML, CSS y JavaScript plano. El único paso de construcción es el CSS de Tailwind (`npm run build:css`, versión fija); Leaflet para mapas, Font Awesome hasta el rediseño.
 - Backend vía api-gateway (microservicios); telemetría por STOMP/WebSocket; Service Worker con app shell en caché.
 - Navegación paso a paso: plan de Route-AI + maniobras de OSRM (perfil de carro; aún no considera gálibo/peso en el
   trazado calle por calle).

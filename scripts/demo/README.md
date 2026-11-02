@@ -35,7 +35,7 @@ Variables:
 | `TRUCKCAR_DEMO_PASSWORD` | Contraseña de los usuarios de demo. Es obligatoria y nunca se escribe en el repositorio. |
 | `TRUCKCAR_GATEWAY_URL` | Opcional. Por defecto `http://localhost:8000`; si no es `localhost`, el script se niega a correr. |
 
-Al final imprime la verificación: Carlos con la carga 88 en tránsito, Diana sin carga, Ana con `TKR-527`, 0 Mock y
+Al final imprime la verificación: Carlos con la carga 88 en tránsito y sus horas en orden, Diana sin carga, Ana con `TKR-527`, 0 Mock y
 placas únicas.
 
 ## Qué toca y qué no
@@ -60,6 +60,9 @@ placas únicas.
     `fleet_allocation.allocation_decisions` (lo que muestra la Torre) y `load_allocation.freight_loads`.
   - **Carga 88:** en SQL, un `UPDATE … WHERE id = 88` que la deja en tránsito con Carlos y sin datos de entrega, y un
     `DELETE` de sus evidencias de entrega (`WHERE load_id = 88`). Va en la misma transacción que la placa.
+    - **Horas en orden** para el seguimiento público: publicado ≤ asignado ≤ en ruta ≤ ahora. Si ya lo están, no se
+      tocan. Si no, se rehacen contando desde ahora (asignado hace 3 h, en ruta hace 1 h); la publicación solo se
+      adelanta a hace 4 h si era posterior.
   - Sin `FLUSHALL`, `DROP` ni borrados masivos. Los ids permitidos se validan con un formato estricto.
 - **Credenciales:**
   - La contraseña viene de `TRUCKCAR_DEMO_PASSWORD`.

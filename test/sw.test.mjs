@@ -105,6 +105,15 @@ test("cada archivo del app shell existe y cada script y hoja de estilos de index
   }
 });
 
+test("Tailwind llega compilado y propio: sin CDN y en el mismo lugar de la cascada que tenía", () => {
+  const html = readFileSync("index.html", "utf8");
+  assert.doesNotMatch(html, /cdn\.tailwindcss\.com|tailwind\.config\s*=/, "Tailwind no se compila en el navegador");
+  const links = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((match) => match[1]);
+  assert.equal(links.at(-1), "css/tailwind.css", "va al final, donde el CDN inyectaba su hoja, después de main.css");
+  assert.ok(existsSync("css/tailwind.css") && existsSync("tailwind.config.cjs"));
+  assert.doesNotMatch(readFileSync("sw.js", "utf8"), /cdn\.tailwindcss\.com/);
+});
+
 test("la API, otros orígenes, las evidencias firmadas y las escrituras nunca pasan por la caché", () => {
   const { handlers } = loadServiceWorker();
   for (const [url, options] of [

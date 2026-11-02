@@ -3,7 +3,8 @@
  *
  *  - App shell (HTML, CSS, JS propios): precargado al instalar (sin pasar por la caché HTTP). Con red se sirve la
  *    versión vigente (red primero, revalidada); sin señal, la copia guardada. Así nunca se mezcla HTML nuevo con CSS viejo.
- *  - Librerías de CDN (Tailwind, Leaflet, Font Awesome, fuentes): caché en tiempo de ejecución.
+ *  - CSS de Tailwind: compilado en el despliegue (css/tailwind.css), parte del app shell.
+ *  - Librerías de CDN (Leaflet, Font Awesome): caché en tiempo de ejecución.
  *  - Teselas del mapa (Stadia Maps; CARTO como plan B): caché propia, separada del app shell, con la política de
  *    js/tileStore.js: solo las teselas ya vistas (nunca precarga), vencimiento según sus cabeceras (7 días si no traen),
  *    tope de 100 MB y expulsión de vencidas y menos usadas. Sin señal y sin tesela: un cuadro transparente.
@@ -14,7 +15,7 @@
  */
 importScripts('js/tileStore.js');
 
-const VERSION = 'v15';
+const VERSION = 'v16';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 // v1 guardaba hasta 1.500 teselas de OpenStreetMap sin vencimiento: al activarse esta versión se borra entera.
@@ -37,6 +38,7 @@ const SHELL = [
     'fonts/manrope-latin-wght-normal.woff2',
     'css/main.css',
     'css/navigation.css',
+    'css/tailwind.css',
     'js/config.js',
     'js/api.js',
     'js/mockData.js',
@@ -64,7 +66,7 @@ const SHELL = [
     'js/app.js'
 ];
 
-const CDN_HOSTS = ['cdn.tailwindcss.com', 'cdnjs.cloudflare.com', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+const CDN_HOSTS = ['cdnjs.cloudflare.com', 'unpkg.com'];
 // Proveedores de teselas de js/config.js (cambiar de uno a otro no requiere tocar este archivo).
 const TILE_HOSTS = /^(tiles\.stadiamaps\.com|([a-d]\.)?basemaps\.cartocdn\.com)$/;
 

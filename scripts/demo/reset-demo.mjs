@@ -76,6 +76,7 @@ export function loadDiff(target, row, podRows, nowLocal = null) {
   const diff = [];
   // Load-Allocation guarda horas locales sin zona: una salida "en el futuro" es un dato roto que hay que rehacer.
   if (nowLocal && row.trip_started_at && row.trip_started_at > nowLocal) diff.push("hora de salida en el futuro → hace 1 h");
+  else if (!chronologyOk(row)) diff.push("cronología incoherente → publicado hace 4 h o antes, asignado hace 3 h, en ruta hace 1 h");
   if (row.status !== target.status) diff.push(`status ${row.status} → ${target.status}`);
   if (row.assigned_driver_id !== target.driverId) diff.push(`conductor ${row.assigned_driver_id} → ${target.driverId}`);
   if (row.assigned_vehicle_plate !== target.vehiclePlate) diff.push(`placa ${row.assigned_vehicle_plate} → ${target.vehiclePlate}`);
@@ -83,6 +84,17 @@ export function loadDiff(target, row, podRows, nowLocal = null) {
   if (row.cancelled_at) diff.push("cancelación → vacía");
   if (podRows.length) diff.push(`${podRows.length} evidencia(s) POD → borradas`);
   return diff;
+}
+
+/**
+ * El seguimiento público muestra las horas en orden: publicado ≤ asignado ≤ en ruta. Las horas llegan de Postgres como
+ * texto ISO local del mismo formato, así que se comparan como texto. Sin hora de asignación o de salida no hay orden
+ * que revisar (loadSql las completa).
+ */
+export function chronologyOk(row) {
+  const { published_at: p, assigned_at: a, trip_started_at: t } = row;
+  if (!p || !a || !t) return true;
+  return p <= a && a <= t;
 }
 
 const TIME_ZONE = /^[A-Za-z]+(\/[A-Za-z_]+)+$/;
@@ -114,13 +126,18 @@ export function loadSql(target, timeZone = "America/Bogota") {
   if (!TIME_ZONE.test(timeZone)) throw new Error("Zona horaria no válida: " + timeZone);
   const q = (v) => "'" + String(v).replace(/'/g, "''") + "'";
   const local = `(now() AT TIME ZONE ${q(timeZone)})`;
+  // Se conservan las horas si ya están en orden (publicado ≤ asignado ≤ en ruta ≤ ahora); si no, se rehacen las tres
+  // contando desde ahora. La publicación solo se adelanta, nunca se mueve hacia después.
+  const keep = `(status = 'IN_TRANSIT' AND assigned_at IS NOT NULL AND trip_started_at IS NOT NULL
+         AND published_at <= assigned_at AND assigned_at <= trip_started_at AND trip_started_at <= ${local})`;
   return `BEGIN;
 UPDATE load_allocation.freight_loads SET
   status = ${q(target.status)}, assignment_status = NULL, assignment_status_changed_at = NULL,
   assigned_driver_id = ${q(target.driverId)}, assigned_driver_name = ${q(target.driverName)},
-  assigned_vehicle_plate = ${q(target.vehiclePlate)}, assigned_at = COALESCE(assigned_at, ${local} - interval '3 hours'),
-  trip_started_at = CASE WHEN status = 'IN_TRANSIT' AND trip_started_at IS NOT NULL AND trip_started_at <= ${local}
-                         THEN trip_started_at ELSE ${local} - interval '1 hour' END,
+  assigned_vehicle_plate = ${q(target.vehiclePlate)},
+  published_at = CASE WHEN ${keep} THEN published_at ELSE LEAST(published_at, ${local} - interval '4 hours') END,
+  assigned_at = CASE WHEN ${keep} THEN assigned_at ELSE ${local} - interval '3 hours' END,
+  trip_started_at = CASE WHEN ${keep} THEN trip_started_at ELSE ${local} - interval '1 hour' END,
   delivered_at = NULL, pod_notes = NULL, pod_receiver_document = NULL, pod_receiver_name = NULL,
   pod_has_photo = NULL, pod_has_signature = NULL, cancellation_reason = NULL, cancelled_at = NULL, cancelled_by = NULL,
   version = COALESCE(version, 0) + 1
@@ -280,6 +297,9 @@ async function main() {
     const left = sqlJson(pg, `SELECT to_json((SELECT count(*) FROM fleet_allocation.allocation_decisions WHERE selected_driver_id = '${c.driverId}' AND selected_vehicle_plate = '${c.from}') + (SELECT count(*) FROM load_allocation.freight_loads WHERE assigned_driver_id = '${c.driverId}' AND assigned_vehicle_plate = '${c.from}'))`);
     checks.push([Number(left) === 0, `Placa ${c.from} en lo guardado de ${c.driverId}: ${left}`]);
   }
+  const after = sqlJson(pg, `SELECT row_to_json(f) FROM (SELECT published_at, assigned_at, trip_started_at FROM load_allocation.freight_loads WHERE id = ${state.load.id}) f`);
+  checks.push([!!after && chronologyOk(after) && !!after.assigned_at && !!after.trip_started_at,
+    `Carga ${state.load.id} en orden: publicada ${after && after.published_at}, asignada ${after && after.assigned_at}, en ruta ${after && after.trip_started_at}`]);
   const plates = new Set(active.map((d) => d.vehiclePlate));
   checks.push([plates.size === active.length, `Placas únicas en la flota: ${plates.size} de ${active.length}`]);
   console.log("\nVerificación:");

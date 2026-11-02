@@ -28,6 +28,28 @@ Usuarios (contraseña común de la demo, fuera del repositorio):
 |---|---|---|
 | Carlos Conductor | `conductor@truckcar.demo` | App del conductor, carga 88 Bogotá → Ibagué, tractocamión `TDK-410` |
 | Tomás Torre | `torre@truckcar.demo` | Torre de control y cambio de rol |
+| Gabriela (generadora) | `generador@truckcar.demo` | Solo el paso opcional 8: el enlace de seguimiento público |
+
+## Variante con la app desplegada
+
+El guion es el mismo; cambian la URL y la preparación. Use la URL del despliegue con HTTPS,
+`https://<dominio-del-despliegue>/?demo=1`, en lugar de `http://localhost:5500/?demo=1`.
+
+| | Local | Desplegada |
+|---|---|---|
+| URL | `http://localhost:5500/?demo=1` | `https://<dominio-del-despliegue>/?demo=1` |
+| Datos de la demo | `reset-demo.mjs --apply` | El script **no corre** fuera de `localhost`, a propósito: deje los datos listos con el respaldo y los pasos de la lista de verificación de [REPORTE.md](REPORTE.md#8-lista-de-verificación-previa-al-despliegue) |
+| Mapa | Stadia sin registro | Stadia con el dominio registrado (sin registro, el mapa sale vacío) |
+| Teléfono | Solo por USB con reenvío de puertos | Directo en el teléfono: con HTTPS funcionan el Service Worker, el GPS real y la instalación como PWA |
+| Pérdida de señal (paso 3) | "Simular pérdida de señal" | Lo mismo, o el modo avión del teléfono para la versión real |
+| SOS (paso 4) | Ubicación de Chrome en el computador | El GPS del teléfono |
+
+Antes de presentar en la versión desplegada:
+- Abra la URL una vez con señal en el teléfono y recorra la ruta del paso 2: el mapa sin señal solo tiene lo que se vio
+  (dura 6 horas).
+- Revise que la atribución del mapa diga "© Stadia Maps © OpenMapTiles © OpenStreetMap" y que el mapa no salga vacío.
+- Sin `?demo=1` la app se ve como en producción: sin "Rotar", "Simular GPS", "Simular foto" ni "Simular pérdida de
+  señal".
 
 ## 1. Entrar como conductor · 0:00–0:45
 
@@ -102,6 +124,28 @@ Usuarios (contraseña común de la demo, fuera del repositorio):
   - De vuelta en **Torre de Control**, el panel como estaba.
 - **Cierre:** la misma app sirve al conductor en la cabina y al coordinador en el escritorio, con un solo sistema
   visual.
+
+## 8. Opcional: el seguimiento que ve el cliente · 7:45–8:45
+
+Solo si sobra tiempo, y **antes del paso 5**: con la carga entregada, el enlace deja de mostrar el viaje en curso.
+
+- **Hacer:** cerrar sesión y entrar con `generador@truckcar.demo`. En **Mis envíos**, abrir `CARGA-88` →
+  **Generar enlace de seguimiento público** → **Copiar enlace** (o **Compartir**, si el navegador sabe compartir; el
+  enlace también se ve en el campo de la hoja).
+- **Hacer:** abrir una **ventana privada** (Ctrl+Mayús+N en Chrome) y pegar el enlace. Es lo que abre el cliente: sin
+  cuenta ni sesión. Tiene la forma `http://localhost:5500/?track=<token>` en local o
+  `https://<dominio-del-despliegue>/?track=<token>` desplegada.
+- **Esperar:**
+  - "Seguimiento de envío", `CARGA-88` y "En ruta" con un punto verde.
+  - Origen, destino, la carga y el vehículo con la placa enmascarada (`TDK-•••`). Ni el nombre del conductor ni
+    datos personales.
+  - El mismo mapa oscuro de la app, con el camión en el centro y la atribución visible.
+  - El avance en orden: publicado, conductor asignado, en ruta y "Entregado · Todavía no".
+  - Sin barra de roles, sin herramientas de demostración y sin botón de voz.
+- **Contar:** el enlace vence a las 48 horas, o 6 horas después de la entrega; después muestra "Seguimiento no
+  disponible" y pide un enlace nuevo.
+- Capturas de referencia: [390×844](fase-6/seguimiento-publico-390x844.jpg) y
+  [1440×900](fase-6/seguimiento-publico-1440x900.jpg).
 
 ## Si algo sale mal
 
