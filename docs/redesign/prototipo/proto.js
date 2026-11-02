@@ -5,6 +5,8 @@
     // Dirección elegida: B (ámbar). ?dir=a muestra la alternativa descartada.
     const dir = params.get('dir') === 'a' ? 'a' : 'b';
     document.documentElement.dataset.dir = dir;
+    // Escritorio (≥900 px): marco de teléfono (como la app hoy) o columna centrada sin marco (?escritorio=columna).
+    document.documentElement.dataset.desk = params.get('escritorio') === 'columna' ? 'columna' : 'marco';
 
     const icon = (name, cls = '') => `<svg class="icon ${cls}" aria-hidden="true"><use href="icons.svg#${name}"></use></svg>`;
     const screen = document.body.dataset.screen;
@@ -13,7 +15,7 @@
         ['carga', 'Carga', 'package'],
         ['rutas', 'Rutas', 'path'],
         ['navegar', 'Navegar', 'navigation-arrow'],
-        ['alertas', 'Alertas', 'warning'],
+        ['alertas', 'Alertas', 'bell'],          // campana: el triángulo queda solo para advertencias
         ['offline', 'Offline', 'cloud-arrow-down']
     ];
 

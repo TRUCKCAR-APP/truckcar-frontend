@@ -29,7 +29,7 @@
             <p>El servidor no respondió. La firma y la foto siguen en este formulario: revise la señal e intente de nuevo.</p>
         </div>
 
-        <form onsubmit="return false">
+        <form id="pod-form" onsubmit="return false">
             <div class="field">
                 <label>Nombre de quien recibe <span class="req">· obligatorio</span></label>
                 <div class="input" data-filled="Martha Lucía Rojas" data-empty="Ej. jefe de bodega"></div>
@@ -57,12 +57,12 @@
                 </div>
             </div>
             <p class="note">La firma y la foto se envían cifradas. Sin señal se guardan en el teléfono y se envían al reconectar.</p>
-
-            <div class="actions">
-                <button type="submit" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#check-circle"></use></svg><span data-submit>Confirmar entrega</span></button>
-                <button type="button" class="btn-text">Cancelar</button>
-            </div>
         </form>
+
+        <!-- Fijo sobre la barra inferior, como en Carga: siempre a la vista sin desplazarse. -->
+        <div class="actions">
+            <button type="submit" form="pod-form" class="btn-primary"><svg class="icon" aria-hidden="true"><use href="icons.svg#check-circle"></use></svg><span data-submit>Confirmar entrega</span></button>
+        </div>
     </main>
 
     <div data-tabbar></div>

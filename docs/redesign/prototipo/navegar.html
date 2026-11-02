@@ -77,8 +77,8 @@
         // Índice del punto de la ruta más cercano a la posición: lo recorrido va en gris, lo que falta en azul.
         let near = 0, best = Infinity;
         pts.forEach((p, i) => { const d = (p[0] - s.position[0]) ** 2 + (p[1] - s.position[1]) ** 2; if (d < best) { best = d; near = i; } });
-        const a = pts[near], b = pts[Math.min(near + 1, pts.length - 1)];
-        const heading = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI + 360) % 360;
+        // Rumbo real: dirección de la vía en la posición (geometría completa de OSRM), no la de la ruta simplificada.
+        const heading = s.heading;
 
         const map = L.map('map', { zoomControl: false, attributionControl: false });
         L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);

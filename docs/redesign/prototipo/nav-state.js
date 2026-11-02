@@ -10,5 +10,6 @@ window.NAV_STATE = {
   "icon": "fa-arrow-left",
   "remaining": "133 km",
   "step": "27 de 61",
-  "speed": 54
+  "speed": 54,
+  "heading": 188
 };

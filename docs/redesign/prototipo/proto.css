@@ -259,7 +259,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--route); outline
     isolation: isolate;
 }
 .tab .icon { width: 24px; height: 24px; }
-.tab[aria-current="page"] { color: var(--tab-active); font-weight: 600; }
+.tab[aria-current="page"] { color: var(--tab-active); }   /* mismo peso medio en todas: solo cambian color, relleno y píldora */
 .tab[aria-current="page"]::before {     /* píldora sutil detrás del ícono, sin línea superior */
     content: "";
     position: absolute;
@@ -342,11 +342,11 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--route); outline
 }
 .sos-modal[hidden] { display: none; }
 .sos-modal h2 { font-size: var(--t-34); font-weight: 700; letter-spacing: -0.02em; margin: var(--s-6) 0 var(--s-2); line-height: 1.1; }
-.sos-modal p { font-size: var(--t-17); margin: 0; color: rgba(255, 255, 255, 0.9); }
+.sos-modal p { font-size: var(--t-17); margin: 0; color: rgba(255, 255, 255, 0.92); }   /* 5,0:1 sobre #C62828 */
 .sos-modal .sent { display: flex; align-items: baseline; gap: var(--s-2); margin-top: var(--s-6); font-weight: 600; }
 .sos-modal .sent .dot { background: #fff; transform: translateY(-1px); }
 .sos-modal dl { margin: var(--s-6) 0 0; display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); font-size: var(--t-17); }
-.sos-modal dt { color: rgba(255, 255, 255, 0.8); }
+.sos-modal dt { color: rgba(255, 255, 255, 0.92); }   /* etiquetas: ≥90 % de opacidad, 5,0:1 */
 .sos-modal dd { margin: 0; text-align: right; font-weight: 600; }
 .sos-modal .spacer { flex: 1; }
 .sos-call { min-height: 60px; border-radius: var(--r-md); background: #fff; color: var(--sos-solid); font-weight: 700; font-size: var(--t-20); display: flex; align-items: center; justify-content: center; gap: var(--s-2); width: 100%; }
@@ -365,11 +365,14 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--route); outline
     clip-path: path("M16 40 C16 40 0 24 0 16 A16 16 0 1 1 32 16 C32 24 16 40 16 40 Z");
 }
 .pin-dest .icon { width: 18px; height: 18px; margin-top: -8px; }
-.pin-truck {
-    display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
-    background: var(--text); color: var(--bg); box-shadow: 0 0 0 4px rgba(12, 14, 18, 0.9), 0 6px 16px -4px rgba(0, 0, 0, 0.7);
+/* Flecha de navegación sin círculo (un triángulo dentro de un círculo se lee como "reproducir"), con borde del color del
+   fondo para separarla de la ruta azul. Gira con el rumbo real. */
+.pin-truck { display: grid; place-items: center; width: 44px; height: 44px; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6)); }
+.pin-truck .icon {
+    width: 40px; height: 40px; color: var(--text);
+    stroke: var(--bg); stroke-width: 18; stroke-linejoin: round; paint-order: stroke;
+    transform: rotate(var(--heading, 0deg));
 }
-.pin-truck .icon { width: 24px; height: 24px; transform: rotate(var(--heading, 0deg)); }
 
 /* ── HUD de navegación: una tarjeta superior y un panel vertical, todo en la rejilla de 16 px ─────────────── */
 .hud-card {
@@ -537,3 +540,19 @@ body.login-page { display: grid; place-items: center; }
 .photo-loaded .meta { flex: 1; font-size: var(--t-15); }
 .photo-loaded .meta span { display: block; color: var(--text-2); font-size: var(--t-14); }
 .pod .note { margin: var(--s-3) 0 0; color: var(--text-2); font-size: var(--t-14); }
+
+/* ── Escritorio (≥900 px): dos opciones para revisar ───────────────────────────────────────────────────────── */
+/* transform hace que lo fijo (modal SOS, hojas) quede dentro del marco o de la columna, no en toda la ventana. */
+@media (min-width: 900px) {
+    html[data-desk="marco"] body { background: #050608; display: grid; place-items: center; }
+    html[data-desk="marco"] .app {
+        width: 390px; height: min(844px, calc(100vh - 48px));
+        border-radius: 44px; border: 10px solid #1B1F26; overflow: hidden;
+        background: var(--bg); transform: translateZ(0);
+    }
+    html[data-desk="columna"] .app {
+        width: 100%; max-width: 480px; margin: 0 auto;
+        border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+        transform: translateZ(0);
+    }
+}
