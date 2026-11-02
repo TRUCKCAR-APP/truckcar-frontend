@@ -51,3 +51,14 @@ test("el plan solo propone cambios cuando el dato real difiere del canónico", (
   assert.deepEqual(loadDiff(load, row, []), []);
   assert.match(loadDiff(load, { ...row, status: "DELIVERED", delivered_at: "2026-11-01" }, [{}]).join(" "), /DELIVERED → IN_TRANSIT.*entrega.*1 evidencia/);
 });
+
+test("las horas de la carga van en la zona de Load-Allocation y una salida en el futuro se repara", () => {
+  const { load } = state();
+  const sql = loadSql(load, "America/Bogota");
+  assert.match(sql, /now\(\) AT TIME ZONE 'America\/Bogota'/);
+  assert.doesNotMatch(sql.replace(/now\(\) AT TIME ZONE '[^']+'/g, ""), /now\(\)/, "ninguna hora en la zona de Postgres (UTC)");
+  assert.throws(() => loadSql(load, "UTC'; DROP TABLE x; --"), /Zona horaria/);
+  const row = { status: "IN_TRANSIT", assigned_driver_id: load.driverId, assigned_vehicle_plate: load.vehiclePlate };
+  assert.deepEqual(loadDiff(load, { ...row, trip_started_at: "2026-11-01T21:40:00" }, [], "2026-11-01T22:40:00"), []);
+  assert.match(loadDiff(load, { ...row, trip_started_at: "2026-11-02T02:19:16" }, [], "2026-11-01T22:40:00").join(" "), /futuro/);
+});

@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const COMPOSE_ROOT = resolve(HERE, "../../..");          // carpeta del docker-compose (padre de truckcar-frontend)
 const COMPOSE_PROJECT = "truckcar";
-const CONTAINERS = { redis: "truckcar-redis", postgres: "truckcar-postgis" };
+const CONTAINERS = { redis: "truckcar-redis", postgres: "truckcar-postgis", loads: "truckcar-load-allocation" };
 const REDIS_PREFIX = "driver_vehicle_state";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
@@ -66,9 +66,11 @@ export function driverDiff(canonical, current) {
 }
 
 /** La carga está como la demo la necesita: en tránsito con el conductor y sin datos de entrega. */
-export function loadDiff(target, row, podRows) {
+export function loadDiff(target, row, podRows, nowLocal = null) {
   if (!row) return ["(la carga no existe)"];
   const diff = [];
+  // Load-Allocation guarda horas locales sin zona: una salida "en el futuro" es un dato roto que hay que rehacer.
+  if (nowLocal && row.trip_started_at && row.trip_started_at > nowLocal) diff.push("hora de salida en el futuro → hace 1 h");
   if (row.status !== target.status) diff.push(`status ${row.status} → ${target.status}`);
   if (row.assigned_driver_id !== target.driverId) diff.push(`conductor ${row.assigned_driver_id} → ${target.driverId}`);
   if (row.assigned_vehicle_plate !== target.vehiclePlate) diff.push(`placa ${row.assigned_vehicle_plate} → ${target.vehiclePlate}`);
@@ -78,15 +80,23 @@ export function loadDiff(target, row, podRows) {
   return diff;
 }
 
-/** SQL de la carga: un UPDATE y un DELETE por id exacto, en una transacción. */
-export function loadSql(target) {
+const TIME_ZONE = /^[A-Za-z]+(\/[A-Za-z_]+)+$/;
+
+/**
+ * SQL de la carga: un UPDATE y un DELETE por id exacto, en una transacción. Las horas van en la zona horaria de
+ * Load-Allocation (guarda horas locales sin zona), no en la de Postgres (UTC).
+ */
+export function loadSql(target, timeZone = "America/Bogota") {
+  if (!TIME_ZONE.test(timeZone)) throw new Error("Zona horaria no válida: " + timeZone);
   const q = (v) => "'" + String(v).replace(/'/g, "''") + "'";
+  const local = `(now() AT TIME ZONE ${q(timeZone)})`;
   return `BEGIN;
 UPDATE load_allocation.freight_loads SET
   status = ${q(target.status)}, assignment_status = NULL, assignment_status_changed_at = NULL,
   assigned_driver_id = ${q(target.driverId)}, assigned_driver_name = ${q(target.driverName)},
-  assigned_vehicle_plate = ${q(target.vehiclePlate)}, assigned_at = COALESCE(assigned_at, now() - interval '3 hours'),
-  trip_started_at = CASE WHEN status = 'IN_TRANSIT' AND trip_started_at IS NOT NULL THEN trip_started_at ELSE now() - interval '1 hour' END,
+  assigned_vehicle_plate = ${q(target.vehiclePlate)}, assigned_at = COALESCE(assigned_at, ${local} - interval '3 hours'),
+  trip_started_at = CASE WHEN status = 'IN_TRANSIT' AND trip_started_at IS NOT NULL AND trip_started_at <= ${local}
+                         THEN trip_started_at ELSE ${local} - interval '1 hour' END,
   delivered_at = NULL, pod_notes = NULL, pod_receiver_document = NULL, pod_receiver_name = NULL,
   pod_has_photo = NULL, pod_has_signature = NULL, cancellation_reason = NULL, cancelled_at = NULL, cancelled_by = NULL,
   version = COALESCE(version, 0) + 1
@@ -148,6 +158,10 @@ async function main() {
     user: docker(["exec", CONTAINERS.postgres, "printenv", "POSTGRES_USER"]).trim(),
     db: docker(["exec", CONTAINERS.postgres, "printenv", "POSTGRES_DB"]).trim()
   };
+  // Zona horaria con la que Load-Allocation guarda sus horas (sin zona en la base): la de su contenedor.
+  let timeZone = "America/Bogota";
+  try { timeZone = docker(["exec", CONTAINERS.loads, "printenv", "TZ"]).trim() || timeZone; } catch (e) { /* sin TZ: la del compose */ }
+  const nowLocal = sqlJson(pg, `SELECT to_json(now() AT TIME ZONE '${timeZone.replace(/'/g, "")}')`);
 
   // Estado actual.
   const token = await login(gateway, state.coordinatorEmail, password);
@@ -168,7 +182,7 @@ async function main() {
   // Plan.
   const plan = [];
   mocks.filter((m) => m.present).forEach((m) => plan.push(`Redis: borrar ${m.id} (placa ${m.hash.vehiclePlate || "—"}) y sus índices`));
-  const ld = loadDiff(state.load, loadRow, podRows);
+  const ld = loadDiff(state.load, loadRow, podRows, nowLocal);
   if (ld.length) plan.push(`SQL: carga ${state.load.id}: ${ld.join("; ")}`);
   drivers.filter((d) => d.diff.length).forEach((d) => plan.push(`API: ${d.state.driverName}: ${d.diff.join(", ")}`));
 
@@ -204,7 +218,7 @@ async function main() {
     }
     // SQL: la carga por id exacto, en una transacción.
     if (ld.length) {
-      docker(["exec", "-i", CONTAINERS.postgres, "psql", "-U", pg.user, "-d", pg.db, "-v", "ON_ERROR_STOP=1", "-q"], loadSql(state.load));
+      docker(["exec", "-i", CONTAINERS.postgres, "psql", "-U", pg.user, "-d", pg.db, "-v", "ON_ERROR_STOP=1", "-q"], loadSql(state.load, timeZone));
     }
     // Conductores: por la API (mantiene el índice de placas de fleets-drivers).
     for (const d of drivers.filter((x) => x.diff.length)) {
