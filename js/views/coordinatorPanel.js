@@ -18,15 +18,15 @@ window.CoordinatorPanel = {
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
                 <header class="min-h-16 px-4 lg:px-6 py-2 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between z-30 shrink-0 gap-x-4 gap-y-2">
                     <div class="flex items-center gap-2.5">
-                        <div class="w-10 h-10 rounded-xl bg-gradient-to-b from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-lg shadow-brand-900/50">
+                        <div class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100">
                             <i class="fas fa-tower-broadcast text-lg"></i>
                         </div>
                         <div>
-                            <h1 class="text-base font-extrabold text-white tracking-tight flex items-center gap-2">
-                                CENTRAL DE MONITOREO DE FLOTA
-                                <span class="px-2 py-0.5 ${Object.keys(state.dataStatus.errors).length ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'} border rounded text-[10px] font-mono uppercase">
-                                    ${Object.keys(state.dataStatus.errors).length ? 'Con errores' : 'En Línea'}
-                                </span>
+                            <h1 class="text-base font-bold text-white tracking-tight flex items-center gap-2 flex-wrap">
+                                Central de monitoreo de flota
+                                ${Object.keys(state.dataStatus.errors).length
+                                    ? '<span class="text-xs font-semibold text-warn-500 flex items-center gap-1.5"><i class="fas fa-triangle-exclamation"></i> Con errores</span>'
+                                    : '<span class="text-xs font-medium text-slate-400 flex items-center gap-1.5"><span class="dot ok"></span> En línea</span>'}
                             </h1>
                             <p class="text-xs text-slate-400 flex items-center gap-2"><span data-network-status class="lg:hidden"></span> Última sincronización: ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
                         </div>
@@ -37,28 +37,28 @@ window.CoordinatorPanel = {
                     <div class="flex items-center gap-3 lg:gap-6 flex-wrap">
                         <div class="flex items-center gap-3">
                             <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
-                                <span class="text-[10px] uppercase text-slate-400 font-bold block">Flota Activa</span>
-                                <span class="text-sm font-black text-emerald-400 font-mono"><span data-count="${operating}" data-count-key="kpi-operating">${operating}</span> / ${fleet.length}</span>
+                                <span class="text-xs text-slate-400 font-medium block">Flota activa</span>
+                                <span class="text-sm font-bold text-white font-mono"><span data-count="${operating}" data-count-key="kpi-operating">${operating}</span> / ${fleet.length}</span>
                             </div>
                             <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
-                                <span class="text-[10px] uppercase text-slate-400 font-bold block">Alertas Ruta</span>
-                                <span class="text-sm font-black text-amber-400 font-mono"><span data-count="${alerts.length}" data-count-key="kpi-alerts">${alerts.length}</span> Novedades</span>
+                                <span class="text-xs text-slate-400 font-medium block">Alertas en ruta</span>
+                                <span class="text-sm font-bold text-white font-mono"><span data-count="${alerts.length}" data-count-key="kpi-alerts">${alerts.length}</span> novedades</span>
                             </div>
                             <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
-                                <span class="text-[10px] uppercase text-slate-400 font-bold block">Gálibo Reportado</span>
-                                <span class="text-sm font-black text-rose-400 font-mono"><span data-count="${clearanceAlerts}" data-count-key="kpi-clearance">${clearanceAlerts}</span> Alertas</span>
+                                <span class="text-xs text-slate-400 font-medium block">Gálibo reportado</span>
+                                <span class="text-sm font-bold text-white font-mono"><span data-count="${clearanceAlerts}" data-count-key="kpi-clearance">${clearanceAlerts}</span> alertas</span>
                             </div>
                         </div>
 
                         <div class="flex items-center gap-3 pl-4 border-l border-slate-800">
-                            <div class="w-9 h-9 rounded-xl bg-indigo-600/30 border border-slate-700 flex items-center justify-center text-indigo-300 font-bold text-xs">
+                            <div class="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-200 font-bold text-xs">
                                 ${esc(this.initials(user))}
                             </div>
                             <div class="text-left">
                                 <div class="text-xs font-bold text-slate-200">${esc(user ? (user.firstName + ' ' + user.lastName) : 'Coordinador')}</div>
-                                <div class="text-[10px] text-slate-400">${esc(state.sessionRole || '')}</div>
+                                <div class="text-xs text-slate-400">${esc(window.CoordinatorPanel.roleLabel(state.sessionRole))}</div>
                             </div>
-                            <button onclick="window.app.logout()" class="ml-1 text-slate-400 hover:text-rose-400 text-xs" title="Cerrar sesión">
+                            <button onclick="window.app.logout()" class="ml-1 w-9 h-9 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs" title="Cerrar sesión" aria-label="Cerrar sesión">
                                 <i class="fas fa-right-from-bracket"></i>
                             </button>
                         </div>
@@ -72,10 +72,10 @@ window.CoordinatorPanel = {
                         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xl max-h-[60%] overflow-y-auto">
                             <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
                                 <div class="flex items-center gap-2">
-                                    <i class="fas fa-cubes-stacked text-indigo-400"></i>
-                                    <h2 class="font-extrabold text-sm text-white">Evaluación de Despacho</h2>
+                                    <i class="fas fa-cubes-stacked text-slate-400"></i>
+                                    <h2 class="font-bold text-sm text-white">Evaluación de despacho</h2>
                                 </div>
-                                ${load ? `<span class="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 font-mono text-[10px] rounded font-bold">${esc(load.id)}</span>` : ''}
+                                ${load ? `<span class="text-xs font-semibold text-slate-400">${esc(load.id)}</span>` : ''}
                             </div>
 
                             ${loads.length > 1 ? `
@@ -92,48 +92,48 @@ window.CoordinatorPanel = {
                                     </div>
                                     <div class="flex justify-between gap-2">
                                         <span class="text-slate-400 font-medium">Trayecto:</span>
-                                        <span class="font-mono text-emerald-400 text-right">${esc(load.origin.city)} → ${esc(load.destination.city)}</span>
+                                        <span class="font-semibold text-white text-right">${esc(load.origin.city)} → ${esc(load.destination.city)}</span>
                                     </div>
                                     <div class="flex justify-between gap-2">
                                         <span class="text-slate-400 font-medium">Asignación:</span>
-                                        <span class="font-mono font-bold ${this.assignmentColor(load.assignmentStatus)}">${esc(load.assignmentStatus || 'SIN ASIGNAR')}${load.assignedDriverName ? ' · ' + esc(load.assignedDriverName) : ''}</span>
+                                        <span class="font-semibold text-right ${this.assignmentColor(load.assignmentStatus)}">${this.assignmentWarn(load.assignmentStatus) ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(load.assignmentStatus ? window.DriverApp.statusLabel(load.assignmentStatus) : 'Sin asignar')}${load.assignedDriverName ? ' · ' + esc(load.assignedDriverName) : ''}</span>
                                     </div>
                                 </div>
 
                                 ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
-                                    <button onclick="window.coordinatorCtrl.cancelLoad(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-60 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition">
+                                    <button onclick="window.coordinatorCtrl.cancelLoad(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white border border-slate-700 rounded-xl text-xs font-bold transition">
                                         <i class="fas ${state.busyAction === 'cancel' ? 'fa-spinner fa-spin' : 'fa-ban'}"></i> Cancelar carga
                                     </button>
                                 ` : ''}
 
                                 ${!load.assignmentStatus || load.assignmentStatus === 'UNASSIGNED_NO_DRIVERS' ? `
-                                    <button onclick="window.coordinatorCtrl.requestMatching(${load.backendId})" ${state.busyAction === 'matching' ? 'disabled' : ''} class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition">
+                                    <button onclick="window.coordinatorCtrl.requestMatching(${load.backendId})" ${state.busyAction === 'matching' ? 'disabled' : ''} class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 disabled:opacity-60 text-graphite-950 rounded-xl text-xs font-bold transition">
                                         <i class="fas ${state.busyAction === 'matching' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}"></i> Ejecutar matching con IA
                                     </button>
                                 ` : ''}
 
                                 <div class="space-y-2">
-                                    <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Decisiones del motor de asignación</span>
+                                    <span class="text-xs font-semibold text-slate-400">Decisiones del motor de asignación</span>
                                     ${evaluation.candidates.length ? evaluation.candidates.map((c, i) => `
-                                        <div class="p-3 rounded-xl border transition ${c.isCurrentAssignment ? 'bg-emerald-950/30 border-emerald-500/50 shadow-md' : 'bg-slate-800/40 border-slate-700/40'}">
+                                        <div class="p-3 rounded-xl border transition ${c.isCurrentAssignment ? 'bg-slate-800/60 border-ok-500/50' : 'bg-slate-800/40 border-slate-700/40'}">
                                             <div class="flex items-center justify-between mb-1.5">
                                                 <div class="flex items-center gap-2 min-w-0">
-                                                    <span class="w-5 h-5 shrink-0 rounded-full flex items-center justify-center text-[10px] font-mono font-bold ${c.isCurrentAssignment ? 'bg-emerald-500 text-slate-950' : 'bg-slate-700 text-slate-300'}">${i + 1}</span>
+                                                    <span class="w-5 h-5 shrink-0 rounded-full flex items-center justify-center text-[10px] font-mono font-bold ${c.isCurrentAssignment ? 'bg-ok-500 text-graphite-950' : 'bg-slate-700 text-slate-300'}">${i + 1}</span>
                                                     <span class="font-bold text-xs text-white truncate">${esc(c.driverName)}</span>
                                                     <span class="font-mono text-[10px] text-slate-400">(${esc(c.vehiclePlate)})</span>
                                                 </div>
-                                                <span class="text-sm font-black font-mono ${c.isCurrentAssignment ? 'text-emerald-400' : 'text-slate-300'}">${c.score != null ? c.score + '/100' : '—'}</span>
+                                                <span class="text-sm font-bold font-mono ${c.isCurrentAssignment ? 'text-white' : 'text-slate-300'}">${c.score != null ? c.score + '/100' : '—'}</span>
                                             </div>
                                             ${c.score != null ? `<div class="h-1.5 mb-2 rounded-full bg-slate-700/60 overflow-hidden" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Number(c.score)}" aria-label="Puntaje del motor de asignación">
-                                                <div class="h-full rounded-full origin-left ${c.isCurrentAssignment ? 'bg-emerald-500' : 'bg-brand-500'}" style="transform: scaleX(${Math.max(0, Math.min(100, Number(c.score))) / 100}); transition: transform 600ms cubic-bezier(0.23, 1, 0.32, 1)"></div>
+                                                <div class="h-full rounded-full origin-left ${c.isCurrentAssignment ? 'bg-ok-500' : 'bg-slate-400'}" style="transform: scaleX(${Math.max(0, Math.min(100, Number(c.score))) / 100}); transition: transform 600ms cubic-bezier(0.23, 1, 0.32, 1)"></div>
                                             </div>` : ''}
                                             <div class="grid grid-cols-2 gap-1.5 text-[10px] text-slate-300 pt-1 border-t border-slate-700/40">
-                                                <div>Distancia vacío: <b class="font-mono text-emerald-400">${c.deadheadDistanceKm != null ? Math.round(c.deadheadDistanceKm) + ' km' : '—'}</b></div>
+                                                <div>Distancia en vacío: <b class="font-mono text-white">${c.deadheadDistanceKm != null ? Math.round(c.deadheadDistanceKm) + ' km' : '—'}</b></div>
                                                 <div class="text-right text-slate-400">${esc(c.executedAt)}</div>
                                             </div>
                                             <div class="mt-2 flex items-center gap-2">
-                                                <button onclick="window.coordinatorCtrl.showAiInspectionModal('${esc(c.driverId)}')" class="flex-1 py-1.5 bg-indigo-600/80 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-bold transition">
-                                                    <i class="fas fa-magnifying-glass"></i> Inspeccionar Criterios
+                                                <button onclick="window.coordinatorCtrl.showAiInspectionModal('${esc(c.driverId)}')" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg text-[11px] font-bold transition">
+                                                    <i class="fas fa-magnifying-glass"></i> Ver criterios
                                                 </button>
                                             </div>
                                         </div>
@@ -153,8 +153,8 @@ window.CoordinatorPanel = {
 
                         <div class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col overflow-hidden shadow-xl">
                             <div class="flex items-center justify-between mb-3">
-                                <h3 class="font-extrabold text-xs text-slate-200 uppercase tracking-wider">Flota en Operación (${fleet.length})</h3>
-                                <button onclick="window.coordinatorCtrl.refreshFleet()" class="text-slate-400 hover:text-emerald-400 text-xs" title="Actualizar desde fleets-drivers">
+                                <h3 class="font-bold text-sm text-white">Flota en operación (${fleet.length})</h3>
+                                <button onclick="window.coordinatorCtrl.refreshFleet()" class="w-9 h-9 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs" title="Actualizar desde fleets-drivers" aria-label="Actualizar la flota">
                                     <i class="fas fa-rotate ${state.dataStatus.loading ? 'fa-spin' : ''}"></i>
                                 </button>
                             </div>
@@ -163,8 +163,8 @@ window.CoordinatorPanel = {
                                     <div onclick="window.coordinatorCtrl.selectTruck('${esc(truck.id)}')" class="p-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl cursor-pointer transition flex items-center justify-between">
                                         <div class="flex items-center gap-3 min-w-0">
                                             <div class="w-2.5 h-2.5 shrink-0 rounded-full ${
-                                                truck.status === 'EN_TRANSITO' ? 'bg-emerald-500 animate-pulse' :
-                                                truck.status === 'DESCANSO' ? 'bg-amber-400' : 'bg-blue-400'
+                                                truck.status === 'EN_TRANSITO' ? 'bg-ok-500' :
+                                                truck.status === 'DESCANSO' ? 'bg-warn-500' : 'bg-slate-500'
                                             }"></div>
                                             <div class="min-w-0">
                                                 <div class="font-bold text-xs text-white truncate">${esc(truck.driverName)}</div>
@@ -172,10 +172,7 @@ window.CoordinatorPanel = {
                                             </div>
                                         </div>
                                         <div class="text-right shrink-0">
-                                            <span class="text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-                                                truck.status === 'EN_TRANSITO' ? 'bg-emerald-500/20 text-emerald-400' :
-                                                truck.status === 'DESCANSO' ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'
-                                            }">${esc(truck.status)}</span>
+                                            <span class="text-xs font-semibold ${truck.status === 'DESCANSO' ? 'text-warn-500' : 'text-slate-200'}">${truck.status === 'DESCANSO' ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(window.DriverApp.statusLabel(truck.status))}</span>
                                             <div class="text-[10px] text-slate-400 font-mono mt-0.5">${truck.speed} km/h · ${esc(truck.lastCheckin)}</div>
                                         </div>
                                     </div>
@@ -194,8 +191,8 @@ window.CoordinatorPanel = {
 
                             <div class="absolute top-4 left-14 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-2xl p-3 shadow-2xl space-y-2 max-w-xs">
                                 <div class="flex items-center gap-2">
-                                    <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-                                    <span class="font-bold text-xs text-white">Monitoreo GPS & Alertas</span>
+                                    <span class="dot ok"></span>
+                                    <span class="font-bold text-xs text-white">Monitoreo GPS y alertas</span>
                                 </div>
                                 <div class="text-[11px] text-slate-300">
                                     ${fleet.length} vehículo(s) con posición · ${alerts.length} alerta(s) activa(s)
@@ -209,10 +206,10 @@ window.CoordinatorPanel = {
                             </div>
 
                             <div class="absolute bottom-4 right-4 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl p-2.5 text-[10px] text-slate-300 space-y-1 shadow-lg">
-                                <div class="flex items-center gap-2"><i class="fas fa-truck text-emerald-400"></i> En tránsito</div>
-                                <div class="flex items-center gap-2"><i class="fas fa-truck text-blue-400"></i> Disponible</div>
-                                <div class="flex items-center gap-2"><i class="fas fa-truck text-amber-400"></i> Descanso requerido</div>
-                                <div class="flex items-center gap-2"><i class="fas fa-ruler-vertical text-rose-400"></i> Alerta de gálibo</div>
+                                <div class="flex items-center gap-2"><span class="fleet-legend is-transit"></span> En tránsito</div>
+                                <div class="flex items-center gap-2"><span class="fleet-legend"></span> Disponible</div>
+                                <div class="flex items-center gap-2"><span class="fleet-legend is-rest"></span> Descanso requerido</div>
+                                <div class="flex items-center gap-2"><i class="fas fa-triangle-exclamation text-warn-500"></i> Alerta vial</div>
                             </div>
                         </div>
 
@@ -220,9 +217,9 @@ window.CoordinatorPanel = {
                             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
-                                        <i class="fas fa-file-signature text-emerald-400"></i> Entregas Recientes
+                                        <i class="fas fa-file-signature text-slate-400"></i> Entregas recientes
                                     </h3>
-                                    <span class="text-[10px] text-emerald-400 font-mono">${deliveries.length} con POD</span>
+                                    <span class="text-xs text-slate-400">${deliveries.length} con prueba de entrega</span>
                                 </div>
                                 <div class="flex-1 overflow-y-auto space-y-1.5 text-xs">
                                     ${deliveries.length ? deliveries.map(d => `
@@ -231,7 +228,7 @@ window.CoordinatorPanel = {
                                                 <div class="font-bold text-white truncate">${esc(d.id)} · ${esc(d.destination.city)}</div>
                                                 <div class="text-[10px] text-slate-400 truncate">Recibió ${esc(d.podReceiverName || '—')} · ${esc(d.deliveredAtLabel)}</div>
                                             </div>
-                                            <button onclick="window.coordinatorCtrl.showProofOfDelivery(${d.backendId})" class="shrink-0 px-2 py-1 bg-emerald-600/80 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold" title="Ver prueba de entrega">
+                                            <button onclick="window.coordinatorCtrl.showProofOfDelivery(${d.backendId})" class="shrink-0 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg text-xs font-bold" title="Ver prueba de entrega">
                                                 <i class="fas ${d.podHasSignature ? 'fa-signature' : 'fa-receipt'}"></i> POD
                                             </button>
                                         </div>
@@ -242,9 +239,9 @@ window.CoordinatorPanel = {
                             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
-                                        <i class="fas fa-triangle-exclamation text-amber-400"></i> Novedades Operativas
+                                        <i class="fas fa-triangle-exclamation text-slate-400"></i> Novedades operativas
                                     </h3>
-                                    <span class="text-[10px] text-emerald-400 font-mono">Alertas + Flota</span>
+                                    <span class="text-xs text-slate-400">Alertas y flota</span>
                                 </div>
                                 <div class="flex-1 overflow-y-auto space-y-2 text-xs">
                                     ${notices.length ? notices.map(n => `
@@ -253,10 +250,10 @@ window.CoordinatorPanel = {
                                             <div class="min-w-0 flex-1">
                                                 <div><b class="text-white">${esc(n.title)}:</b> ${esc(n.text)}</div>
                                                 ${n.alertId ? `<div class="flex gap-1.5 mt-1.5">
-                                                    <button onclick="window.app.upvoteAlert(${n.alertId})" class="px-2 py-1 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white text-[10px] font-bold" title="Confirmar la alerta en Community-Alerts (un voto por usuario)">
+                                                    <button onclick="window.app.upvoteAlert(${n.alertId})" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold" title="Confirmar la alerta en Community-Alerts (un voto por usuario)">
                                                         <i class="fas fa-check"></i> Validar · ${n.upvotes}
                                                     </button>
-                                                    <button onclick="window.coordinatorCtrl.dismissAlert(${n.alertId})" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold" title="Ocultar de esta vista (el backend no tiene descarte)">
+                                                    <button onclick="window.coordinatorCtrl.dismissAlert(${n.alertId})" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 text-xs font-bold" title="Ocultar de esta vista (el backend no tiene descarte)">
                                                         <i class="fas fa-eye-slash"></i> Descartar
                                                     </button>
                                                 </div>` : ''}
@@ -269,23 +266,23 @@ window.CoordinatorPanel = {
                             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
-                                        <i class="fas fa-comments text-indigo-400"></i> Canal Directo de Despacho
+                                        <i class="fas fa-comments text-slate-400"></i> Canal directo de despacho
                                     </h3>
                                     <span class="text-[10px] text-slate-500 font-mono">local · sin backend</span>
                                 </div>
 
                                 <div id="coordinator-chat-box" class="flex-1 overflow-y-auto space-y-1.5 text-xs p-1">
                                     ${(state.chatMessages || []).map(m => `
-                                        <div class="${m.sender === 'coordinator' ? 'bg-emerald-900/40 border border-emerald-700/40 text-emerald-200 ml-auto' : 'bg-slate-800/80 text-slate-200'} p-2 rounded-xl max-w-[85%]">
-                                            <span class="text-[9px] block font-mono ${m.sender === 'coordinator' ? 'text-emerald-400' : 'text-slate-400'}">${m.sender === 'coordinator' ? 'Central' : 'Conductor'} • ${esc(m.time)}</span>
+                                        <div class="${m.sender === 'coordinator' ? 'bg-slate-700 text-white ml-auto' : 'bg-slate-800/80 text-slate-200'} p-2 rounded-xl max-w-[85%]">
+                                            <span class="text-[9px] block font-mono text-slate-400">${m.sender === 'coordinator' ? 'Central' : 'Conductor'} • ${esc(m.time)}</span>
                                             ${esc(m.text)}
                                         </div>
                                     `).join('')}
                                 </div>
 
                                 <div class="mt-2 flex gap-2">
-                                    <input id="coord-msg-input" type="text" placeholder="Escribir instrucción al conductor..." class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
-                                    <button onclick="window.coordinatorCtrl.sendDispatchMessage()" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition">
+                                    <input id="coord-msg-input" type="text" placeholder="Escribir instrucción al conductor..." class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-slate-400">
+                                    <button onclick="window.coordinatorCtrl.sendDispatchMessage()" class="w-10 h-9 grid place-items-center bg-accent-500 hover:bg-accent-600 text-graphite-950 rounded-xl text-xs font-bold transition" aria-label="Enviar instrucción">
                                         <i class="fas fa-paper-plane"></i>
                                     </button>
                                 </div>
@@ -298,10 +295,10 @@ window.CoordinatorPanel = {
                     <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-xl w-full shadow-2xl space-y-4">
                         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                             <div class="flex items-center gap-2.5">
-                                <div class="w-8 h-8 rounded-lg bg-indigo-600/30 text-indigo-400 flex items-center justify-center">
+                                <div class="w-8 h-8 rounded-lg bg-slate-800 text-slate-200 flex items-center justify-center">
                                     <i class="fas fa-sliders"></i>
                                 </div>
-                                <h3 class="font-bold text-base text-white">Criterios de la Decisión de Asignación</h3>
+                                <h3 class="font-bold text-base text-white">Criterios de la decisión de asignación</h3>
                             </div>
                             <button onclick="window.coordinatorCtrl.closeAiInspectionModal()" class="text-slate-400 hover:text-white text-lg">
                                 <i class="fas fa-times"></i>
@@ -324,7 +321,7 @@ window.CoordinatorPanel = {
         const tab = state.coordinatorTab === 'shipments' ? 'shipments' : 'fleet';
         const item = (key, icon, text) => `
             <button onclick="window.app.setCoordinatorTab('${key}')" role="tab" aria-selected="${tab === key}"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${tab === key ? 'bg-emerald-600 text-white shadow' : 'text-slate-300 hover:bg-slate-800'}">
+                    class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${tab === key ? 'bg-accent-500/15 text-accent-500' : 'text-slate-300 hover:bg-slate-800'}">
                 <i class="fas ${icon}"></i> ${text}
             </button>`;
         return `
@@ -339,14 +336,24 @@ window.CoordinatorPanel = {
         return ((user.firstName || ' ')[0] + (user.lastName || ' ')[0]).toUpperCase();
     },
 
+    /** Rol de la sesión en palabras (no el código del backend). */
+    roleLabel(role) {
+        return { COORDINADOR: 'Coordinador', ADMIN: 'Administrador', GENERADOR: 'Generador de carga', CONDUCTOR: 'Conductor' }[role] || role || '';
+    },
+
+    /** Rechazo, vencimiento y "sin conductores" piden atención: van con triángulo además del color. */
+    assignmentWarn(status) {
+        return ['REJECTED', 'TIMEOUT', 'UNASSIGNED_NO_DRIVERS'].includes(status);
+    },
+
     assignmentColor(status) {
         switch (status) {
-            case 'ACCEPTED': return 'text-emerald-400';
+            case 'ACCEPTED': return 'text-ok-500';
             case 'PROPOSED':
-            case 'NOTIFIED': return 'text-amber-400';
+            case 'NOTIFIED': return 'text-slate-200';
             case 'REJECTED':
             case 'TIMEOUT':
-            case 'UNASSIGNED_NO_DRIVERS': return 'text-rose-400';
+            case 'UNASSIGNED_NO_DRIVERS': return 'text-warn-500';
             default: return 'text-slate-300';
         }
     },
@@ -354,16 +361,16 @@ window.CoordinatorPanel = {
     buildNotices(fleet, alerts) {
         const notices = [];
         fleet.filter(t => t.status === 'DESCANSO').forEach(t => notices.push({
-            icon: 'fa-clock text-amber-400',
-            style: 'bg-amber-500/10 border border-amber-500/30 text-amber-300',
+            icon: 'fa-triangle-exclamation text-warn-500',
+            style: 'bg-slate-800/50 text-slate-300',
             title: 'Descanso requerido',
             text: t.driverName + ' (' + t.plate + ') lleva ' + t.hoursActive + ' de conducción.'
         }));
         const dismissed = window.coordinatorCtrl.dismissedAlerts();
         alerts.filter(a => (a.verified || a.severity === 'CRITICA' || a.severity === 'ALTA') && !dismissed.has(a.id))
             .slice(0, 6).forEach(a => notices.push({
-                icon: a.type === 'bridge' ? 'fa-road-barrier text-rose-400' : 'fa-triangle-exclamation text-rose-400',
-                style: 'bg-rose-500/10 border border-rose-500/30 text-rose-300',
+                icon: 'fa-triangle-exclamation text-warn-500',
+                style: 'bg-slate-800/50 text-slate-300',
                 title: a.badge + (a.verified ? ' (validada)' : ''),
                 text: a.title + (a.corridor ? ' · ' + a.corridor : '') + ' · ' + a.timeAgo,
                 alertId: a.id && !a.pendingSync ? a.id : null,
@@ -413,11 +420,11 @@ window.coordinatorCtrl = {
                con un puntaje de <b>${candidate.score != null ? candidate.score + '/100' : '—'}</b>.</p>
             <div class="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-2">
                 <div class="flex justify-between"><span class="text-slate-400">Ponderación del modelo</span><span class="font-mono text-slate-300">Cercanía 50% · Capacidad 30% · Calificación 20%</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Distancia en vacío al cargue</span><span class="font-mono text-emerald-400 font-bold">${candidate.deadheadDistanceKm != null ? candidate.deadheadDistanceKm.toFixed(1) + ' km' : '—'}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Estado de la decisión</span><span class="font-mono text-slate-200">${esc(candidate.decisionStatus)}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Distancia en vacío al cargue</span><span class="font-mono text-white font-bold">${candidate.deadheadDistanceKm != null ? candidate.deadheadDistanceKm.toFixed(1) + ' km' : '—'}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Estado de la decisión</span><span class="text-slate-200">${esc(window.DriverApp.statusLabel(candidate.decisionStatus))}</span></div>
                 <div class="flex justify-between"><span class="text-slate-400">Ejecutada</span><span class="font-mono text-slate-200">${esc(candidate.executedAt)}</span></div>
             </div>
-            <div class="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-300">
+            <div class="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl text-slate-200">
                 <b>Justificación del motor:</b> ${esc(candidate.reason || 'Sin detalle registrado')}
             </div>
         `;
@@ -489,7 +496,7 @@ window.coordinatorCtrl = {
         const truck = (window.TruckCarData.fleetVehicles || []).find(t => t.id === truckId);
         if (!truck) return;
         window.mapCtrl.focusOn(truck.coords, 12);
-        window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + truck.status + ' · ' + truck.speed + ' km/h · conducción ' + truck.hoursActive, 'info');
+        window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + window.DriverApp.statusLabel(truck.status) + ' · ' + truck.speed + ' km/h · conducción ' + truck.hoursActive, 'info');
     },
 
     sendDispatchMessage() {

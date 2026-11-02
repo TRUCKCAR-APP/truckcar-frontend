@@ -375,7 +375,7 @@ window.app = {
             frame.classList.toggle('coordinator-frame', !driverLike);
             frame.style.position = 'relative'; // ancla del botón SOS
         }
-        const active = 'bg-brand-600 text-white shadow';
+        const active = 'bg-accent-500/15 text-accent-500';
         const idle = 'text-slate-400 hover:text-slate-200';
         [['role-btn-driver', 'driver'], ['role-btn-coordinator', 'coordinator']].forEach(([id, view]) => {
             const el = document.getElementById(id);

@@ -11,16 +11,18 @@
  */
 window.Sheet = (function () {
     const esc = (value) => window.ui.escape(value);
+    // Ícono de la hoja sobre una superficie neutra; el significado lo da el color del ícono (advertencia u ok), nunca un
+    // fondo teñido. Una acción destructiva (rechazar, cancelar) no es una emergencia: no va en rojo, que es del SOS.
     const TONES = {
-        primary: 'text-brand-400 bg-brand-600/15 border-brand-500/30',
-        warning: 'text-amber-300 bg-amber-500/15 border-amber-500/30',
-        danger: 'text-rose-300 bg-rose-500/15 border-rose-500/30',
-        success: 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30'
+        primary: 'text-slate-100 bg-slate-800 border-transparent',
+        warning: 'text-warn-500 bg-slate-800 border-transparent',
+        danger: 'text-warn-500 bg-slate-800 border-transparent',
+        success: 'text-ok-500 bg-slate-800 border-transparent'
     };
     const BUTTONS = {
         primary: 'btn-cta',
-        success: 'btn-cta is-success',
-        danger: 'btn-cta !bg-none !bg-rose-600 !shadow-rose-900/50',
+        success: 'btn-cta',
+        danger: 'btn-secondary w-full',
         secondary: 'btn-secondary w-full'
     };
     let openCount = 0;

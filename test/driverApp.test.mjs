@@ -121,3 +121,30 @@ test("Offline muestra lo pendiente por tipo, la fecha real del mapa guardado y l
   const demo = screens({ search: "?demo=1" });
   assert.match(demo.text(demo.w.DriverApp.renderOfflineScreen(demo.state)), /Simular pérdida de señal/);
 });
+
+test("los estados de asignación y de flota de la Torre y «Mis envíos» también se dicen en español", () => {
+  const app = driverApp();
+  assert.equal(app.statusLabel("UNASSIGNED_NO_DRIVERS"), "Sin conductores disponibles");
+  assert.equal(app.statusLabel("ACCEPTED"), "Aceptada");
+  assert.equal(app.statusLabel("TIMEOUT"), "Sin respuesta a tiempo");
+  assert.equal(app.statusLabel("INACTIVO"), "Inactivo");
+});
+
+test("la Torre y «Mis envíos» usan solo la paleta de tokens: sin matices sueltos, mayúsculas ni códigos como etiqueta", () => {
+  for (const file of ["js/views/coordinatorPanel.js", "js/views/generatorPanel.js"]) {
+    const src = readFileSync(file, "utf8");
+    assert.doesNotMatch(src, /\b(bg|text|border|from|to|shadow)-(emerald|indigo|rose|blue|sky|amber|teal|orange|red|brand)-\d/, file + ": matiz fuera de los tokens");
+    assert.doesNotMatch(src, /\buppercase\b/, file + ": etiqueta en mayúsculas");
+  }
+  const gen = readFileSync("js/views/generatorPanel.js", "utf8");
+  assert.doesNotMatch(gen, /label: '(AVAILABLE|PROPOSED|NOTIFIED|ASSIGNED|IN_TRANSIT|DELIVERED|CANCELLED)'/, "estados con el código del backend");
+  assert.doesNotMatch(readFileSync("js/views/coordinatorPanel.js", "utf8"), /CENTRAL DE MONITOREO|SIN ASIGNAR/);
+});
+
+test("los estados del motor de asignación (AllocationStatus) se dicen en español", () => {
+  const app = driverApp();
+  for (const code of ["SUCCESSFUL", "NO_DRIVERS_AVAILABLE", "REJECTED", "DEGRADED_USING_CACHE", "RECOMMENDATION_PENDING", "ASSIGNMENT_CONFLICT", "ASSIGNMENT_FAILED"]) {
+    assert.ok(app.STATUS_LABELS[code], code + " sin etiqueta en español");
+  }
+  assert.equal(app.statusLabel("SUCCESSFUL"), "Conductor seleccionado");
+});

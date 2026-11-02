@@ -376,18 +376,13 @@ class MapController {
 
         const alerts = window.TruckCarData.communityAlerts || [];
         alerts.filter(alert => alert.coords).forEach(alert => {
-            let color = 'bg-amber-500';
-            let icon = 'fa-triangle-exclamation';
-
-            if (alert.type === 'scale') { color = 'bg-indigo-600'; icon = 'fa-weight-hanging'; }
-            else if (alert.type === 'bridge') { color = 'bg-red-600'; icon = 'fa-ruler-vertical'; }
-            else if (alert.type === 'police') { color = 'bg-blue-600'; icon = 'fa-shield-alt'; }
-            else if (alert.type === 'rest') { color = 'bg-emerald-600'; icon = 'fa-coffee'; }
-            else if (alert.type === 'workshop') { color = 'bg-orange-600'; icon = 'fa-wrench'; }
-            else if (alert.type === 'danger') { color = 'bg-rose-600'; icon = 'fa-car-burst'; }
+            // El tipo lo dice el ícono; el color solo separa lo que es un peligro (advertencia) de lo que no (parador).
+            const icon = { scale: 'fa-weight-hanging', bridge: 'fa-ruler-vertical', police: 'fa-shield-alt', rest: 'fa-mug-hot',
+                workshop: 'fa-wrench', danger: 'fa-car-burst' }[alert.type] || 'fa-triangle-exclamation';
+            const tone = alert.type === 'rest' ? '' : ' is-warn';
 
             const alertIcon = L.divIcon({
-                html: '<div class="w-7 h-7 ' + color + ' text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white text-xs"><i class="fas ' + icon + '"></i></div>',
+                html: '<div class="alert-pin' + tone + '"><i class="fas ' + icon + '"></i></div>',
                 className: 'community-alert-pin',
                 iconSize: [28, 28],
                 iconAnchor: [14, 14]
@@ -418,19 +413,19 @@ class MapController {
     }
 
     fleetTruckIcon(truck) {
-        const statusColor = truck.status === 'EN_TRANSITO' ? 'bg-emerald-600' : truck.status === 'DESCANSO' ? 'bg-amber-500' : 'bg-blue-600';
+        const statusClass = truck.status === 'EN_TRANSITO' ? ' is-transit' : truck.status === 'DESCANSO' ? ' is-rest' : '';
         const heading = typeof truck.heading === 'number' ? truck.heading : null;
         // fa-location-arrow apunta al noreste (45°): se compensa para que 0° sea el norte.
         const arrow = heading == null ? '' : `
-            <i class="fas fa-location-arrow truck-heading absolute -top-1.5 -right-1.5 text-[11px] text-emerald-300 drop-shadow"
+            <i class="fas fa-location-arrow truck-heading fleet-heading"
                style="transform: rotate(${Math.round(heading - 45)}deg)"></i>`;
         return L.divIcon({
             html: `
                 <div class="flex flex-col items-center">
-                    <div class="relative w-8 h-8 ${statusColor} text-white rounded-full shadow-lg border-2 border-white flex items-center justify-center text-xs">
+                    <div class="fleet-pin${statusClass}">
                         <i class="fas fa-truck"></i>${arrow}
                     </div>
-                    <span class="bg-slate-900 text-white text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow mt-0.5 border border-slate-700 whitespace-nowrap">${window.ui.escape(truck.plate)}</span>
+                    <span class="fleet-plate">${window.ui.escape(truck.plate)}</span>
                 </div>`,
             className: 'fleet-truck-marker',
             iconSize: [60, 45],
@@ -440,7 +435,7 @@ class MapController {
 
     fleetPopup(truck) {
         return '<b>' + window.ui.escape(truck.driverName) + ' (' + window.ui.escape(truck.plate) + ')</b><br>'
-            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(truck.status) + '</b> | Vel: '
+            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(window.DriverApp.statusLabel(truck.status)) + '</b> | Vel: '
             + truck.speed + ' km/h' + (typeof truck.heading === 'number' ? ' | Rumbo: ' + Math.round(truck.heading) + '°' : '');
     }
 
@@ -615,17 +610,17 @@ class MapController {
     shipmentTruckIcon(truck) {
         const heading = typeof truck.heading === 'number' ? truck.heading : null;
         const arrow = heading == null ? '' : `
-            <i class="fas fa-location-arrow absolute -top-2 -right-2 text-[12px] text-emerald-300 drop-shadow"
+            <i class="fas fa-location-arrow fleet-heading"
                style="transform: rotate(${Math.round(heading - 45)}deg)"></i>`;
         return L.divIcon({
-            html: `<div class="relative w-9 h-9 bg-slate-900 border-2 border-emerald-400 rounded-full shadow-xl flex items-center justify-center text-emerald-400 text-sm"><i class="fas fa-truck-moving"></i>${arrow}</div>`,
+            html: `<div class="fleet-pin is-transit"><i class="fas fa-truck-moving"></i>${arrow}</div>`,
             className: 'truck-pin', iconSize: [36, 36], iconAnchor: [18, 18]
         });
     }
 
     shipmentTruckPopup(truck) {
         const esc = window.ui.escape;
-        return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(truck.status) + ' · '
+        return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(window.DriverApp.statusLabel(truck.status)) + ' · '
             + truck.speed + ' km/h · ' + esc(truck.lastCheckin);
     }
 

@@ -200,35 +200,31 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     .card-float { background: var(--color-glass-solid); }
 }
 
-/* Botón principal gigante: se usa con el camión detenido y guantes puestos */
+/* Botón principal (hojas, formulario de publicar): ámbar plano, sin degradado ni halo de color. */
 .btn-cta {
-    min-height: 58px;
+    min-height: 56px;
     width: 100%;
-    border-radius: 18px;
-    background: linear-gradient(180deg, var(--primary-hi), var(--primary));
-    color: #fff;
-    font-weight: 800;
-    font-size: 15px;
-    letter-spacing: -0.01em;
+    border-radius: var(--radius-md);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    font-weight: var(--weight-bold);
+    font-size: var(--text-body);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px -10px rgba(37, 99, 235, 0.7);
+    gap: var(--space-2);
+    transition: transform var(--dur-press) var(--ease-out);
 }
+.btn-cta:active { background: var(--color-accent-pressed); transform: scale(var(--press-scale)); }
 .btn-cta:disabled { opacity: 0.55; }
-.btn-cta.is-success {
-    background: linear-gradient(180deg, #14c48d, var(--success));
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px -10px rgba(16, 185, 129, 0.65);
-}
 .btn-secondary {
     min-height: 48px;
-    border-radius: 16px;
-    background: var(--surface-3);
-    border: 1px solid var(--border-strong);
-    color: var(--text);
-    font-weight: 700;
-    font-size: 13px;
+    border-radius: var(--radius-md);
+    background: var(--color-elevated);
+    border: var(--border-elevated);
+    color: var(--color-text);
+    font-weight: var(--weight-semibold);
+    font-size: var(--text-footnote);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -245,8 +241,8 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     border-radius: 999px;
     font-size: 11px;
     font-weight: 700;
-    border: 1px solid var(--border-strong);
-    background: rgba(15, 23, 42, 0.7);
+    border: var(--border-elevated);
+    background: var(--color-elevated);
 }
 
 /* Barra inferior del conductor: seis pestañas iguales de 56 px más el área segura, fondo sólido y un micro-borde
@@ -343,8 +339,8 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
     background: var(--surface-3); color: var(--text-muted); border: 1px solid var(--border-strong);
     transition: background-color var(--dur-ui) var(--ease-out), color var(--dur-ui) var(--ease-out);
 }
-.stepper-dot.is-done { background: var(--success); color: #022c22; border-color: transparent; }
-.stepper-dot.is-current { background: var(--primary); color: #fff; border-color: transparent; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.25); }
+.stepper-dot.is-done { background: var(--color-ok); color: var(--color-bg); border-color: transparent; }
+.stepper-dot.is-current { background: var(--color-accent); color: var(--color-on-accent); border-color: transparent; box-shadow: 0 0 0 4px var(--color-accent-soft); }
 .stepper-line { flex: 1; height: 3px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .stepper-line > span { display: block; height: 100%; background: var(--success); transform-origin: left; transition: transform 500ms var(--ease-out); }
 
@@ -670,10 +666,10 @@ body[data-view="login"] #top-nav { display: none !important; }
     gap: 10px;
     padding: 9px 10px 9px 12px;
     border-radius: 16px;
-    color: #fff;
-    background: linear-gradient(180deg, #dc2626, #b91c1c);
-    border: 1px solid rgba(254, 202, 202, 0.35);
-    box-shadow: 0 12px 28px -10px rgba(220, 38, 38, 0.75);
+    color: var(--color-on-sos);
+    background: var(--color-sos-solid);             /* rojo pleno: solo el SOS lo usa */
+    border: 1px solid rgb(255 255 255 / 0.2);
+    box-shadow: var(--elev-3);
     animation: sos-in 260ms var(--ease-out);
 }
 .sos-alert-icon { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 999px; background: rgba(255, 255, 255, 0.18); }
@@ -685,8 +681,8 @@ body[data-view="login"] #top-nav { display: none !important; }
     border-radius: 11px;
     font-size: 12.5px;
     font-weight: 800;
-    color: #991b1b;
-    background: #fff;
+    color: var(--color-sos-solid);
+    background: #FFFFFF;
     touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
@@ -711,8 +707,9 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     display: grid;
     place-items: center;
     color: #fff;
-    background: var(--primary, #2563eb);
-    border: 3px solid #fff;
+    background: var(--color-text);
+    color: var(--color-bg);
+    border: 3px solid var(--color-bg);
     box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.7);
 }
 
@@ -730,11 +727,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .install-banner.is-visible { transform: translate(-50%, 0); }
 
 /* ------------------------------------------------------------------ mapa y piezas existentes */
-.glow-emerald { box-shadow: 0 0 20px rgba(16, 185, 129, 0.35); }
-.glow-amber { box-shadow: 0 0 20px rgba(245, 158, 11, 0.35); }
-.glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.35); }
-.glow-blue { box-shadow: 0 0 22px rgba(37, 99, 235, 0.4); }
-
 /* Sin tesela (sin señal y sin copia guardada): el fondo oscuro del mapa, sin cuadros rotos. */
 .leaflet-container {
     background-color: var(--color-bg) !important;
@@ -792,48 +784,24 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .leaflet-popup-tip { background: var(--color-elevated) !important; }
 
 .login-input {
-    background: #020617;
-    border: 1px solid #334155;
-    border-radius: 0.85rem;
+    background: var(--color-bg);
+    border: var(--border-elevated);
+    border-radius: var(--radius-md);
     padding: 0.65rem 0.85rem;
-    font-size: 0.8rem;
-    color: #e2e8f0;
+    font-size: var(--text-caption);
+    color: var(--color-text);
     outline: none;
     transition: border-color var(--dur-press) var(--ease-out), box-shadow var(--dur-press) var(--ease-out);
 }
 .login-input:focus {
-    border-color: var(--primary-hi);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+    border-color: var(--color-focus);
+    box-shadow: 0 0 0 3px rgb(var(--route-500) / 0.25);
 }
 .login-input[aria-invalid="true"] {
-    border-color: rgba(239, 68, 68, 0.7);
+    border-color: var(--color-warn);
 }
-.field-hint { font-size: 11px; color: #fca5a5; min-height: 14px; }
+.field-hint { font-size: var(--text-caption); color: var(--color-warn); min-height: 14px; }
 
-.hud-pill {
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92));
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-}
-.speed-gauge {
-    background: radial-gradient(circle, #0f172a 40%, #020617 100%);
-    border: 3px solid #1e293b;
-}
-.speed-limit-sign {
-    width: 44px;
-    height: 44px;
-    border: 3.5px solid #dc2626;
-    background: white;
-    color: #0f172a;
-    border-radius: 50%;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 17px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-}
 .landscape-nav-grid { display: grid; grid-template-columns: 290px 1fr 220px; height: 100%; }
 .landscape-overlay-left {
     position: absolute; top: 12px; left: 12px; bottom: 12px; width: 290px; z-index: 500;
@@ -1328,3 +1296,55 @@ select.field-input { appearance: none; -webkit-appearance: none; }
 .report-detail summary svg:last-child { transition: transform var(--dur-ui) var(--ease-out); }
 .report-detail[open] summary svg:last-child { transform: rotate(180deg); }
 .report-detail-input { min-height: 72px; padding: var(--space-3) var(--space-4); resize: none; }
+
+/* ================================================================== fase 5: Torre de control y "Mis envíos" */
+
+/* Marcadores de la flota y de las alertas con la paleta nueva: verde = en tránsito, ámbar = descanso o peligro,
+   grafito = disponible o informativo. El rojo queda solo para el SOS. */
+.fleet-pin {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    color: var(--color-text);
+    background: rgb(var(--graphite-600));
+    border: 2px solid var(--color-bg);
+    box-shadow: var(--elev-2);
+}
+.fleet-pin.is-transit { background: var(--color-ok); color: var(--color-bg); }
+.fleet-pin.is-rest { background: var(--color-warn); color: var(--color-bg); }
+.fleet-heading { position: absolute; top: -7px; right: -7px; font-size: 12px; color: var(--color-text); filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.8)); }
+.fleet-plate {
+    margin-top: 2px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--color-bg);
+    border: var(--border-elevated);
+    color: var(--color-text);
+    font-size: var(--text-tab);
+    font-weight: var(--weight-bold);
+    white-space: nowrap;
+}
+.fleet-legend { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: rgb(var(--graphite-600)); border: 2px solid var(--color-bg); }
+.fleet-legend.is-transit { background: var(--color-ok); }
+.fleet-legend.is-rest { background: var(--color-warn); }
+.alert-pin {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    color: var(--color-text);
+    background: var(--color-elevated);
+    border: 2px solid rgb(var(--graphite-400));
+    box-shadow: var(--elev-2);
+}
+.alert-pin.is-warn { color: var(--color-warn); border-color: var(--color-warn); }
+
+/* Estado de un envío: texto con un punto (o triángulo si pide atención), sin chip teñido. */
+.status-badge { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; font-size: var(--text-caption); font-weight: var(--weight-semibold); color: var(--color-text); }
+.status-badge.is-warn { color: var(--color-warn); }

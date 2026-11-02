@@ -12,7 +12,8 @@ Auditoría inicial: [AUDITORIA.md](AUDITORIA.md). Dirección visual aprobada: **
 | 3A | Cabecera, Vehículo, Carga (en tránsito y sin carga) y Rutas (con su vacío) con la estructura del prototipo | Hecha, en revisión |
 | 3B | Navegar (HUD, marcador del camión, zoom inicial), "Centrar en mi posición" y escritorio en columna de 480 px | Hecha, en revisión |
 | 4A | Entrega (POD) con botón fijo, Alertas con sus tres estados y Offline con la fecha real del mapa | Hecha, en revisión |
-| 4B | Inicio de sesión y hoja de reportar | Hecha, en revisión |
+| 4B | Inicio de sesión y hoja de reportar | Hecha |
+| 5 | Torre de control, "Mis envíos", hojas de confirmación y barra de demostración: paleta, mayúsculas y estados | Hecha, en revisión |
 
 ## 1. Paleta: antes y después
 
@@ -135,6 +136,7 @@ pantalla y estado. Están en JPEG, de 300 a 500 KB cada una, y el texto sigue le
 | 3B | [fase-3b/resumen-app-actual-390x844.jpg](fase-3b/resumen-app-actual-390x844.jpg) |
 | 4A | [fase-4a/resumen-app-actual-390x844.jpg](fase-4a/resumen-app-actual-390x844.jpg) |
 | 4B | [fase-4b/resumen-app-actual-390x844.jpg](fase-4b/resumen-app-actual-390x844.jpg) |
+| 5 | [fase-5/resumen-app-actual-390x844.jpg](fase-5/resumen-app-actual-390x844.jpg) |
 
 **Prototipo, dirección B** ([`prototipo/capturas/`](prototipo/capturas/), cada captura rotulada con pantalla y
 estado):
@@ -250,6 +252,19 @@ sesión y la hoja de reportar cerrada y abierta. Todas las diferencias me parece
 - **Cola offline:** [cola-390x844.jpg](fase-4b/cola-390x844.jpg).
 - **Modal SOS:** [sos-390x844.jpg](fase-4b/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-4b/sos-sin-senal-390x844.jpg).
 
+**Fase 5: antes y después.** [antes-despues.jpg](fase-5/antes-despues.jpg) compara la fase 4B con la 5:
+- Torre de control y "Mis envíos" en 1440×900 y en 390×844.
+- Además, en [`fase-5/`](fase-5/):
+  - [torre-criterios-1440x900.jpg](fase-5/torre-criterios-1440x900.jpg): la ventana de criterios de la asignación.
+  - [envios-detalle-1440x900.jpg](fase-5/envios-detalle-1440x900.jpg): el detalle de un envío.
+  - [hoja-confirmacion-390x844.jpg](fase-5/hoja-confirmacion-390x844.jpg): una hoja de confirmación de peligro con su
+    ícono ya sin rojo.
+
+**Verificación de la fase 5:**
+- **POD:** [pod-390x844.jpg](fase-5/pod-390x844.jpg).
+- **Cola offline:** [cola-390x844.jpg](fase-5/cola-390x844.jpg).
+- **Modal SOS:** [sos-390x844.jpg](fase-5/sos-390x844.jpg) y [sos-sin-senal-390x844.jpg](fase-5/sos-sin-senal-390x844.jpg).
+
 ## 5b. Probado y no probado
 
 Todo lo verificado hasta ahora se probó en el **navegador de escritorio** (Chrome con Playwright) contra la pila local
@@ -331,6 +346,22 @@ Para probar en un teléfono hay dos caminos:
    - El backend no se tocó.
 10. **Ana Torres "Activo" a 68,8 km/h y con 35 t a bordo, sin ninguna carga.** Era la última lectura de una prueba
     antigua. *Corregido con el script de datos de demo:* Ana queda disponible, detenida y sin carga a bordo.
+
+11. **Decisiones de asignación con la placa vieja.** La ventana "Criterios de la decisión de asignación" de la Torre muestra
+    "Ana Torres (TDK-410)": es una decisión guardada antes del cambio de placa a `TKR-527`. AI-powered-fleet-allocation
+    copia la placa en cada decisión. Es historial: no se corrige.
+
+**Decisión de producto pendiente: reportar en la vía sin GPS.**
+- **Hoy:** sin una lectura de GPS de los últimos 2 minutos, la hoja de reportar pide una nueva. Mientras no llega,
+  los 7 tipos están bloqueados, y si no llega lo dice con un triángulo.
+- **No es un cambio del rediseño:** es comportamiento previo, del commit `ee15d78` (31 de octubre, "one-tap road
+  reports"), ya en `main`. La fase 4B solo cambió su aspecto.
+- **Pregunta abierta:** ¿se permite reportar con la última posición conocida, marcada como tal ("posición de hace
+  6 min"), como ya hace el SOS?
+  - **A favor:** en un túnel o una zona sin GPS el conductor igual puede avisar.
+  - **En contra:** un reporte con una posición vieja puede quedar a kilómetros del peligro real.
+  - Si se permite, Community-Alerts debería guardar la antigüedad de la posición.
+- **No se cambió.**
 
 **Datos de demo reproducibles.** [`scripts/demo/reset-demo.mjs`](../../scripts/demo/README.md) deja la demo local en un
 estado conocido:
@@ -573,6 +604,56 @@ Cómo usarlo:
     - Mientras busca el GPS, un spinner y texto gris; sin GPS, triángulo y texto.
   - **Cabecera de todas las hojas** (reportar, confirmaciones, motivos): título y subtítulo con tokens y cerrar con el
     ícono de Phosphor. Los íconos con tono de las confirmaciones siguen; su rediseño queda fuera de esta fase.
+
+- **Fase 5: decisiones**
+  - **Una red de seguridad en Tailwind** (`index.html`): cada familia de color del diseño anterior apunta al token con
+    su significado, así ningún matiz suelto queda fuera de la paleta.
+    - `emerald` y `green` → ok.
+    - `amber`, `yellow`, `orange`, `rose` y `red` → advertencia.
+    - `blue`, `sky`, `indigo`, `violet`, `purple`, `cyan`, `teal`, `fuchsia`, `pink` y `lime` → grafito
+      neutro.
+    - **El rojo queda solo para el SOS:** el modal y el aviso de SOS en la Torre usan sus propias clases `sos-*`, en
+      rojo pleno y sin halo.
+  - **Encima, una revisión a mano** de la Torre de control y "Mis envíos":
+    - La acción principal en ámbar: "Ejecutar matching con IA", enviar una instrucción y "Ver prueba de entrega".
+    - Las secundarias en neutro: cancelar, ver criterios, validar, descartar y POD.
+    - Los íconos decorativos en gris.
+    - Sin chips teñidos: el estado va como texto con un punto, o con triángulo si pide atención (rechazo, "sin
+      conductores", descanso requerido).
+    - Rótulos sin mayúsculas: "Flota activa", "Central de monitoreo de flota".
+    - Estados en español: `UNASSIGNED_NO_DRIVERS` → "Sin conductores disponibles", `IN_TRANSIT` → "En tránsito",
+      `ACCEPTED` → "Aceptada", `COORDINADOR` → "Coordinador". También los tipos de camión, los popups del mapa y el
+      aviso al seleccionar un camión.
+  - **Marcadores del mapa:**
+    - La flota en verde (en tránsito), ámbar (descanso) o grafito (disponible), con flecha de rumbo y placa de 12 px.
+    - Las alertas viales en un círculo oscuro con su ícono, con borde ámbar si son un peligro.
+    - La leyenda dice lo mismo.
+  - **Hojas de confirmación:**
+    - El ícono va sobre una superficie neutra, coloreado solo por su significado (advertencia u ok).
+    - "Rechazar carga" y las demás acciones destructivas no van en rojo: no son una emergencia.
+  - **Estilos heredados:**
+    - `btn-cta` es ámbar plano, sin degradado azul ni halo.
+    - `btn-secondary`, `login-input`, `chip` y el paso a paso de publicar usan tokens.
+    - Se borraron `.glow-*` y los estilos del HUD anterior, que ya no usaba ninguna vista.
+  - **Barra de la demostración en escritorio:**
+    - "TruckCar" en texto, sin "TRUCK" + "CAR" en ámbar.
+    - La pestaña de rol activa con la píldora ámbar, y el botón de voz neutro.
+  - **Quedan fuera,** como se acordó: tarjetas anidadas, el paso a paso del formulario de publicar, los íconos de
+    Font Awesome y los textos de 9 a 12,5 px.
+
+    | Dónde | Íconos FA (usos / distintos) | Textos de 9 a 12,5 px | Cajas anidadas (aprox.) |
+    |---|---|---|---|
+    | `js/views/coordinatorPanel.js` (Torre de control) | 28 / 20 | 14 | 12 |
+    | `js/views/generatorPanel.js` ("Mis envíos") | 33 / 30 | 15 | 3 |
+    | `js/views/publicTracking.js` (seguimiento público) | 14 / 11 | 4 | 0 |
+    | `js/mapController.js` (marcadores de flota y alertas) | 12 / 10 | 0 | 0 |
+    | `js/ui/sheet.js`, `toaster.js`, `native.js` | 18 / 17 | 0 | 0 |
+    | `js/views/podModals.js`, `sosMonitor.js`, `driverActions.js`, `app.js` | 8 / 8 | 4 | 0 |
+    | `index.html` (barra de la demostración) | 5 / 5 | 0 | 1 |
+    | **Total** | **118 usos, 68 íconos distintos** | **37** | **16** |
+
+    - La app del conductor (`driverApp.js`, `telemetry.js`) ya no usa Font Awesome.
+    - La vista pública de seguimiento no estaba en el alcance: solo hereda la red de seguridad de colores.
 
 **Pendientes antes del despliegue**
 - Registrar el dominio de la demo en Stadia (cuenta y dominio). En `localhost` no hace falta.
