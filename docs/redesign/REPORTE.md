@@ -9,8 +9,8 @@ Auditoría inicial: [AUDITORIA.md](AUDITORIA.md). Dirección visual aprobada: **
 | 1 | Auditoría y design tokens | Hecha; tokens actualizados a la dirección B |
 | — | Prototipo de dirección (A y B) y pantallas de la dirección B | Aprobado; ajustes de la ronda 4 en revisión |
 | 2 | Mapa oscuro, caché de teselas, barra inferior, botón y modal SOS | Hecha, en revisión |
-| 3 | HUD de navegación en vivo | Pendiente |
-| 4 | Estados vacíos y pantallas Vehículo, Rutas, Alertas y Offline | Pendiente |
+| 3 | Recorrido de la demo: Carga, Rutas y Navegar (HUD) y columna de escritorio de 480 px | Pendiente: espera el merge del PR #1 en `main` |
+| 4 | Vehículo, Alertas (vacío, cargando y error), Offline con fecha real, POD con botón fijo, hoja de reportar e inicio de sesión | Pendiente |
 
 ## 1. Paleta: antes y después
 
@@ -157,10 +157,22 @@ diferencias visuales:
    - El mapa de la flota muestra dos marcadores `TDK-410`.
    - La evaluación de despacho propone a "Ana Torres (TDK-410)", pero esa placa es la del tractocamión de Carlos.
    - fleets-drivers no impide registrar la misma placa en dos vehículos.
-   - No corregido.
-7. **Conductores de prueba en la flota real.** "Mock drv-e2e-1" a "Mock drv-e2e-3" (placas E2E101 a E2E103) aparecen en
-   "Flota en operación" como inactivos desde hace 18 días. Vienen de las pruebas de extremo a extremo y no se borraron
-   de la base local. No corregido.
+   - *Corregido en los datos locales (1 de noviembre de 2026):* Ana Torres tiene ahora la placa `TKR-527`.
+     - Se cambió con la API de fleets-drivers (`POST /api/v1/fleets-drivers/state`, como coordinador), reenviando todos
+       sus datos para que solo cambiara la placa y el índice de placas de Redis quedara bien.
+     - `GET /vehicles/TDK-410` devuelve solo a Carlos y `GET /vehicles/TKR-527` a Ana Torres.
+   - Sigue sin existir una validación de placa única en fleets-drivers: el backend no se tocó.
+7. **Conductores de prueba en la flota real.** "Mock drv-e2e-1" a "Mock drv-e2e-3" (placas E2E101 a E2E103) aparecían
+   en "Flota en operación" como inactivos desde hace 18 días.
+   - Vienen de las pruebas de extremo a extremo y no se borraron de la base local.
+   - *Eliminados de la base local (1 de noviembre de 2026).* fleets-drivers no tiene un endpoint para borrar
+     conductores, así que se borraron en Redis como lo haría su repositorio: el registro, su índice, el miembro del
+     conjunto principal y la entrada del índice de placas.
+   - `GET /fleets-drivers/active` devuelve ahora solo a Ana Torres, Carlos Conductor y Diana Ríos.
+   - Antes de borrar se guardó un respaldo de los registros.
+   - Redis tiene AOF activo, así que el cambio persiste tras un reinicio.
+   - Se conservan como historial las 2 cargas canceladas (2 y 3) y las 16 decisiones de asignación que los mencionan.
+   - **Volverán a aparecer** si se ejecuta `Load-Allocation/scripts/e2e/e2e-asignacion.sh`, que los crea.
 8. **Estados internos en "Mis envíos".**
    - Los filtros dicen `AVAILABLE`, `PROPOSED`, `NOTIFIED`, `ASSIGNED`, `IN_TRANSIT`, `DELIVERED` y `CANCELLED`.
    - La carga 88 dice `IN_TRANSIT`.
@@ -203,6 +215,19 @@ diferencias visuales:
     3. El despliegue pone la clave en `<meta name="truckcar-map-api-key" content="…">` de `index.html`, o en
        `window.TRUCKCAR_MAP_API_KEY`. Va como `?key=` (Stadia usa `?api_key=`).
     4. El Service Worker ya reconoce los dos dominios: no hay que tocarlo.
+  - **Probar el cambio a CARTO cuando llegue la clave**, en local y sin hacer commit de la clave:
+    1. Ponga `'carto'` en `MAP_PROVIDER` y la clave en el `meta` `truckcar-map-api-key` de `index.html`.
+    2. Abra la app en `http://localhost:5500` (en una ventana de incógnito o tras "Borrar datos del sitio", para que
+       no quede ninguna tesela de Stadia guardada) y entre como conductor a Rutas y a Navegar.
+    3. **Teselas:** deben verse oscuras y **sin** el texto "API KEY REQUIRED". Si aparece, la clave no llegó o no es
+       válida.
+    4. **Atribución:** debe decir "© OpenStreetMap © CARTO", en una línea y sin que nada la tape.
+    5. **Peticiones:** en DevTools → Red, las teselas van a `basemaps.cartocdn.com/rastertiles/dark_all/…?key=…`.
+    6. **Caché:** en DevTools → Aplicación → IndexedDB → `truckcar-tiles` → `tiles`, cada tesela tiene su `expires`.
+       Anote cuántas horas da CARTO en su `Cache-Control`: es lo que durará el mapa sin señal con este proveedor.
+    7. **Sin señal:** con DevTools → Red → "Sin conexión", lo ya visto debe seguir viéndose y lo no visto debe quedar
+       oscuro, sin cuadros rotos.
+    8. Al terminar, vuelva a `'stadia'` y deje el `meta` vacío antes de cualquier commit.
   - Sin respaldo automático de un proveedor a otro.
   - La clave nunca va en el repositorio: el `meta` queda vacío y en `localhost` Stadia no la exige.
   - La atribución ("© Stadia Maps © OpenMapTiles © OpenStreetMap") va abajo a la izquierda, en una sola línea, gris
@@ -244,8 +269,8 @@ diferencias visuales:
   - Lo comprobé el 1 de noviembre de 2026 con `tiles.stadiamaps.com/tiles/alidade_smooth_dark/…`.
   - Respetar las cabeceras significa que el mapa sin señal dura **6 horas** desde que se vio, no una semana.
   - El "Guardado hasta 8 nov" del prototipo suponía 7 días: la fase 4 mostrará la fecha real del índice.
-  - Para un viaje largo sin señal esto es poco. La única salida que respeta los términos es acordar con Stadia otra
-    política de caché; no se amplió por cuenta propia.
+  - **Decisión: el vencimiento se queda en 6 h.** No se amplía.
+  - **Nota para la demo: mapa offline = 6 h, repetir el recorrido el mismo día de la demo.**
 - **SOS: el acuse del servidor sí está disponible en la interfaz** sin tocar la lógica.
   - `triggerSos` devuelve el SOS con su `id` cuando el servidor lo recibió, y `pendingSync: true` cuando quedó en la
     cola sin señal. El modal usa exactamente eso.
@@ -287,7 +312,9 @@ diferencias visuales:
 - Registrar el dominio de la demo en Stadia (cuenta y dominio). En `localhost` no hace falta.
 - Leer la versión de los términos de Stadia vigente desde el 9 de noviembre de 2026 y anotar cualquier cambio sobre
   caché.
-- Confirmar con Stadia si una PWA cuenta como "aplicación móvil" para la excepción de 100 MB.
+- Confirmar con Stadia si una PWA cuenta como "aplicación móvil" para la excepción de 100 MB (lo consulta el
+  responsable del proyecto).
+- Plan B: la clave de CARTO la pide el responsable del proyecto; la prueba está descrita arriba.
 - El plan gratuito es solo para uso no comercial: alcanza para la demo académica, no para producción.
 - Consecuencia de la política de caché: si el conductor no abre la app, el mapa sin señal se vacía. Con las cabeceras
   actuales de Stadia esto pasa a las **6 horas**, no a la semana; con un proveedor sin cabeceras, a los 7 días.
