@@ -109,10 +109,18 @@ Antes de presentar en la versión desplegada:
 - **Hacer:** cerrar sesión (ícono de salida arriba a la derecha) y entrar con `torre@truckcar.demo` en la misma URL,
   `http://localhost:5500/?demo=1`.
 - **Esperar:**
-  - "Central de monitoreo de flota" con **Flota activa 3 / 3**: Carlos, Diana y Ana. Ningún conductor Mock.
+  - "Central de monitoreo de flota" con **Flota activa 3 / 3**: Carlos "En tránsito", Diana y Ana "Disponible".
+    Ningún conductor Mock.
+  - **El motor propone solo.** En **Evaluación de despacho**, `CARGA-8 · Bogotá → Medellín` dice "Propuesta · Ana
+    Torres", y en **Decisiones del motor** aparece Ana Torres (`TKR-527`) con **87/100** y 19 km en vacío
+    ([captura](final/torre-propuesta-ana-1440x900.png)).
+    - Pasa sin pulsar nada: el motor reintenta cada 2 minutos las cargas en espera.
+    - Si se corrió el script hace menos de 2 minutos, la carga aún aparece en espera, con "Ejecutar matching con IA":
+      espere o púlselo.
+    - Para volver a verlo en un ensayo, corra otra vez el script de datos: deja la carga 8 en espera.
   - Si el SOS del paso 4 no se atendió, la franja del SOS arriba, con "Atender". Al atenderlo desaparece para todos
     los coordinadores.
-  - En **Decisiones del motor**, Ana Torres con su placa `TKR-527`. `TDK-410` es solo de Carlos.
+  - En las decisiones, Ana Torres siempre con su placa `TKR-527`. `TDK-410` es solo de Carlos.
   - Estados en español, sin mayúsculas y con la misma paleta que la app del conductor.
 
 ## 7. Cambiar de rol · 7:00–7:45
