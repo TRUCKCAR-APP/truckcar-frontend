@@ -43,7 +43,8 @@ function browser({ gps = null } = {}) {
     routes: { planForLoadId: 30, optimal: { id: "PLAN-9", waypoints: [{ coords: [4.6, -74.0] }, { coords: [4.61, -73.99] }] } }
   };
   w.TruckCarConfig = { gatewayUrl: "http://localhost:8000" };
-  w.TruckCarApi = { session: { get: () => ({ accessToken: "t" }) }, ensureFreshSession: async () => ({}) };
+  w.TruckCarApi = { session: { get: () => ({ accessToken: "t" }) }, ensureFreshSession: async () => ({}),
+    http: { post: async () => ({ ticket: "00000000-0000-4000-8000-000000000000", expiresInSeconds: 30 }) } };
   w.WebSocket = class { constructor() { this.readyState = 0; } close() {} };
   w.WebSocket.OPEN = 1;
   w.OfflineQueue = { isOffline: () => false, enqueue: async (kind, payload) => { queued.push({ kind, payload }); } };
@@ -153,5 +154,50 @@ test("la torre aplica el arreglo agregado de /topic/fleet-locations y sigue acep
   assert.equal(JSON.stringify(ana.coords), JSON.stringify([4.62, -74.09]));
   assert.equal(ana.status, "EN_TRANSITO");
   assert.equal(fleet.find((t) => t.driverId === "carlos").plate, "SNT-221");
+  w.LiveTracking.unfollowFleet();
+});
+
+test("el WebSocket se abre con un ticket de un solo uso: el JWT nunca va en la URL", async () => {
+  const { w } = browser();
+  const tickets = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
+  const requests = [];
+  w.TruckCarApi.session.get = () => ({ accessToken: "eyJhbGciOiJIUzI1NiJ9.jwt-secreto.firma" });
+  w.TruckCarApi.http.post = async (path) => { requests.push(path); return { ticket: tickets[requests.length - 1], expiresInSeconds: 30 }; };
+  const sockets = [];
+  w.WebSocket = class { constructor(url) { this.url = url; this.readyState = 0; sockets.push(this); } close() {} send() {} };
+  w.WebSocket.OPEN = 1;
+
+  w.LiveTracking.followFleet(() => {});
+  await sleep(20);
+
+  assert.deepEqual(requests, ["/telemetry/ws-ticket"]);
+  assert.equal(sockets.length, 1);
+  assert.equal(sockets[0].url, "ws://localhost:8000/ws-telemetry?ticket=" + tickets[0]);
+  assert.ok(!sockets[0].url.includes("jwt-secreto") && !sockets[0].url.includes("access_token"));
+
+  // Al caerse la conexión se pide un ticket nuevo: el anterior ya se usó.
+  sockets[0].onclose();
+  await sleep(2100);
+  assert.deepEqual(requests, ["/telemetry/ws-ticket", "/telemetry/ws-ticket"]);
+  assert.equal(sockets[1].url, "ws://localhost:8000/ws-telemetry?ticket=" + tickets[1]);
+  w.LiveTracking.unfollowFleet();
+});
+
+test("si el gateway no entrega el ticket no se abre el socket y se reintenta", async () => {
+  const { w } = browser();
+  let attempts = 0;
+  w.TruckCarApi.http.post = async () => { attempts++; throw new Error("503"); };
+  const sockets = [];
+  w.WebSocket = class { constructor(url) { sockets.push(url); this.readyState = 0; } close() {} };
+  w.WebSocket.OPEN = 1;
+  const states = [];
+  w.TruckCarTelemetry.onStatusChange((s) => states.push(s));
+
+  w.LiveTracking.followFleet(() => {});
+  await sleep(20);
+
+  assert.equal(attempts, 1);
+  assert.equal(sockets.length, 0);
+  assert.equal(states.at(-1), "reconnecting");
   w.LiveTracking.unfollowFleet();
 });

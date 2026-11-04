@@ -43,7 +43,8 @@ function browser({ gps = null } = {}) {
     routes: { planForLoadId: 30, optimal: { id: "PLAN-9", waypoints: [{ coords: [4.6, -74.0] }, { coords: [4.61, -73.99] }] } }
   };
   w.TruckCarConfig = { gatewayUrl: "http://localhost:8000" };
-  w.TruckCarApi = { session: { get: () => ({ accessToken: "t" }) }, ensureFreshSession: async () => ({}) };
+  w.TruckCarApi = { session: { get: () => ({ accessToken: "t" }) }, ensureFreshSession: async () => ({}),
+    http: { post: async () => ({ ticket: "00000000-0000-4000-8000-000000000000", expiresInSeconds: 30 }) } };
   w.WebSocket = class { constructor() { this.readyState = 0; } close() {} };
   w.WebSocket.OPEN = 1;
   w.OfflineQueue = { isOffline: () => false, enqueue: async (kind, payload) => { queued.push({ kind, payload }); } };
