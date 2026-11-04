@@ -127,3 +127,31 @@ test("una lectura vieja tomada en movimiento, o sin velocidad informada, no se u
     assert.ok(w.gpsRequests >= 1, "se pide una lectura nueva");
   }
 });
+
+test("la torre aplica el arreglo agregado de /topic/fleet-locations y sigue aceptando una sola posición", () => {
+  const { w } = browser();
+  let handler = null;
+  w.TruckCarTelemetry.subscribe = (destination, onMessage) => {
+    assert.equal(destination, "/topic/fleet-locations");
+    handler = onMessage;
+    return () => {};
+  };
+  const updated = [];
+  w.LiveTracking.followFleet((truck) => updated.push(truck.driverId));
+
+  handler([
+    { driverId: "ana", vehiclePlate: "TDK-410", latitude: 4.61, longitude: -74.08, speedKmH: 62, loadId: 30, loadStatus: "IN_TRANSIT" },
+    { driverId: "carlos", vehiclePlate: "SNT-221", latitude: 4.7, longitude: -74.1, speedKmH: 0 }
+  ]);
+  handler({ driverId: "ana", latitude: 4.62, longitude: -74.09, speedKmH: 40 });
+  handler([null, {}]);
+
+  assert.deepEqual(updated, ["ana", "carlos", "ana"]);
+  const fleet = w.TruckCarData.fleetVehicles;
+  assert.equal(fleet.length, 2);
+  const ana = fleet.find((t) => t.driverId === "ana");
+  assert.equal(JSON.stringify(ana.coords), JSON.stringify([4.62, -74.09]));
+  assert.equal(ana.status, "EN_TRANSITO");
+  assert.equal(fleet.find((t) => t.driverId === "carlos").plate, "SNT-221");
+  w.LiveTracking.unfollowFleet();
+});
