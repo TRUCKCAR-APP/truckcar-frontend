@@ -7,8 +7,9 @@
  * - LiveTracking: la torre de control (/topic/fleet-locations, un arreglo agregado cada pocos segundos) y "Mis envíos"
  *   (/topic/trip.{loadId}) mueven los marcadores del mapa sin recargar la vista ni consultar la API por HTTP.
  *
- * El navegador no puede enviar cabeceras al abrir un WebSocket: el JWT viaja como ?access_token= y el gateway lo
- * valida y lo retira antes de reenviar el handshake a fleets-drivers.
+ * El navegador no puede enviar cabeceras al abrir un WebSocket, y un JWT en la URL quedaría en los logs del balanceador
+ * y de nginx. Por eso, antes de cada conexión se pide por HTTP (con el JWT en Authorization) un ticket de un solo uso y
+ * 30 s de vida: POST /api/v1/telemetry/ws-ticket. El socket se abre con ?ticket=, que el gateway canjea y retira.
  */
 (function () {
     const config = window.TruckCarConfig;
@@ -64,22 +65,40 @@
             return;
         }
         setStatus(status === 'reconnecting' ? 'reconnecting' : 'connecting');
-        // El gateway valida el JWT solo en el handshake: al reconectar tras 15 min hay que renovarlo antes.
+        // El ticket se emite con el JWT vigente: al reconectar tras 15 min hay que renovarlo antes. Cada intento pide
+        // un ticket nuevo, porque el anterior ya se usó o venció.
         opening = true;
         api.ensureFreshSession()
             .catch(() => null)
-            .then(() => {
+            .then(() => wanted() ? api.http.post('/telemetry/ws-ticket') : null)
+            .then((response) => {
                 opening = false;
                 if (!wanted()) {
                     setStatus('offline');
                     return;
                 }
-                openSocket(api.session.get().accessToken);
+                if (!response || !response.ticket) throw new Error('El gateway no devolvió un ticket');
+                openSocket(response.ticket);
+            })
+            .catch(() => {
+                opening = false;
+                retryLater();
             });
     }
 
-    function openSocket(token) {
-        const socket = new WebSocket(WS_URL + '?access_token=' + encodeURIComponent(token));
+    function retryLater() {
+        if (!wanted()) {
+            setStatus('offline');
+            return;
+        }
+        setStatus('reconnecting');
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, MAX_RETRY_MS);
+    }
+
+    function openSocket(ticket) {
+        const socket = new WebSocket(WS_URL + '?ticket=' + encodeURIComponent(ticket));
         ws = socket;
         socket.onopen = () => frame('CONNECT', { 'accept-version': '1.2', host: 'truckcar', 'heart-beat': HEARTBEAT_MS + ',' + HEARTBEAT_MS });
         socket.onmessage = (event) => handleData(String(event.data));
@@ -87,13 +106,7 @@
             if (ws !== socket) return;
             ws = null;
             clearInterval(heartbeatTimer);
-            if (wanted()) {
-                setStatus('reconnecting');
-                retryTimer = setTimeout(connect, retryDelay);
-                retryDelay = Math.min(retryDelay * 2, MAX_RETRY_MS);
-            } else {
-                setStatus('offline');
-            }
+            retryLater();
         };
         // Los errores del socket terminan en onclose, que decide si reconectar.
         socket.onerror = () => {};
