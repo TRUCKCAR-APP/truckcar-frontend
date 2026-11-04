@@ -4,8 +4,8 @@
  * - TruckCarTelemetry: cliente STOMP mínimo (sin dependencias) con reconexión, heartbeats y re-suscripción.
  * - DriverTelemetry: el conductor transmite su posición cada 3 s mientras la carga está IN_TRANSIT con el GPS real del
  *   dispositivo. La simulación sobre la ruta OSRM solo se usa si se activa en las herramientas de prueba.
- * - LiveTracking: la torre de control (/topic/fleet-locations) y "Mis envíos" (/topic/trip.{loadId}) mueven los
- *   marcadores del mapa sin recargar la vista ni consultar la API por HTTP.
+ * - LiveTracking: la torre de control (/topic/fleet-locations, un arreglo agregado cada pocos segundos) y "Mis envíos"
+ *   (/topic/trip.{loadId}) mueven los marcadores del mapa sin recargar la vista ni consultar la API por HTTP.
  *
  * El navegador no puede enviar cabeceras al abrir un WebSocket: el JWT viaja como ?access_token= y el gateway lo
  * valida y lo retira antes de reenviar el handshake a fleets-drivers.
@@ -500,12 +500,18 @@
     }
 
     const LiveTracking = {
-        /** Torre de control: posiciones de toda la flota. */
+        /**
+         * Torre de control: posiciones de toda la flota. fleets-drivers las agrega y envía cada pocos segundos un
+         * arreglo con las que cambiaron; también se acepta una sola posición (servidores anteriores al agregado).
+         */
         followFleet(onUpdate) {
             if (fleetUnsubscribe) return;
-            fleetUnsubscribe = TruckCarTelemetry.subscribe('/topic/fleet-locations', (msg) => {
-                const truck = applyFleetLocation(msg);
-                if (onUpdate) onUpdate(truck, msg);
+            fleetUnsubscribe = TruckCarTelemetry.subscribe('/topic/fleet-locations', (payload) => {
+                (Array.isArray(payload) ? payload : [payload]).forEach(msg => {
+                    if (!msg || !msg.driverId) return;
+                    const truck = applyFleetLocation(msg);
+                    if (onUpdate) onUpdate(truck, msg);
+                });
             }, () => { fleetUnsubscribe = null; });
         },
 
