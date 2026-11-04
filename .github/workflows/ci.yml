@@ -66,3 +66,15 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+
+  # Amazon ECR (AWS Academy Learner Lab): la misma imagen como truckcar/truckcar-frontend:<commit> y :main. Las credenciales
+  # temporales del laboratorio son secretos de la organización; sin ellas el job no publica (aviso, sin error).
+  ecr:
+    name: Imagen en Amazon ECR
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: TRUCKCAR-APP/Deployment-Infrastructure/.github/workflows/ecr-image.yml@main
+    with:
+      image: truckcar-frontend
+      dockerfile: Dockerfile
+    secrets: inherit
