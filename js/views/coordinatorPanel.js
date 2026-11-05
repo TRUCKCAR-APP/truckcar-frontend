@@ -17,18 +17,19 @@ window.CoordinatorPanel = {
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
                 <header class="min-h-16 px-4 lg:px-6 py-2 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between z-30 shrink-0 gap-x-4 gap-y-2">
-                    <div class="flex items-center gap-2.5">
-                        <div class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="w-10 h-10 shrink-0 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100">
                             <i class="fas fa-tower-broadcast text-lg"></i>
                         </div>
-                        <div>
-                            <h1 class="text-base font-bold text-white tracking-tight flex items-center gap-2 flex-wrap">
-                                Central de monitoreo de flota
+                        <!-- min-w-0: en 390 px la columna se encoge y sus filas se apilan en lugar de montarse una sobre otra. -->
+                        <div class="min-w-0 flex-1">
+                            <h1 class="text-base font-bold text-white tracking-tight leading-tight flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+                                <span>Central de monitoreo de flota</span>
                                 ${Object.keys(state.dataStatus.errors).length
-                                    ? '<span class="text-xs font-semibold text-warn-500 flex items-center gap-1.5"><i class="fas fa-triangle-exclamation"></i> Con errores</span>'
-                                    : '<span class="text-xs font-medium text-slate-400 flex items-center gap-1.5"><span class="dot ok"></span> En línea</span>'}
+                                    ? '<span class="text-xs font-semibold text-warn-500 flex items-center gap-1.5 whitespace-nowrap"><i class="fas fa-triangle-exclamation"></i> Con errores</span>'
+                                    : '<span class="text-xs font-medium text-slate-400 flex items-center gap-1.5 whitespace-nowrap"><span class="dot ok"></span> En línea</span>'}
                             </h1>
-                            <p class="text-xs text-slate-400 flex items-center gap-2"><span data-network-status class="lg:hidden"></span> Última sincronización: ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
+                            <p class="text-xs text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5"><span data-network-status class="tower-net lg:hidden"></span><span class="whitespace-nowrap">Última sincronización: ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</span></p>
                         </div>
                     </div>
 
