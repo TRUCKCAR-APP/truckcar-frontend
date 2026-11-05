@@ -79,6 +79,7 @@ window.app = {
         window.store.subscribe((state) => this.renderCurrentView(state));
         window.Native.init();
         this.initOffline();
+        this.watchPhoneLayout();
 
         window.addEventListener('truckcar:unauthorized', () => {
             if (window.store.state.isAuthenticated) {
@@ -116,6 +117,36 @@ window.app = {
             session.clear();
             this.renderCurrentView(window.store.state);
         }
+    },
+
+    // ------------------------------------------------------------------ vista por dispositivo
+    /** Teléfono: por debajo del breakpoint md (768 px) de Tailwind, el mismo que oculta los textos del selector. */
+    isPhone() {
+        return typeof window.matchMedia === 'function' && !window.matchMedia('(min-width: 768px)').matches;
+    },
+
+    /**
+     * En el teléfono la app del conductor es solo de cuentas CONDUCTOR: su GPS, SOS y telemetría no funcionan con
+     * ADMIN ni COORDINADOR (el backend rechaza el SOS de otros roles). En escritorio la torre conserva la vista previa.
+     */
+    canUseDriverView(sessionRole) {
+        return sessionRole === 'CONDUCTOR' || !this.isPhone();
+    },
+
+    /** Si la ventana pasa a tamaño teléfono con la vista previa del conductor abierta, se vuelve a la torre. */
+    watchPhoneLayout() {
+        if (typeof window.matchMedia !== 'function') return;
+        const query = window.matchMedia('(min-width: 768px)');
+        const onChange = () => {
+            const state = window.store.state;
+            if (state.isAuthenticated && state.activeRole === 'driver' && !this.canUseDriverView(state.sessionRole)) {
+                this.setRole('coordinator');
+            } else {
+                this.updateHeader(state);
+            }
+        };
+        if (query.addEventListener) query.addEventListener('change', onChange);
+        else if (query.addListener) query.addListener(onChange);
     },
 
     // ------------------------------------------------------------------ sesión
@@ -362,7 +393,8 @@ window.app = {
             if (el) el.classList.toggle('hidden', !visible);
         };
         const controlTower = role === 'COORDINADOR' || role === 'ADMIN';
-        show('role-switcher', controlTower);
+        // En el teléfono la torre no puede abrir la app del conductor: el selector no tiene a dónde llevar.
+        show('role-switcher', controlTower && this.canUseDriverView(role));
         show('rotate-device-btn', role !== 'GENERADOR');
         show('sim-toggle-btn', role !== 'GENERADOR');
         // La vista activa decide el layout móvil (css/main.css): el conductor usa su propia barra superior.
@@ -460,6 +492,7 @@ window.app = {
             window.ui.toast('La torre de control requiere una cuenta de coordinador.', 'warning');
             return;
         }
+        if (role === 'driver' && !this.canUseDriverView(sessionRole)) role = 'coordinator';
         if (role === window.store.state.activeRole) return;
         window.store.setState({ activeRole: role });
         await window.TruckCarService.loadAll();

@@ -365,6 +365,11 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .net-status[data-state="offline"],
 .net-status[data-state="reconnecting"] { color: var(--color-warn); font-weight: var(--weight-semibold); }
 .net-warn { width: 18px; height: 18px; fill: currentColor; flex: none; }
+/* Encabezado de la torre: el título ya dice "En línea" (datos cargados). El indicador de red solo aparece cuando avisa
+   algo (sincronizando, sin señal, reconectando) y con el tamaño del resto de la línea. */
+.tower-net .net-status { font-size: inherit; }
+.tower-net:has(.net-status[data-state="online"]) { display: none; }
+.tower-net .net-warn { width: 14px; height: 14px; }
 @media (prefers-reduced-motion: reduce) { .net-dot.is-busy { animation: none; } }
 
 /* ------------------------------------------------------------------ transiciones de pantalla */
