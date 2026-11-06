@@ -1,16 +1,23 @@
 {
   "name": "truckcar-frontend",
   "private": true,
-  "description": "PWA de TruckCar (HTML, CSS y JavaScript). El único paso de construcción es el CSS de Tailwind (npm run build:css); el resto son dependencias de desarrollo: lint y pruebas.",
+  "description": "App PWA y Móvil Android de TruckCar (HTML, CSS y JavaScript). El paso de construcción es el CSS de Tailwind (npm run build:css); empaquetable como APK con Capacitor.",
   "scripts": {
     "build:css": "tailwindcss -c tailwind.config.cjs -i css/tailwind.input.css -o css/tailwind.css --minify",
     "check": "node scripts/check-syntax.mjs",
     "check:links": "node scripts/check-doc-links.mjs",
     "lint": "eslint .",
     "test": "node --test test/",
-    "ci": "npm run check && npm run lint && npm test"
+    "ci": "npm run check && npm run lint && npm test",
+    "cap:add:android": "cap add android",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "build:apk": "cap sync android"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
     "@eslint/js": "9.14.0",
     "eslint": "9.14.0",
     "fake-indexeddb": "6.0.0",

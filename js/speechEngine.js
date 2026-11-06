@@ -3,6 +3,7 @@ class VoiceGuidanceEngine {
         this.synth = window.speechSynthesis;
         this.voice = null;
         this.enabled = true;
+        this.unlocked = false;
         this.initVoice();
     }
 
@@ -44,9 +45,23 @@ class VoiceGuidanceEngine {
         }
     }
 
+    unlockAudio() {
+        if (!this.synth || this.unlocked) return;
+        try {
+            const silent = new SpeechSynthesisUtterance('');
+            silent.volume = 0;
+            this.synth.speak(silent);
+            this.unlocked = true;
+        } catch (e) {}
+    }
+
     test() {
         this.speak('Sistema TruckCar activo. Guía de voz para transporte de carga pesada configurada con éxito.', true);
     }
 }
 
 window.voiceEngine = new VoiceGuidanceEngine();
+if (typeof document !== 'undefined') {
+    document.addEventListener('touchstart', () => window.voiceEngine && window.voiceEngine.unlockAudio(), { once: true, passive: true });
+    document.addEventListener('click', () => window.voiceEngine && window.voiceEngine.unlockAudio(), { once: true, passive: true });
+}

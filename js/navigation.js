@@ -28,6 +28,7 @@ window.RouteGuidance = (function () {
     const listeners = new Set();
     // { key, status: checking | ok | found | unavailable | no-vehicle, items: [{ id, kind, alongM, text, sub, spoken }] }
     let clearance = null;
+    let wakeLock = null;
 
     // ------------------------------------------------------------------ geometría
     const toRad = (deg) => deg * Math.PI / 180;
@@ -213,6 +214,7 @@ window.RouteGuidance = (function () {
             if (pendingKey !== target.key) return;
             route = buildRoute(osrm, target.key, target.source);
             status = 'ready';
+            acquireWakeLock();
             if (window.mapCtrl && window.mapCtrl.drawGuidanceLine) window.mapCtrl.drawGuidanceLine(route.geometry);
             checkClearance(route);
             const fix = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
@@ -456,6 +458,33 @@ window.RouteGuidance = (function () {
         pendingKey = null;
         clearance = null;
         announced.clear();
+        releaseWakeLock();
+    }
+
+    async function acquireWakeLock() {
+        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !wakeLock) {
+            try {
+                if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                }
+            } catch (err) { /* no-op si la batería baja impide el bloqueo */ }
+        }
+    }
+
+    async function releaseWakeLock() {
+        if (wakeLock) {
+            try { await wakeLock.release(); } catch (e) {}
+            wakeLock = null;
+        }
+    }
+
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && status === 'ready') {
+                acquireWakeLock();
+            }
+        });
     }
 
     return {
@@ -463,6 +492,7 @@ window.RouteGuidance = (function () {
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
         get clearance() { return clearance; },
+        get hasWakeLock() { return Boolean(wakeLock); }, requestWakeLock: acquireWakeLock, releaseWakeLock,
         // Expuestos para pruebas.
         instruction, formatDistance, formatDuration, glyph, project, samplePath, checkClearance
     };

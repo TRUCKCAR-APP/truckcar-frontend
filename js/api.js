@@ -284,7 +284,18 @@
             listActive: () => http.get('/fleets-drivers/active'),
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
             getVehicle: (plate) => http.get('/fleets-drivers/vehicles/' + enc(plate)),
-            updateState: (state) => http.post('/fleets-drivers/state', state)
+            updateState: (state) => http.post('/fleets-drivers/state', state),
+            /** Registra o actualiza el vehÌculo asociado a un conductor en fleets-drivers. */
+            registerVehicle: (driverId, vehicleData) => http.post('/fleets-drivers/state', {
+                driverId,
+                vehiclePlate: vehicleData.plate ? String(vehicleData.plate).toUpperCase().trim() : undefined,
+                vehicleModel: vehicleData.model ? String(vehicleData.model).trim() : undefined,
+                vehicleType: vehicleData.type || 'TRACTOMULA_3S3',
+                maxHeightMeters: Number(vehicleData.height) || 4.1,
+                maxPayloadTons: Number(vehicleData.maxPayload) || 34.0,
+                tareWeightTons: Number(vehicleData.tareWeight) || 16.0,
+                status: 'ACTIVO'
+            })
         },
 
         /** Load-Allocation: cargas y ciclo comercial de asignaci√≥n */

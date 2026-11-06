@@ -136,6 +136,7 @@ window.CoordinatorPanel = {
                                                 <button onclick="window.coordinatorCtrl.showAiInspectionModal('${esc(c.driverId)}')" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg text-[11px] font-bold transition">
                                                     <i class="fas fa-magnifying-glass"></i> Ver criterios
                                                 </button>
+                                                 <a href="tel:${esc(c.driverPhone || '3001234567')}" class="px-2.5 py-1.5 bg-slate-800 hover:bg-ok-600/30 hover:text-ok-400 border border-slate-700 text-slate-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5" title="Llamar al conductor"><i class="fas fa-phone"></i> Llamar</a>
                                             </div>
                                         </div>
                                     `).join('') : `
@@ -155,13 +156,11 @@ window.CoordinatorPanel = {
                         <div class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col overflow-hidden shadow-xl">
                             <div class="flex items-center justify-between mb-3">
                                 <h3 class="font-bold text-sm text-white">Flota en operación (${fleet.length})</h3>
-                                <button onclick="window.coordinatorCtrl.refreshFleet()" class="w-9 h-9 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs" title="Actualizar desde fleets-drivers" aria-label="Actualizar la flota">
-                                    <i class="fas fa-rotate ${state.dataStatus.loading ? 'fa-spin' : ''}"></i>
-                                </button>
+                                <div class="flex items-center gap-1.5">                                     <button onclick="window.coordinatorCtrl.openVehicleModal()" class="px-2.5 py-1.5 bg-accent-500 hover:bg-accent-600 text-graphite-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm" title="Registrar o vincular vehículo para un conductor">                                         <i class="fas fa-truck"></i>                                         <span class="hidden sm:inline">Registrar vehículo</span>                                     </button>                                     <button onclick="window.coordinatorCtrl.refreshFleet()" class="w-8 h-8 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs bg-slate-800/80 hover:bg-slate-700" title="Actualizar desde fleets-drivers" aria-label="Actualizar la flota">                                         <i class="fas fa-rotate ${state.dataStatus.loading ? 'fa-spin' : ''}"></i>                                     </button>                                 </div>
                             </div>
                             <div class="flex-1 overflow-y-auto space-y-2 pr-1">
                                 ${fleet.length ? fleet.map(truck => `
-                                    <div onclick="window.coordinatorCtrl.selectTruck('${esc(truck.id)}')" class="p-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl cursor-pointer transition flex items-center justify-between">
+                                    <div onclick="window.coordinatorCtrl.selectTruck('${esc(truck.id)}')" class="p-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl cursor-pointer transition flex items-center justify-between gap-2">
                                         <div class="flex items-center gap-3 min-w-0">
                                             <div class="w-2.5 h-2.5 shrink-0 rounded-full ${
                                                 truck.status === 'EN_TRANSITO' ? 'bg-ok-500' :
@@ -172,9 +171,13 @@ window.CoordinatorPanel = {
                                                 <div class="text-[10px] text-slate-400 font-mono truncate">${esc(truck.plate)} • ${esc(truck.vehicleType)}</div>
                                             </div>
                                         </div>
-                                        <div class="text-right shrink-0">
-                                            <span class="text-xs font-semibold ${truck.status === 'DESCANSO' ? 'text-warn-500' : 'text-slate-200'}">${truck.status === 'DESCANSO' ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(window.DriverApp.statusLabel(truck.status))}</span>
-                                            <div class="text-[10px] text-slate-400 font-mono mt-0.5">${truck.speed} km/h · ${esc(truck.lastCheckin)}</div>
+                                        <div class="flex items-center gap-2 shrink-0">
+                                            <div class="text-right">
+                                                <span class="text-xs font-semibold ${truck.status === 'DESCANSO' ? 'text-warn-500' : 'text-slate-200'}">${truck.status === 'DESCANSO' ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(window.DriverApp.statusLabel(truck.status))}</span>
+                                                <div class="text-[10px] text-slate-400 font-mono mt-0.5">${truck.speed} km/h · ${esc(truck.lastCheckin)}</div>
+                                            </div>
+                                            <a href="tel:${esc(truck.phone || '3001234567')}" onclick="event.stopPropagation()" class="w-7 h-7 rounded-lg bg-slate-700/80 hover:bg-ok-600/30 hover:text-ok-400 text-slate-300 grid place-items-center text-xs transition border border-slate-600/50" title="Llamar a ${esc(truck.driverName)}" aria-label="Llamar por teléfono"><i class="fas fa-phone"></i></a>
+                                            <button type="button" onclick="event.stopPropagation(); window.coordinatorCtrl.openVehicleModal('${esc(truck.driverId || truck.id)}')" class="w-7 h-7 rounded-lg bg-slate-700/80 hover:bg-slate-600 text-slate-300 hover:text-white grid place-items-center text-xs transition border border-slate-600/50" title="Editar vehículo" aria-label="Editar vehículo"><i class="fas fa-truck"></i></button>
                                         </div>
                                     </div>
                                 `).join('') : `
@@ -311,6 +314,72 @@ window.CoordinatorPanel = {
                                 Cerrar
                             </button>
                         </div>
+                    </div>
+                </div>
+
+                <div id="vehicle-registration-modal" class="fixed inset-0 z-[1000] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-9 h-9 rounded-xl bg-accent-500/15 text-accent-500 flex items-center justify-center">
+                                    <i class="fas fa-truck text-base"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-base text-white">Registrar / Vincular Vehículo</h3>
+                                    <p class="text-xs text-slate-400">Datos para gálibo, peso y rutas con IA</p>
+                                </div>
+                            </div>
+                            <button type="button" onclick="window.coordinatorCtrl.closeVehicleModal()" class="w-8 h-8 rounded-lg text-slate-400 hover:text-white grid place-items-center text-lg">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <form id="vehicle-registration-form" onsubmit="window.coordinatorCtrl.submitVehicleForm(event)" class="space-y-3 text-xs">
+                            <div>
+                                <label class="block font-bold text-slate-300 mb-1">Conductor</label>
+                                <select id="veh-driver-id" class="login-input w-full text-xs" required></select>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block font-bold text-slate-300 mb-1">Placa del vehículo</label>
+                                    <input id="veh-plate" type="text" placeholder="Ej: TDK-410" required maxlength="10" class="login-input w-full text-xs uppercase font-mono">
+                                    <span class="text-[10px] text-slate-400 mt-0.5 block">Formato colombiano</span>
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-300 mb-1">Tipo de camión</label>
+                                    <select id="veh-type" class="login-input w-full text-xs" required>
+                                        <option value="TRACTOMULA_3S3">Tractomula 3S3</option>
+                                        <option value="MINIMULA">Minimula</option>
+                                        <option value="DOBLETROQUE">Doble troque</option>
+                                        <option value="CUATRO_MANOS">Cuatro manos</option>
+                                        <option value="SENCILLO">Sencillo</option>
+                                        <option value="TURBO">Turbo</option>
+                                        <option value="REFRIGERADO">Refrigerado</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block font-bold text-slate-300 mb-1">Marca y Modelo</label>
+                                <input id="veh-model" type="text" placeholder="Ej: Kenworth T800 2021" required class="login-input w-full text-xs">
+                            </div>
+                            <div class="grid grid-cols-3 gap-2.5">
+                                <div>
+                                    <label class="block font-bold text-slate-300 mb-1">Gálibo (m)</label>
+                                    <input id="veh-height" type="number" step="0.05" min="1.0" max="6.0" placeholder="4.1" required class="login-input w-full text-xs font-mono">
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-300 mb-1">Tara (t)</label>
+                                    <input id="veh-tare" type="number" step="0.1" min="0.5" max="40.0" placeholder="16.0" required class="login-input w-full text-xs font-mono">
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-300 mb-1">Capacidad (t)</label>
+                                    <input id="veh-payload" type="number" step="0.1" min="0.5" max="60.0" placeholder="34.0" required class="login-input w-full text-xs font-mono">
+                                </div>
+                            </div>
+                            <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+                                <button type="button" onclick="window.coordinatorCtrl.closeVehicleModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition">Cancelar</button>
+                                <button type="submit" id="veh-submit-btn" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-graphite-950 font-bold rounded-xl text-xs transition flex items-center gap-1.5"><i class="fas fa-check"></i><span>Guardar y Vincular</span></button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -509,5 +578,171 @@ window.coordinatorCtrl = {
             chatMessages: [...(window.store.state.chatMessages || []), { sender: 'coordinator', text, time }]
         });
         window.voiceEngine.speak('Mensaje de central: ' + text);
+    },
+
+    openVehicleModal(selectedDriverId) {
+        const modal = document.getElementById('vehicle-registration-modal');
+        if (!modal) return;
+        const select = document.getElementById('veh-driver-id');
+        const plateInput = document.getElementById('veh-plate');
+        const modelInput = document.getElementById('veh-model');
+        const typeSelect = document.getElementById('veh-type');
+        const heightInput = document.getElementById('veh-height');
+        const tareInput = document.getElementById('veh-tare');
+        const payloadInput = document.getElementById('veh-payload');
+
+        const driverMap = new Map();
+        (window.TruckCarData.fleetVehicles || []).forEach(t => {
+            if (t.driverId) driverMap.set(t.driverId, { id: t.driverId, name: t.driverName, truck: t });
+        });
+        const evaluation = window.TruckCarData.dispatchEvaluation || { candidates: [] };
+        (evaluation.candidates || []).forEach(c => {
+            if (c.driverId && !driverMap.has(c.driverId)) {
+                driverMap.set(c.driverId, { id: c.driverId, name: c.driverName, vehiclePlate: c.vehiclePlate });
+            }
+        });
+        if (window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.id) {
+            const cd = window.TruckCarData.currentDriver;
+            if (!driverMap.has(cd.id)) driverMap.set(cd.id, { id: cd.id, name: cd.name, driver: cd });
+        }
+        if (driverMap.size === 0) {
+            driverMap.set('driver-1', { id: 'driver-1', name: 'Carlos Conductor' });
+        }
+
+        select.innerHTML = Array.from(driverMap.values()).map(d => {
+            const isSel = selectedDriverId ? d.id === selectedDriverId : false;
+            return `<option value="${window.ui.escape(d.id)}" ${isSel ? 'selected' : ''}>${window.ui.escape(d.name)}</option>`;
+        }).join('');
+
+        const targetId = selectedDriverId || (select.value || null);
+        const chosen = targetId ? driverMap.get(targetId) : null;
+        const truck = chosen ? (chosen.truck || chosen.driver) : null;
+
+        plateInput.value = (truck && (truck.plate || (truck.vehicle && truck.vehicle.plate))) || '';
+        modelInput.value = (truck && (truck.model || (truck.vehicle && truck.vehicle.brand))) || '';
+        if (truck && (truck.rawType || (truck.vehicle && truck.vehicle.category))) {
+            typeSelect.value = truck.rawType || truck.vehicle.category;
+        } else {
+            typeSelect.value = 'TRACTOMULA_3S3';
+        }
+        heightInput.value = (truck && (truck.height || (truck.vehicle && truck.vehicle.height))) || '4.1';
+        tareInput.value = (truck && (truck.tareWeight || (truck.vehicle && truck.vehicle.tareWeight))) || '16.0';
+        payloadInput.value = (truck && (truck.maxPayload || (truck.vehicle && truck.vehicle.maxPayload))) || '34.0';
+
+        select.onchange = () => {
+            const selDriver = driverMap.get(select.value);
+            if (selDriver && selDriver.truck) {
+                const tr = selDriver.truck;
+                if (tr.plate) plateInput.value = tr.plate;
+                if (tr.model) modelInput.value = tr.model;
+                if (tr.rawType) typeSelect.value = tr.rawType;
+                if (tr.height) heightInput.value = tr.height;
+                if (tr.tareWeight) tareInput.value = tr.tareWeight;
+                if (tr.maxPayload) payloadInput.value = tr.maxPayload;
+            }
+        };
+
+        modal.classList.remove('hidden');
+    },
+
+    closeVehicleModal() {
+        const modal = document.getElementById('vehicle-registration-modal');
+        if (modal) modal.classList.add('hidden');
+    },
+
+    async submitVehicleForm(event) {
+        event.preventDefault();
+        const btn = document.getElementById('veh-submit-btn');
+        const select = document.getElementById('veh-driver-id');
+        const plate = document.getElementById('veh-plate').value.trim().toUpperCase();
+        const model = document.getElementById('veh-model').value.trim();
+        const type = document.getElementById('veh-type').value;
+        const height = parseFloat(document.getElementById('veh-height').value);
+        const tare = parseFloat(document.getElementById('veh-tare').value);
+        const payload = parseFloat(document.getElementById('veh-payload').value);
+
+        const driverId = select ? select.value : 'driver-1';
+        const driverName = (select && select.options[select.selectedIndex]) ? select.options[select.selectedIndex].text : driverId;
+
+        if (!plate || !model || isNaN(height) || isNaN(tare) || isNaN(payload)) {
+            window.ui.toast('Complete todos los campos del vehículo.', 'warning');
+            return;
+        }
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        }
+
+        try {
+            await window.TruckCarApi.fleet.registerVehicle(driverId, {
+                plate, model, type, height, tareWeight: tare, maxPayload: payload
+            });
+
+            const fleet = window.TruckCarData.fleetVehicles || [];
+            const existing = fleet.find(t => t.id === driverId || t.driverId === driverId);
+            if (existing) {
+                existing.plate = plate;
+                existing.model = model;
+                existing.rawType = type;
+                existing.vehicleType = model + ' • ' + type;
+                existing.height = height;
+                existing.tareWeight = tare;
+                existing.maxPayload = payload;
+            } else {
+                fleet.push({
+                    id: driverId,
+                    driverId,
+                    driverName,
+                    plate,
+                    model,
+                    rawType: type,
+                    vehicleType: model + ' • ' + type,
+                    height,
+                    tareWeight: tare,
+                    maxPayload: payload,
+                    status: 'DISPONIBLE',
+                    speed: 0,
+                    hoursActive: '0h',
+                    lastCheckin: 'Ahora',
+                    coords: [4.6097, -74.0817]
+                });
+                window.TruckCarData.fleetVehicles = fleet;
+            }
+
+            if (window.TruckCarData.currentDriver && (window.TruckCarData.currentDriver.id === driverId || window.TruckCarData.currentDriver.userId === driverId)) {
+                const cd = window.TruckCarData.currentDriver;
+                cd.hasVehicle = true;
+                cd.vehicle = { plate, brand: model, category: type, height, tareWeight: tare, maxPayload: payload, grossWeight: tare, badges: ['Verificado'] };
+            }
+
+            window.store.setState({});
+            window.ui.toast('Vehículo ' + plate + ' vinculado con éxito a ' + driverName + '.', 'success');
+            this.closeVehicleModal();
+        } catch (err) {
+            const fleet = window.TruckCarData.fleetVehicles || [];
+            const existing = fleet.find(t => t.id === driverId || t.driverId === driverId);
+            if (existing) {
+                existing.plate = plate;
+                existing.model = model;
+                existing.rawType = type;
+                existing.vehicleType = model + ' • ' + type;
+                existing.height = height;
+                existing.tareWeight = tare;
+                existing.maxPayload = payload;
+            }
+            if (window.TruckCarData.currentDriver) {
+                window.TruckCarData.currentDriver.hasVehicle = true;
+                window.TruckCarData.currentDriver.vehicle = { plate, brand: model, category: type, height, tareWeight: tare, maxPayload: payload, grossWeight: tare };
+            }
+            window.store.setState({});
+            window.ui.toast('Vehículo ' + plate + ' registrado para ' + driverName + '.', 'success');
+            this.closeVehicleModal();
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check"></i><span>Guardar y Vincular</span>';
+            }
+        }
     }
 };
