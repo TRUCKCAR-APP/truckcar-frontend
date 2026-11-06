@@ -60,6 +60,17 @@ window.LoginView = {
                     </p>
 
                     ${config.demoTools ? `<p class="login-api">API: ${esc(config.apiBaseUrl)}</p>` : ''}
+                    <div class="pt-4 mt-4 border-t border-slate-800 text-center space-y-2">
+                        <span class="text-xs text-slate-400 block font-medium">Modo demostración rápido (sin backend):</span>
+                        <div class="flex items-center justify-center gap-2 flex-wrap">
+                            <button type="button" onclick="window.app.startDemoSession('driver')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                                <i class="fas fa-mobile-screen"></i> Ver como Conductor
+                            </button>
+                            <button type="button" onclick="window.app.startDemoSession('coordinator')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                                <i class="fas fa-tower-broadcast"></i> Ver como Torre de Control
+                            </button>
+                        </div>
+                    </div>
                 </form>
             </div>
         `;
