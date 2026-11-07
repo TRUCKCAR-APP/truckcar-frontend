@@ -629,10 +629,11 @@ window.app = {
         if (!driver) return;
         const firstTime = !driver.state;
         const saved = await window.VehicleForm.open(driver, async (vehicle, cityCoords) => {
-            const coords = cityCoords || await this.currentCoords();
+            // Al editar sin GPS se conserva la última posición registrada; en el primer registro hace falta una.
+            const coords = cityCoords || await this.currentCoords() || driver.coords;
             if (!coords) {
-                throw new Error((window.DeviceLocation.error || 'No se pudo leer el GPS.')
-                    + ' Elija en "Dónde está ahora" la ciudad donde está.');
+                throw Object.assign(new Error((window.DeviceLocation.error || 'No se pudo leer el GPS.')
+                    + ' Elija aquí la ciudad donde está.'), { field: 'location' });
             }
             await window.TruckCarService.saveVehicle(vehicle, coords);
         });
