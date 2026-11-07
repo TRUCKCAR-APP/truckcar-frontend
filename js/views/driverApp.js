@@ -205,10 +205,17 @@ window.DriverApp = {
                             <div class="vehicle-model">${esc(v.brand && v.brand !== '—' ? v.brand : 'Modelo sin información')}</div>
                             <div class="secondary">${esc(this.truckTypeLabel(v.category))}</div>
                         </div>
+                    </div>
+                    ${this.renderAvailability(driver, load, state)}
+                    <div class="vehicle-actions">
+                        <button onclick="window.app.openVehicleForm()" class="btn-quiet">${this.icon('pencil-simple')}Editar vehículo</button>
                     </div>` : `
                     <div class="notice">
                         ${this.warnLine('Sin vehículo registrado')}
-                        <p>La torre de control debe registrar su vehículo para planear rutas compatibles con su altura y peso.</p>
+                        <p>Registre su camión para recibir cargas: el motor de asignación necesita el tipo, la capacidad y la altura.</p>
+                    </div>
+                    <div class="vehicle-actions">
+                        <button onclick="window.app.openVehicleForm()" class="btn-accent">${this.icon('truck')}Registrar mi vehículo</button>
                     </div>`}
 
                 <h2 class="list-title">Conductor</h2>
@@ -242,6 +249,27 @@ window.DriverApp = {
                     </div>` : ''}
             </div>
         `;
+    },
+
+    /**
+     * Disponible para cargas (ACTIVO) o no (INACTIVO). Con un viaje en curso no se puede apagar: la carga ya va a
+     * bordo y la torre lo sigue viendo en ruta.
+     */
+    renderAvailability(driver, load, state) {
+        const available = String(driver.status).toUpperCase() !== 'INACTIVO';
+        const inTrip = Boolean(load && (load.status === 'IN_TRANSIT' || load.status === 'ASSIGNED'));
+        const busy = state.busyAction === 'availability';
+        const detail = inTrip ? 'Tiene un viaje en curso'
+            : available ? 'El motor de asignación le puede proponer cargas' : 'No recibirá propuestas de carga';
+        return `
+            <div class="availability">
+                <div class="availability-text">
+                    <b id="availability-label">${available ? 'Disponible para cargas' : 'No disponible'}</b>
+                    <span>${window.ui.escape(detail)}</span>
+                </div>
+                <button type="button" role="switch" aria-checked="${available}" aria-labelledby="availability-label"
+                        onclick="window.app.toggleAvailability()" class="switch" ${inTrip || busy ? 'disabled' : ''}></button>
+            </div>`;
     },
 
     /** Distancia por carretera de la ruta (OSRM, la misma línea del mapa), si ya se calculó. */

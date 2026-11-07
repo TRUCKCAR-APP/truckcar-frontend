@@ -315,6 +315,8 @@ window.app = {
             mount.innerHTML = window.DriverApp.render(state);
         } else if (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments') {
             mount.innerHTML = window.GeneratorPanel.render(state);
+        } else if (state.activeRole === 'coordinator' && ['restrictions', 'users'].includes(window.CoordinatorPanel.activeTab(state))) {
+            mount.innerHTML = window.TowerAdmin.render(state, window.CoordinatorPanel.activeTab(state));
         } else if (state.activeRole === 'coordinator') {
             mount.innerHTML = window.CoordinatorPanel.render(state);
         }
@@ -421,6 +423,7 @@ window.app = {
     setCoordinatorTab(tab) {
         window.store.setState({ coordinatorTab: tab });
         if (tab === 'shipments') window.generatorCtrl.refresh(true);
+        if (tab === 'restrictions' || tab === 'users') window.TowerAdmin.load(tab);
     },
 
     handleGeneratorMapMount(state) {
@@ -519,6 +522,47 @@ window.app = {
     },
 
     // ------------------------------------------------------------------ conductor
+    /** Posición para el registro del vehículo: la del GPS reciente, o una lectura nueva (null sin permiso o señal). */
+    async currentCoords() {
+        const recent = window.DeviceLocation.last(2 * 60 * 1000);
+        if (recent) return recent.coords;
+        const fix = await window.DeviceLocation.fix({ timeoutMs: 6000 });
+        return fix ? fix.coords : null;
+    },
+
+    async openVehicleForm() {
+        const driver = window.TruckCarData.currentDriver;
+        if (!driver) return;
+        const firstTime = !driver.state;
+        const saved = await window.VehicleForm.open(driver, async (vehicle, cityCoords) => {
+            const coords = cityCoords || await this.currentCoords();
+            if (!coords) {
+                throw new Error((window.DeviceLocation.error || 'No se pudo leer el GPS.')
+                    + ' Elija en "Dónde está ahora" la ciudad donde está.');
+            }
+            await window.TruckCarService.saveVehicle(vehicle, coords);
+        });
+        if (!saved) return;
+        window.store.setState({});
+        window.ui.toast(firstTime ? 'Vehículo registrado: ya puede recibir cargas.' : 'Vehículo actualizado.', 'success');
+    },
+
+    async toggleAvailability() {
+        const driver = window.TruckCarData.currentDriver;
+        if (!driver || !driver.state) return;
+        const available = String(driver.status).toUpperCase() === 'INACTIVO';
+        window.store.setState({ busyAction: 'availability' });
+        try {
+            await window.TruckCarService.setAvailability(available, available ? await this.currentCoords() : null);
+            window.ui.toast(available ? 'Disponible: el motor le puede proponer cargas.' : 'No disponible: no recibirá propuestas.',
+                available ? 'success' : 'info');
+        } catch (error) {
+            window.ui.failure('No se pudo cambiar la disponibilidad', error, 'cambiar la disponibilidad');
+        } finally {
+            window.store.setState({ busyAction: null });
+        }
+    },
+
     async handleAcceptTrip() {
         window.store.setState({ busyAction: 'accept' });
         try {

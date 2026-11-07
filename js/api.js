@@ -276,7 +276,11 @@
         users: {
             me: () => http.get('/users/me'),
             updateMe: (data) => http.put('/users/me', data),
-            getById: (id) => http.get('/users/' + enc(id))
+            getById: (id) => http.get('/users/' + enc(id)),
+            /** ADMIN: cuentas paginadas (Spring Page: { content, totalElements }), opcionalmente por rol o estado. */
+            list: ({ role, status, size = 200 } = {}) => http.get('/users', { query: { role, status, size, sort: 'createdAt,desc' } }),
+            changeRole: (id, role) => http.patch('/users/' + enc(id) + '/role', { role }),
+            changeStatus: (id, status) => http.patch('/users/' + enc(id) + '/status', { status })
         },
 
         /** fleets-drivers: estado de conductores y vehículos */
@@ -346,6 +350,9 @@
         /** Routing-Restrictions: restricciones y cierres viales */
         restrictions: {
             listActive: (query) => http.get('/restrictions', { query }),
+            /** Torre de control (COORDINADOR/ADMIN): registra un gálibo, un límite de peso o un cierre. */
+            create: (restriction) => http.post('/restrictions', restriction),
+            deactivate: (id) => http.patch('/restrictions/' + enc(id) + '/deactivate'),
             validateCompatibility: (request) => http.post('/restrictions/validate-compatibility', request),
             /** Restricciones activas a lo largo de la geometría real de la ruta (gálibo, peso, cierres). */
             validateRoute: (request) => http.post('/restrictions/validate-route', request, { timeoutMs: 8000 })
