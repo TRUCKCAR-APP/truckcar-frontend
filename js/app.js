@@ -200,6 +200,7 @@ window.app = {
         clearInterval(this.shipmentsTimer);
         clearInterval(this.driverTimer);
         clearInterval(this.countdownTimer);
+        clearInterval(this.inboxTimer);
         window.SosMonitor.stop();
         window.DriverTelemetry.stop();
         window.RouteGuidance.reset();
@@ -287,6 +288,38 @@ window.app = {
         this.driverTimer = setInterval(() => this.pollDriverProposals(), window.TruckCarConfig.driverPollingMs);
         clearInterval(this.countdownTimer);
         this.countdownTimer = setInterval(() => this.tickCountdowns(), 1000);
+        clearInterval(this.inboxTimer);
+        this.inboxTimer = setInterval(() => this.pollInbox(), 30000);
+        this.pollInbox();
+    },
+
+    /** Bandeja del conductor: el número de nuevas en la pestaña Alertas se mantiene al día cada 30 s. */
+    async pollInbox() {
+        const state = window.store.state;
+        if (!state.isAuthenticated || state.sessionRole !== 'CONDUCTOR' || !state.currentUser) return;
+        const service = window.TruckCarService;
+        const before = (window.TruckCarData.notifications || []).map(n => n.id).join();
+        try {
+            await service.loadNotifications();
+        } catch (error) {
+            return; // sin señal: se reintenta en la siguiente vuelta
+        }
+        const changed = before !== (window.TruckCarData.notifications || []).map(n => n.id).join();
+        const viewing = state.activeRole === 'driver' && state.driverScreen === 'alerts' && state.alertsView === 'inbox';
+        if (viewing) service.markNotificationsSeen();
+        const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+        if (changed && !typing && !document.querySelector('.sheet-backdrop')) window.store.setState({});
+    },
+
+    async openInbox() {
+        window.store.setState({ alertsView: 'inbox', inboxStatus: 'loading' });
+        try {
+            await window.TruckCarService.loadNotifications();
+            window.TruckCarService.markNotificationsSeen();
+            window.store.setState({ inboxStatus: 'ready' });
+        } catch (error) {
+            window.store.setState({ inboxStatus: 'error' });
+        }
     },
 
     async pollDriverProposals() {

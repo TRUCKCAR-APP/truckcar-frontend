@@ -76,7 +76,8 @@ window.DriverApp = {
     tabButton(currentScreen, screen, label, icon) {
         const active = currentScreen === screen;
         const badge = screen === 'assigned_load' && this.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>'
-            : screen === 'offline' ? this.offlineBadgeHtml() : '';
+            : screen === 'offline' ? this.offlineBadgeHtml()
+            : screen === 'alerts' ? this.inboxBadgeHtml() : '';
         return `
             <button onclick="window.store.setState({ driverScreen: '${screen}' })" ${active ? 'aria-current="page"' : ''} class="driver-tab ${active ? 'is-active' : ''}">
                 <svg aria-hidden="true"><use href="assets/icons.svg#${icon}${active ? '-fill' : ''}"></use></svg>
@@ -93,6 +94,57 @@ window.DriverApp = {
         if (!pending) return '<span data-offline-badge hidden></span>';
         const text = pending + (pending === 1 ? ' acción guardada sin enviar' : ' acciones guardadas sin enviar');
         return `<span data-offline-badge><span class="driver-tab-count" aria-hidden="true">${pending > 99 ? '99+' : pending}</span><span class="sr-only">, ${text}</span></span>`;
+    },
+
+    /** Notificaciones nuevas sobre la pestaña Alertas (la bandeja "Para usted" vive en esa pantalla). */
+    inboxBadgeHtml() {
+        const service = window.TruckCarService;
+        const unread = service && service.unreadNotifications ? service.unreadNotifications() : 0;
+        if (!unread) return '';
+        const text = unread + (unread === 1 ? ' notificación nueva' : ' notificaciones nuevas');
+        return `<span class="driver-tab-count" aria-hidden="true">${unread > 99 ? '99+' : unread}</span><span class="sr-only">, ${text}</span>`;
+    },
+
+    INBOX_CATEGORIES: {
+        REASIGNACION_CARGA: 'Carga', CAMBIO_ESTADO_VIAJE: 'Viaje', ALERTA_RUTA: 'Alerta en la ruta',
+        CIERRE_VIAL: 'Cierre vial', MENSAJE_DESPACHADOR: 'Mensaje de la torre', EMERGENCIA_SOS: 'SOS'
+    },
+
+    /** Bandeja "Para usted": lo que la plataforma le notificó, con el audio si la voz se generó. */
+    renderInbox(state) {
+        const esc = window.ui.escape;
+        const items = window.TruckCarData.notifications || [];
+        const status = state.inboxStatus;
+        if (status === 'loading' && !items.length) {
+            return `<p class="status-line">${this.spinner()}<span class="status-sub">Consultando sus notificaciones…</span></p>`;
+        }
+        if (status === 'error' && !items.length) {
+            return `
+                <section class="empty-state">
+                    <div class="empty-mark">${this.icon('wifi-slash')}</div>
+                    <h2>No se pudieron cargar las notificaciones</h2>
+                    <p>Puede que no haya señal. Intente de nuevo en un momento.</p>
+                    <button onclick="window.app.openInbox()" class="btn-accent">${this.icon('arrows-clockwise')}Reintentar</button>
+                </section>`;
+        }
+        if (!items.length) {
+            return `
+                <section class="empty-state">
+                    <div class="empty-mark">${this.icon('bell')}</div>
+                    <h2>Sin notificaciones</h2>
+                    <p>Aquí verá las cargas que le propongan, los cambios de sus viajes y los mensajes de la torre.</p>
+                </section>`;
+        }
+        return `
+            <div class="alert-list">
+                ${items.map(n => `
+                    <article class="alert-item">
+                        <p class="alert-meta">${esc([this.INBOX_CATEGORIES[n.category] || 'Aviso', n.timeAgo].filter(Boolean).join(' · '))}</p>
+                        <p class="inbox-text">${esc(n.text)}</p>
+                        ${n.status === 'FAILED' ? this.warnLine('No se pudo enviar al teléfono', '· queda aquí para consulta') : ''}
+                        ${n.audioUrl ? `<audio controls preload="none" src="${esc(n.audioUrl)}" class="inbox-audio"></audio>` : ''}
+                    </article>`).join('')}
+            </div>`;
     },
 
     /** Actualiza el contador de la pestaña Offline en sitio (la cola cambia sin que se repinte la pantalla). */
@@ -615,15 +667,23 @@ window.DriverApp = {
                 <div class="screen-actions">${report}</div>`;
         }
 
+        const inbox = state.alertsView === 'inbox';
+        const unread = window.TruckCarService && window.TruckCarService.unreadNotifications
+            ? window.TruckCarService.unreadNotifications() : 0;
         return `
             <div class="screen-scroll">
                 <h1 class="large-title">Alertas</h1>
-                <p class="secondary">Reportes de otros conductores en la vía.</p>
-                <div class="filters" role="group" aria-label="Filtrar alertas">
-                    ${this.ALERT_FILTERS.map(([key, label]) => `
-                        <button type="button" onclick="window.store.setState({ alertFilter: '${key}' })" aria-pressed="${filter === key}" class="filter">${label}</button>`).join('')}
+                <div class="segmented" role="tablist" aria-label="Alertas de la vía o notificaciones para usted">
+                    <button type="button" role="tab" aria-selected="${!inbox}" onclick="window.store.setState({ alertsView: 'road' })">En la vía</button>
+                    <button type="button" role="tab" aria-selected="${inbox}" onclick="window.app.openInbox()">Para usted${unread && !inbox ? ` <span class="segmented-count">${unread}</span>` : ''}</button>
                 </div>
-                ${body}
+                ${inbox ? this.renderInbox(state) : `
+                    <p class="secondary">Reportes de otros conductores en la vía.</p>
+                    <div class="filters" role="group" aria-label="Filtrar alertas">
+                        ${this.ALERT_FILTERS.map(([key, label]) => `
+                            <button type="button" onclick="window.store.setState({ alertFilter: '${key}' })" aria-pressed="${filter === key}" class="filter">${label}</button>`).join('')}
+                    </div>
+                    ${body}`}
             </div>
         `;
     },

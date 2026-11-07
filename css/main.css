@@ -1240,6 +1240,20 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .field-error { display: block; margin-top: var(--space-2); font-size: var(--text-caption); color: var(--color-warn); }
 .field-input[aria-invalid] { border-color: var(--color-warn); }
 
+/* Alertas: "En la vía" y "Para usted" (bandeja). Control segmentado con áreas táctiles de 44 px. */
+.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: var(--space-3); padding: 4px; border-radius: var(--radius-md); background: var(--color-surface); }
+.segmented button {
+    min-height: var(--touch-min); border-radius: calc(var(--radius-md) - 4px); font-size: var(--text-footnote);
+    font-weight: var(--weight-semibold); color: var(--color-text-secondary); touch-action: manipulation;
+}
+.segmented button[aria-selected="true"] { background: var(--color-elevated); color: var(--color-text); }
+.segmented-count {
+    display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 4px; padding: 0 6px;
+    border-radius: 999px; background: var(--color-accent); color: var(--color-on-accent); font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.inbox-text { margin: var(--space-2) 0 0; font-size: var(--text-body); color: var(--color-text); }
+.inbox-audio { width: 100%; margin-top: var(--space-2); }
+
 /* Plazo para responder una propuesta: cifras tabulares para que la cuenta no baile. */
 .countdown {
     display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); padding: var(--space-3) var(--space-4);

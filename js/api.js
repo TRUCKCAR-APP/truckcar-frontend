@@ -347,6 +347,12 @@
             acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
         },
 
+        /** Notifications: lo que se le envió al usuario (push y voz), la más reciente primero. */
+        notifications: {
+            forUser: (userId, size = 30) =>
+                http.get('/notifications/user/' + enc(userId), { query: { size, sort: 'createdAt,desc' } })
+        },
+
         /** Routing-Restrictions: restricciones y cierres viales */
         restrictions: {
             listActive: (query) => http.get('/restrictions', { query }),
