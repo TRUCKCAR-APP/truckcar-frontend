@@ -293,11 +293,24 @@ window.app = {
         this.pollInbox();
     },
 
-    /** Bandeja del conductor: el número de nuevas en la pestaña Alertas se mantiene al día cada 30 s. */
+    /**
+     * Cada 30 s para el conductor: el número de nuevas en la pestaña Alertas y, mientras la cuenta esté pendiente,
+     * si un administrador ya la verificó (sin cerrar sesión).
+     */
     async pollInbox() {
         const state = window.store.state;
         if (!state.isAuthenticated || state.sessionRole !== 'CONDUCTOR' || !state.currentUser) return;
         const service = window.TruckCarService;
+        if (state.currentUser.status === 'PENDING_VERIFICATION') {
+            try {
+                const user = await service.loadCurrentUser();
+                if (user && user.status === 'ACTIVE') {
+                    window.ui.toast('Su cuenta fue verificada', 'success', { description: 'Ya puede recibir cargas.' });
+                }
+            } catch (error) {
+                // sin señal: se vuelve a consultar en la siguiente vuelta
+            }
+        }
         const before = (window.TruckCarData.notifications || []).map(n => n.id).join();
         try {
             await service.loadNotifications();
@@ -409,7 +422,7 @@ window.app = {
             mount.innerHTML = window.DriverApp.render(state);
         } else if (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments') {
             mount.innerHTML = window.GeneratorPanel.render(state);
-        } else if (state.activeRole === 'coordinator' && ['restrictions', 'users'].includes(window.CoordinatorPanel.activeTab(state))) {
+        } else if (state.activeRole === 'coordinator' && ['restrictions', 'users', 'templates'].includes(window.CoordinatorPanel.activeTab(state))) {
             mount.innerHTML = window.TowerAdmin.render(state, window.CoordinatorPanel.activeTab(state));
         } else if (state.activeRole === 'coordinator') {
             mount.innerHTML = window.CoordinatorPanel.render(state);
@@ -517,7 +530,7 @@ window.app = {
     setCoordinatorTab(tab) {
         window.store.setState({ coordinatorTab: tab });
         if (tab === 'shipments') window.generatorCtrl.refresh(true);
-        if (tab === 'restrictions' || tab === 'users') window.TowerAdmin.load(tab);
+        if (['restrictions', 'users', 'templates'].includes(tab)) window.TowerAdmin.load(tab);
     },
 
     handleGeneratorMapMount(state) {
@@ -639,7 +652,10 @@ window.app = {
         });
         if (!saved) return;
         window.store.setState({});
-        window.ui.toast(firstTime ? 'Vehículo registrado: ya puede recibir cargas.' : 'Vehículo actualizado.', 'success');
+        const pending = window.DriverApp.accountPending(window.store.state);
+        window.ui.toast(!firstTime ? 'Vehículo actualizado.'
+            : pending ? 'Vehículo registrado. Recibirá cargas cuando un administrador verifique su cuenta.'
+                : 'Vehículo registrado: ya puede recibir cargas.', 'success');
     },
 
     async toggleAvailability() {

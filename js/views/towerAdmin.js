@@ -4,6 +4,8 @@
  *    conductor las cruza con su ruta real (POST /restrictions/validate-route) y avisa en la navegación.
  *  - Usuarios (solo ADMIN): cambiar el rol y activar o suspender cuentas. El registro público solo crea conductores y
  *    generadores; los coordinadores salen de aquí.
+ *  - Plantillas (solo ADMIN): el texto de cada notificación por categoría y canal; Notifications lo usa desde el
+ *    siguiente envío.
  *
  * La vista se vuelve a dibujar con cada actualización de la torre; el formulario de restricción va en una hoja montada
  * en <body> (window.Sheet) para que el mapa y lo escrito no se pierdan.
@@ -261,6 +263,130 @@ window.TowerAdmin = (function () {
         }
     }
 
+    // ------------------------------------------------------------------ plantillas
+    const TEMPLATE_CATEGORIES = {
+        REASIGNACION_CARGA: 'Propuesta, asignación o reasignación de carga',
+        CAMBIO_ESTADO_VIAJE: 'Cambio de estado del viaje',
+        ALERTA_RUTA: 'Alerta en la ruta',
+        CIERRE_VIAL: 'Cierre vial',
+        MENSAJE_DESPACHADOR: 'Mensaje de la torre al conductor',
+        EMERGENCIA_SOS: 'SOS del conductor'
+    };
+    const CHANNELS = { PUSH: 'Push', VOICE: 'Voz' };
+
+    /** Variables {{nombre}} que usa un texto, en orden y sin repetir. */
+    function templateVariables(text) {
+        const found = [];
+        String(text || '').replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (match, name) => {
+            if (!found.includes(name)) found.push(name);
+            return match;
+        });
+        return found;
+    }
+
+    function renderTemplates(state) {
+        const status = state.adminStatus || {};
+        const list = window.TruckCarData.templates || [];
+        let body;
+        if (status.templates === 'loading' && !list.length) {
+            body = stateBlock('fa-spinner fa-spin', 'Cargando plantillas', 'Consultando las plantillas de Notifications.');
+        } else if (status.templates === 'error') {
+            body = stateBlock('fa-triangle-exclamation', 'No se pudieron cargar las plantillas', 'Revise la conexión e intente de nuevo.',
+                '<button onclick="window.TowerAdmin.load(\'templates\')" class="mt-3 px-4 py-2 bg-slate-800 rounded-xl text-xs font-bold">Reintentar</button>');
+        } else if (!list.length) {
+            body = stateBlock('fa-message', 'Sin plantillas', 'Notifications no tiene plantillas registradas.');
+        } else {
+            body = `<div class="grid gap-3 md:grid-cols-2">${list.map(t => `
+                <article class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 min-w-0">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-[11px] font-semibold text-slate-400">${esc(CHANNELS[t.channel] || t.channel)} · ${esc(t.language)}</p>
+                            <h3 class="font-bold text-sm text-white">${esc(TEMPLATE_CATEGORIES[t.category] || t.category)}</h3>
+                        </div>
+                        <button onclick="window.TowerAdmin.openTemplateEditor('${esc(t.id)}')" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold whitespace-nowrap">
+                            <i class="fas fa-pen"></i> Editar
+                        </button>
+                    </div>
+                    <p class="text-sm text-slate-200 leading-snug break-words">${esc(t.templateText)}</p>
+                    <p class="text-[11px] text-slate-400">${t.updatedAt ? 'Editada ' + esc(new Date(t.updatedAt).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })) : ''}</p>
+                </article>`).join('')}</div>`;
+        }
+        return shell(state, 'Plantillas de notificación',
+            'El texto de cada notificación por categoría y canal. Los cambios aplican desde la siguiente notificación.', '', body);
+    }
+
+    function openTemplateEditor(id) {
+        const template = (window.TruckCarData.templates || []).find(t => t.id === id);
+        if (!template) return;
+        const original = templateVariables(template.templateText);
+        const body = document.createElement('div');
+        body.className = 'space-y-3 text-left';
+        body.innerHTML = `
+            <textarea rows="5" maxlength="1000" class="login-input w-full text-sm" aria-label="Texto de la plantilla"></textarea>
+            <div>
+                <span class="block text-xs font-semibold text-slate-400 mb-1">Variables · toque una para insertarla donde está el cursor</span>
+                <div class="flex flex-wrap gap-2" data-variables></div>
+            </div>
+            <p class="text-xs text-warn-500 hidden" data-warning role="alert"></p>
+            <p class="text-xs text-warn-500 hidden" data-error role="alert"></p>`;
+        const textarea = body.querySelector('textarea');
+        textarea.value = template.templateText;
+        const warning = body.querySelector('[data-warning]');
+        const check = () => {
+            const missing = original.filter(v => !templateVariables(textarea.value).includes(v));
+            warning.textContent = missing.length
+                ? 'Quitó ' + missing.map(v => '{{' + v + '}}').join(', ') + ': esa información dejará de aparecer en la notificación.'
+                : '';
+            warning.classList.toggle('hidden', !missing.length);
+        };
+        body.querySelector('[data-variables]').innerHTML = original.length
+            ? original.map(v => `<button type="button" data-variable="${esc(v)}" class="px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs font-mono text-slate-200">{{${esc(v)}}}</button>`).join('')
+            : '<span class="text-xs text-slate-400">Esta plantilla no usa variables.</span>';
+        body.querySelectorAll('[data-variable]').forEach(chip => chip.addEventListener('click', () => {
+            const token = '{{' + chip.dataset.variable + '}}';
+            const start = textarea.selectionStart ?? textarea.value.length;
+            const end = textarea.selectionEnd ?? start;
+            textarea.value = textarea.value.slice(0, start) + token + textarea.value.slice(end);
+            textarea.focus();
+            textarea.setSelectionRange(start + token.length, start + token.length);
+            check();
+        }));
+        textarea.addEventListener('input', check);
+
+        window.Sheet.open({
+            title: TEMPLATE_CATEGORIES[template.category] || template.category,
+            subtitle: (CHANNELS[template.channel] || template.channel) + ' · ' + template.language,
+            icon: 'fa-message',
+            body,
+            draggable: false,
+            actions: [
+                {
+                    label: 'Guardar plantilla', tone: 'primary', icon: 'fa-check',
+                    onClick: async () => {
+                        const text = textarea.value.trim();
+                        const error = body.querySelector('[data-error]');
+                        if (!text) {
+                            error.textContent = 'La plantilla no puede quedar vacía.';
+                            error.classList.remove('hidden');
+                            return false;
+                        }
+                        try {
+                            await window.TruckCarService.updateTemplate(id, text);
+                        } catch (e) {
+                            error.textContent = 'No se pudo guardar: ' + window.ui.errorMessage(e);
+                            error.classList.remove('hidden');
+                            return false;
+                        }
+                        window.ui.toast('Plantilla guardada: aplica desde la siguiente notificación.', 'success');
+                        window.store.setState({});
+                        return true;
+                    }
+                },
+                { label: 'Cancelar', tone: 'secondary', value: null }
+            ]
+        });
+    }
+
     // ------------------------------------------------------------------ usuarios
     function filterUsers(users, filter) {
         if (!filter || filter === 'all') return users;
@@ -362,7 +488,10 @@ window.TowerAdmin = (function () {
         window.store.setState({ busyAction: 'user-' + userId });
         try {
             await window.TruckCarService.changeUserStatus(userId, status);
-            window.ui.toast(status === 'ACTIVE' ? 'Cuenta activa.' : 'Cuenta suspendida.', 'success');
+            window.ui.toast(status !== 'ACTIVE' ? 'Cuenta suspendida.'
+                : user.status === 'PENDING_VERIFICATION'
+                    ? (user.role === 'CONDUCTOR' ? 'Cuenta verificada: el conductor ya puede recibir cargas.' : 'Cuenta verificada.')
+                    : 'Cuenta reactivada.', 'success');
         } catch (error) {
             window.ui.failure('No se pudo cambiar el estado', error, 'cambiar el estado de la cuenta');
         } finally {
@@ -380,6 +509,7 @@ window.TowerAdmin = (function () {
         setStatus('loading');
         try {
             if (tab === 'users') await window.TruckCarService.loadUsers();
+            else if (tab === 'templates') await window.TruckCarService.loadTemplates();
             else await window.TruckCarService.loadRestrictions();
             setStatus('ready');
         } catch (error) {
@@ -389,11 +519,13 @@ window.TowerAdmin = (function () {
     }
 
     function render(state, tab) {
-        return tab === 'users' ? renderUsers(state) : renderRestrictions(state);
+        if (tab === 'users') return renderUsers(state);
+        if (tab === 'templates') return renderTemplates(state);
+        return renderRestrictions(state);
     }
 
     return {
         render, load, openRestrictionForm, deactivateRestriction, changeRole, changeStatus, setUserFilter,
-        validateRestriction, filterUsers, RESTRICTION_TYPES
+        openTemplateEditor, validateRestriction, filterUsers, templateVariables, RESTRICTION_TYPES
     };
 })();

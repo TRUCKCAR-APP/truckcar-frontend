@@ -811,6 +811,19 @@
             try { localStorage.setItem(this.inboxSeenKey(), String(newest)); } catch (e) { /* sin almacenamiento */ }
         },
 
+        async loadTemplates() {
+            const list = await api.templates.list();
+            data.templates = (Array.isArray(list) ? list : []).slice()
+                .sort((a, b) => (a.category + a.channel).localeCompare(b.category + b.channel));
+            return data.templates;
+        },
+
+        async updateTemplate(id, templateText) {
+            const updated = await api.templates.update(id, templateText);
+            data.templates = (data.templates || []).map(t => (t.id === id ? { ...t, ...updated } : t));
+            return updated;
+        },
+
         async loadUsers() {
             const page = await api.users.list();
             data.users = Array.isArray(page) ? page : ((page && page.content) || []);
@@ -863,6 +876,7 @@
             data.users = [];
             data.restrictions = [];
             data.notifications = [];
+            data.templates = [];
         }
     };
 
