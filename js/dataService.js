@@ -774,6 +774,43 @@
             return data.currentDriver;
         },
 
+        /**
+         * Bandeja del usuario. El servidor no guarda "leída": se marca en el teléfono con la hora de la notificación
+         * más nueva que el usuario ya vio (truckcar.inbox.seen.<usuario>).
+         */
+        async loadNotifications() {
+            const userId = window.store.state.currentUser && window.store.state.currentUser.id;
+            if (!userId) return [];
+            const page = await api.notifications.forUser(userId);
+            data.notifications = ((page && page.content) || (Array.isArray(page) ? page : [])).map(n => ({
+                id: n.id,
+                category: n.category,
+                text: n.payload || '',
+                status: n.status,
+                failureReason: n.failureReason,
+                audioUrl: /^https:\/\//.test(n.audioUrl || '') ? n.audioUrl : null,
+                createdAt: n.createdAt,
+                timeAgo: timeAgo(n.createdAt)
+            }));
+            return data.notifications;
+        },
+
+        inboxSeenKey() {
+            const user = window.store.state.currentUser;
+            return 'truckcar.inbox.seen.' + (user ? user.id : '');
+        },
+
+        unreadNotifications() {
+            let seen = 0;
+            try { seen = Number(localStorage.getItem(this.inboxSeenKey())) || 0; } catch (e) { /* sin almacenamiento */ }
+            return (data.notifications || []).filter(n => new Date(n.createdAt).getTime() > seen).length;
+        },
+
+        markNotificationsSeen() {
+            const newest = Math.max(0, ...(data.notifications || []).map(n => new Date(n.createdAt).getTime() || 0));
+            try { localStorage.setItem(this.inboxSeenKey(), String(newest)); } catch (e) { /* sin almacenamiento */ }
+        },
+
         async loadUsers() {
             const page = await api.users.list();
             data.users = Array.isArray(page) ? page : ((page && page.content) || []);
@@ -825,6 +862,7 @@
             data.lastDelivery = null;
             data.users = [];
             data.restrictions = [];
+            data.notifications = [];
         }
     };
 

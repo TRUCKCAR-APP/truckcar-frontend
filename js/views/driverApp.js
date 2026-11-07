@@ -76,7 +76,8 @@ window.DriverApp = {
     tabButton(currentScreen, screen, label, icon) {
         const active = currentScreen === screen;
         const badge = screen === 'assigned_load' && this.hasPendingLoad() ? '<span class="driver-tab-badge" aria-label="Carga pendiente"></span>'
-            : screen === 'offline' ? this.offlineBadgeHtml() : '';
+            : screen === 'offline' ? this.offlineBadgeHtml()
+            : screen === 'alerts' ? this.inboxBadgeHtml() : '';
         return `
             <button onclick="window.store.setState({ driverScreen: '${screen}' })" ${active ? 'aria-current="page"' : ''} class="driver-tab ${active ? 'is-active' : ''}">
                 <svg aria-hidden="true"><use href="assets/icons.svg#${icon}${active ? '-fill' : ''}"></use></svg>
@@ -93,6 +94,57 @@ window.DriverApp = {
         if (!pending) return '<span data-offline-badge hidden></span>';
         const text = pending + (pending === 1 ? ' acción guardada sin enviar' : ' acciones guardadas sin enviar');
         return `<span data-offline-badge><span class="driver-tab-count" aria-hidden="true">${pending > 99 ? '99+' : pending}</span><span class="sr-only">, ${text}</span></span>`;
+    },
+
+    /** Notificaciones nuevas sobre la pestaña Alertas (la bandeja "Para usted" vive en esa pantalla). */
+    inboxBadgeHtml() {
+        const service = window.TruckCarService;
+        const unread = service && service.unreadNotifications ? service.unreadNotifications() : 0;
+        if (!unread) return '';
+        const text = unread + (unread === 1 ? ' notificación nueva' : ' notificaciones nuevas');
+        return `<span class="driver-tab-count" aria-hidden="true">${unread > 99 ? '99+' : unread}</span><span class="sr-only">, ${text}</span>`;
+    },
+
+    INBOX_CATEGORIES: {
+        REASIGNACION_CARGA: 'Carga', CAMBIO_ESTADO_VIAJE: 'Viaje', ALERTA_RUTA: 'Alerta en la ruta',
+        CIERRE_VIAL: 'Cierre vial', MENSAJE_DESPACHADOR: 'Mensaje de la torre', EMERGENCIA_SOS: 'SOS'
+    },
+
+    /** Bandeja "Para usted": lo que la plataforma le notificó, con el audio si la voz se generó. */
+    renderInbox(state) {
+        const esc = window.ui.escape;
+        const items = window.TruckCarData.notifications || [];
+        const status = state.inboxStatus;
+        if (status === 'loading' && !items.length) {
+            return `<p class="status-line">${this.spinner()}<span class="status-sub">Consultando sus notificaciones…</span></p>`;
+        }
+        if (status === 'error' && !items.length) {
+            return `
+                <section class="empty-state">
+                    <div class="empty-mark">${this.icon('wifi-slash')}</div>
+                    <h2>No se pudieron cargar las notificaciones</h2>
+                    <p>Puede que no haya señal. Intente de nuevo en un momento.</p>
+                    <button onclick="window.app.openInbox()" class="btn-accent">${this.icon('arrows-clockwise')}Reintentar</button>
+                </section>`;
+        }
+        if (!items.length) {
+            return `
+                <section class="empty-state">
+                    <div class="empty-mark">${this.icon('bell')}</div>
+                    <h2>Sin notificaciones</h2>
+                    <p>Aquí verá las cargas que le propongan, los cambios de sus viajes y los mensajes de la torre.</p>
+                </section>`;
+        }
+        return `
+            <div class="alert-list">
+                ${items.map(n => `
+                    <article class="alert-item">
+                        <p class="alert-meta">${esc([this.INBOX_CATEGORIES[n.category] || 'Aviso', n.timeAgo].filter(Boolean).join(' · '))}</p>
+                        <p class="inbox-text">${esc(n.text)}</p>
+                        ${n.status === 'FAILED' ? this.warnLine('No se pudo enviar al teléfono', '· queda aquí para consulta') : ''}
+                        ${n.audioUrl ? `<audio controls preload="none" src="${esc(n.audioUrl)}" class="inbox-audio"></audio>` : ''}
+                    </article>`).join('')}
+            </div>`;
     },
 
     /** Actualiza el contador de la pestaña Offline en sitio (la cola cambia sin que se repinte la pantalla). */
@@ -251,6 +303,52 @@ window.DriverApp = {
         `;
     },
 
+    /** Propuesta que el conductor ya puede aceptar o rechazar (Load-Allocation la dejó NOTIFIED). */
+    isOpenProposal(load) {
+        return Boolean(load && load.status === 'AVAILABLE' && load.assignmentStatus === 'NOTIFIED');
+    },
+
+    /**
+     * Qué cambió entre dos consultas de /loads/mine: 'new' si llegó una propuesta que no estaba, 'gone' si la que
+     * estaba ya no está (venció, la rechazó o se asignó a otro), null si nada que avisar.
+     */
+    proposalChange(before, after) {
+        const open = (l) => this.isOpenProposal(l);
+        if (open(after) && !(open(before) && before.backendId === after.backendId)) return 'new';
+        if (open(before) && !(after && after.backendId === before.backendId)) return 'gone';
+        return null;
+    },
+
+    /**
+     * Hora límite (ms) para responder: el servidor vence la propuesta cuando lleva assignmentResponseMinutes en
+     * NOTIFIED. assignmentStatusChangedAt es hora local del servidor (TZ America/Bogota), como la del teléfono.
+     */
+    proposalDeadline(load, minutes) {
+        const changed = load && load.raw && load.raw.assignmentStatusChangedAt;
+        const start = changed ? new Date(changed).getTime() : NaN;
+        return Number.isFinite(start) ? start + minutes * 60 * 1000 : null;
+    },
+
+    /** Plazo para responder la propuesta; window.app.tickCountdowns actualiza el texto cada segundo sin re-render. */
+    renderCountdown(load) {
+        const config = window.TruckCarConfig || {};
+        const deadline = this.proposalDeadline(load, config.assignmentResponseMinutes || 5);
+        if (!deadline) return '';
+        const left = this.countdownText(deadline);
+        return `
+            <div class="countdown" data-deadline="${deadline}" role="timer" aria-live="off">
+                ${this.icon('warning')}
+                <span data-countdown-text>${left ? `Responda en <b>${left}</b> · después el motor la ofrece a otro conductor` : 'El plazo venció · el motor la ofrecerá a otro conductor'}</span>
+            </div>`;
+    },
+
+    /** "4:05" para lo que falta, o null si ya venció. */
+    countdownText(deadline, now = Date.now()) {
+        const left = Math.ceil((deadline - now) / 1000);
+        if (left <= 0) return null;
+        return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    },
+
     /**
      * Disponible para cargas (ACTIVO) o no (INACTIVO). Con un viaje en curso no se puede apagar: la carga ya va a
      * bordo y la torre lo sigue viendo en ruta.
@@ -342,6 +440,7 @@ window.DriverApp = {
         return `
             <div class="screen-scroll">
                 <p class="status-line">${this.dotText(this.statusLabel(statusCode), inTransit ? 'ok' : '')}<span class="status-sub"> · ${esc(load.id)}${esc(startedAt)}</span></p>
+                ${pending && load.assignmentStatus === 'NOTIFIED' ? this.renderCountdown(load) : ''}
 
                 <div class="trip">
                     <div class="trip-rail"><span class="trip-stop"></span><span class="trip-line"></span></div>
@@ -568,15 +667,23 @@ window.DriverApp = {
                 <div class="screen-actions">${report}</div>`;
         }
 
+        const inbox = state.alertsView === 'inbox';
+        const unread = window.TruckCarService && window.TruckCarService.unreadNotifications
+            ? window.TruckCarService.unreadNotifications() : 0;
         return `
             <div class="screen-scroll">
                 <h1 class="large-title">Alertas</h1>
-                <p class="secondary">Reportes de otros conductores en la vía.</p>
-                <div class="filters" role="group" aria-label="Filtrar alertas">
-                    ${this.ALERT_FILTERS.map(([key, label]) => `
-                        <button type="button" onclick="window.store.setState({ alertFilter: '${key}' })" aria-pressed="${filter === key}" class="filter">${label}</button>`).join('')}
+                <div class="segmented" role="tablist" aria-label="Alertas de la vía o notificaciones para usted">
+                    <button type="button" role="tab" aria-selected="${!inbox}" onclick="window.store.setState({ alertsView: 'road' })">En la vía</button>
+                    <button type="button" role="tab" aria-selected="${inbox}" onclick="window.app.openInbox()">Para usted${unread && !inbox ? ` <span class="segmented-count">${unread}</span>` : ''}</button>
                 </div>
-                ${body}
+                ${inbox ? this.renderInbox(state) : `
+                    <p class="secondary">Reportes de otros conductores en la vía.</p>
+                    <div class="filters" role="group" aria-label="Filtrar alertas">
+                        ${this.ALERT_FILTERS.map(([key, label]) => `
+                            <button type="button" onclick="window.store.setState({ alertFilter: '${key}' })" aria-pressed="${filter === key}" class="filter">${label}</button>`).join('')}
+                    </div>
+                    ${body}`}
             </div>
         `;
     },

@@ -188,11 +188,20 @@ window.VehicleForm = (function () {
                     close(overlay);
                     resolve(true);
                 } catch (error) {
-                    const box = form.querySelector('[data-form-error]');
-                    box.classList.remove('hidden');
-                    box.querySelector('[data-form-error-text]').textContent = error && error.status === 409
-                        ? 'Esa placa ya está registrada a otro conductor.'
-                        : window.ui.errorMessage(error);
+                    // El error va junto al campo que lo causa (el GPS, en "Dónde está ahora") o arriba del formulario, y
+                    // se desplaza a la vista: en el teléfono el botón queda abajo y un aviso fuera de pantalla no se ve.
+                    let shown;
+                    if (error && error.field && form.querySelector(`[data-error-for="${error.field}"]`)) {
+                        showErrors({ [error.field]: error.message });
+                        shown = form.querySelector(`[data-error-for="${error.field}"]`);
+                    } else {
+                        shown = form.querySelector('[data-form-error]');
+                        shown.classList.remove('hidden');
+                        shown.querySelector('[data-form-error-text]').textContent = error && error.status === 409
+                            ? 'Esa placa ya está registrada a otro conductor.'
+                            : window.ui.errorMessage(error);
+                    }
+                    if (shown.scrollIntoView) shown.scrollIntoView({ block: 'center', behavior: 'smooth' });
                     submit.disabled = false;
                     submit.querySelector('span').textContent = editing ? 'Guardar cambios' : 'Registrar vehículo';
                 }
