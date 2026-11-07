@@ -250,6 +250,11 @@ window.DriverApp = {
         return `
             <div class="screen-scroll">
                 <h1 class="large-title">Vehículo</h1>
+                ${this.accountPending(state) ? `
+                    <div class="notice">
+                        ${this.warnLine('Cuenta pendiente de verificación')}
+                        <p>Un administrador debe verificarla en la torre de control. Mientras tanto puede registrar su vehículo, pero no recibirá cargas.</p>
+                    </div>` : ''}
                 ${v ? `
                     <div class="vehicle-id">
                         <span class="plate" aria-label="Placa ${esc(v.plate)}">${esc(this.plateText(v.plate))}</span>
@@ -301,6 +306,11 @@ window.DriverApp = {
                     </div>` : ''}
             </div>
         `;
+    },
+
+    /** Cuenta del conductor aún sin verificar por un administrador: el motor de asignación no le propone cargas. */
+    accountPending(state) {
+        return Boolean(state && state.currentUser && state.currentUser.status === 'PENDING_VERIFICATION');
     },
 
     /** Propuesta que el conductor ya puede aceptar o rechazar (Load-Allocation la dejó NOTIFIED). */
@@ -401,7 +411,9 @@ window.DriverApp = {
         }
         if (!load) {
             return this.renderEmptyState('package', 'Sin carga asignada',
-                'Cuando el sistema le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
+                this.accountPending(state)
+                    ? 'Su cuenta está pendiente de verificación: recibirá cargas cuando un administrador la verifique.'
+                    : 'Cuando el sistema le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
                 `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`);
         }
         const raw = load.raw || {};

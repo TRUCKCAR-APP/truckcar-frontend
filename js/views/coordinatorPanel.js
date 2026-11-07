@@ -340,14 +340,14 @@ window.CoordinatorPanel = {
                 ${item('fleet', 'fa-tower-broadcast', 'Torre de control')}
                 ${item('shipments', 'fa-boxes-stacked', 'Mis envíos')}
                 ${item('restrictions', 'fa-road-barrier', 'Restricciones')}
-                ${state.sessionRole === 'ADMIN' ? item('users', 'fa-users', 'Usuarios') : ''}
+                ${state.sessionRole === 'ADMIN' ? item('users', 'fa-users', 'Usuarios') + item('templates', 'fa-message', 'Plantillas') : ''}
             </nav>`;
     },
 
-    /** Pestaña visible: "Usuarios" es solo del ADMIN; cualquier otro valor vuelve a la torre. */
+    /** Pestaña visible: "Usuarios" y "Plantillas" son solo del ADMIN; cualquier otro valor vuelve a la torre. */
     activeTab(state) {
         const tab = state.coordinatorTab;
-        if (tab === 'users') return state.sessionRole === 'ADMIN' ? 'users' : 'fleet';
+        if (tab === 'users' || tab === 'templates') return state.sessionRole === 'ADMIN' ? tab : 'fleet';
         return ['shipments', 'restrictions'].includes(tab) ? tab : 'fleet';
     },
 

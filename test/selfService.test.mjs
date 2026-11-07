@@ -160,7 +160,7 @@ test("Usuarios es solo del ADMIN: un coordinador que pide esa pestaña vuelve a 
   const tabs = (role) => [...new JSDOM(P.renderTabs({ coordinatorTab: "fleet", sessionRole: role })).window.document.querySelectorAll('[role="tab"]')]
     .map((b) => b.getAttribute("aria-label"));
   same(tabs("COORDINADOR"), ["Torre de control", "Mis envíos", "Restricciones"]);
-  same(tabs("ADMIN"), ["Torre de control", "Mis envíos", "Restricciones", "Usuarios"]);
+  same(tabs("ADMIN"), ["Torre de control", "Mis envíos", "Restricciones", "Usuarios", "Plantillas"]);
 });
 
 test("el ADMIN filtra las cuentas y no puede cambiarse a sí mismo el rol ni suspenderse", () => {

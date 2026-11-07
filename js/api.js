@@ -347,6 +347,12 @@
             acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
         },
 
+        /** Notifications: plantillas de texto por categoría, canal e idioma (solo ADMIN; el gateway responde 403 a otro rol). */
+        templates: {
+            list: () => http.get('/templates'),
+            update: (id, templateText) => http.put('/templates/' + enc(id), { templateText })
+        },
+
         /** Notifications: lo que se le envió al usuario (push y voz), la más reciente primero. */
         notifications: {
             forUser: (userId, size = 30) =>
