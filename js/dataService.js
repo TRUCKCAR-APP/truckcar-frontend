@@ -147,7 +147,40 @@
                 runtValid: Boolean(state.runtValid),
                 badges: state.activeBadges || []
             } : null,
-            coords: state ? coordsOrNull(state.currentLatitude, state.currentLongitude) : null
+            coords: state ? coordsOrNull(state.currentLatitude, state.currentLongitude) : null,
+            // Estado tal como lo guarda fleets-drivers: al editar el vehículo se reenvía completo para no perder
+            // calificación, viajes ni horas de conducción.
+            state: state || null
+        };
+    }
+
+    /** Cuerpo de POST /fleets-drivers/state: el estado actual del conductor con los cambios encima. */
+    function driverStateRequest(driver, changes) {
+        const s = driver.state || {};
+        return {
+            driverId: driver.id,
+            driverName: driver.name,
+            licenseCategory: s.licenseCategory || null,
+            rating: s.rating != null ? s.rating : null,
+            totalTrips: s.totalTrips != null ? s.totalTrips : 0,
+            vehiclePlate: s.vehiclePlate,
+            vehicleModel: s.vehicleModel || null,
+            vehicleType: s.vehicleType,
+            maxHeightMeters: s.maxHeightMeters,
+            netCargoWeightTons: s.netCargoWeightTons != null ? s.netCargoWeightTons : 0,
+            maxPayloadTons: s.maxPayloadTons,
+            tareWeightTons: s.tareWeightTons,
+            drivingHoursToday: s.drivingHoursToday != null ? s.drivingHoursToday : 0,
+            hazmatAuthorized: Boolean(s.hazmatAuthorized),
+            coldChainCertified: Boolean(s.coldChainCertified),
+            runtValid: Boolean(s.runtValid),
+            electronicTollTagActive: Boolean(s.electronicTollTagActive),
+            activeBadges: s.activeBadges || [],
+            currentLatitude: s.currentLatitude != null ? s.currentLatitude : null,
+            currentLongitude: s.currentLongitude != null ? s.currentLongitude : null,
+            currentSpeedKmH: s.currentSpeedKmH != null ? s.currentSpeedKmH : 0,
+            status: s.status || 'ACTIVO',
+            ...changes
         };
     }
 
@@ -711,6 +744,72 @@
             return api.loads.publicTrackingLink(loadId);
         },
 
+        driverStateRequest,
+
+        /**
+         * El conductor registra o edita su vehículo (fleets-drivers acepta el estado propio del CONDUCTOR). Queda
+         * ACTIVO y con la posición del GPS si la hay: así el motor de asignación ya lo considera para las cargas.
+         */
+        async saveVehicle(vehicle, coords) {
+            const driver = data.currentDriver;
+            if (!driver || !driver.id) throw new Error('No se encontró el perfil del conductor');
+            const position = coords ? { currentLatitude: coords[0], currentLongitude: coords[1] } : {};
+            const firstTime = !driver.state;
+            await api.fleet.updateState(driverStateRequest(driver, {
+                ...vehicle,
+                ...position,
+                ...(firstTime ? { status: 'ACTIVO' } : {})
+            }));
+            await this.loadDriverProfile();
+            return data.currentDriver;
+        },
+
+        /** Disponible (ACTIVO) o no disponible (INACTIVO) para recibir cargas. */
+        async setAvailability(available, coords) {
+            const driver = data.currentDriver;
+            if (!driver || !driver.state) throw new Error('Registre primero su vehículo');
+            const position = coords ? { currentLatitude: coords[0], currentLongitude: coords[1] } : {};
+            await api.fleet.updateState(driverStateRequest(driver, { ...position, status: available ? 'ACTIVO' : 'INACTIVO' }));
+            await this.loadDriverProfile();
+            return data.currentDriver;
+        },
+
+        async loadUsers() {
+            const page = await api.users.list();
+            data.users = Array.isArray(page) ? page : ((page && page.content) || []);
+            return data.users;
+        },
+
+        async changeUserRole(userId, role) {
+            const updated = await api.users.changeRole(userId, role);
+            data.users = (data.users || []).map(u => (u.id === userId ? { ...u, ...updated } : u));
+            return updated;
+        },
+
+        async changeUserStatus(userId, status) {
+            const updated = await api.users.changeStatus(userId, status);
+            data.users = (data.users || []).map(u => (u.id === userId ? { ...u, ...updated } : u));
+            return updated;
+        },
+
+        async loadRestrictions() {
+            const list = await api.restrictions.listActive();
+            data.restrictions = (Array.isArray(list) ? list : ((list && list.content) || []))
+                .filter(r => r.isActive !== false);
+            return data.restrictions;
+        },
+
+        async createRestriction(restriction) {
+            const created = await api.restrictions.create(restriction);
+            await this.loadRestrictions();
+            return created;
+        },
+
+        async deactivateRestriction(id) {
+            await api.restrictions.deactivate(id);
+            data.restrictions = (data.restrictions || []).filter(r => r.id !== id);
+        },
+
         reset() {
             data.activeSos = [];
             data.currentDriver = null;
@@ -724,6 +823,8 @@
             data.publishedLoads = [];
             data.shipmentTrucks = {};
             data.lastDelivery = null;
+            data.users = [];
+            data.restrictions = [];
         }
     };
 

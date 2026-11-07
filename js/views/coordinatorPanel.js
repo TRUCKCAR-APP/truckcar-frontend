@@ -8,63 +8,11 @@ window.CoordinatorPanel = {
         const load = data.activeLoadOrder;
         const loads = data.availableLoads || [];
         const deliveries = data.deliveredLoads || [];
-        const user = state.currentUser;
-
-        const operating = fleet.filter(t => t.status === 'EN_TRANSITO' || t.status === 'DISPONIBLE').length;
-        const clearanceAlerts = alerts.filter(a => a.type === 'bridge').length;
         const notices = this.buildNotices(fleet, alerts);
 
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
-                <header class="min-h-16 px-4 lg:px-6 py-2 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between z-30 shrink-0 gap-x-4 gap-y-2">
-                    <div class="flex items-center gap-2.5 min-w-0">
-                        <div class="w-10 h-10 shrink-0 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100">
-                            <i class="fas fa-tower-broadcast text-lg"></i>
-                        </div>
-                        <!-- min-w-0: en 390 px la columna se encoge y sus filas se apilan en lugar de montarse una sobre otra. -->
-                        <div class="min-w-0 flex-1">
-                            <h1 class="text-base font-bold text-white tracking-tight leading-tight flex items-center gap-x-2 gap-y-0.5 flex-wrap">
-                                <span>Central de monitoreo de flota</span>
-                                ${Object.keys(state.dataStatus.errors).length
-                                    ? '<span class="text-xs font-semibold text-warn-500 flex items-center gap-1.5 whitespace-nowrap"><i class="fas fa-triangle-exclamation"></i> Con errores</span>'
-                                    : '<span class="text-xs font-medium text-slate-400 flex items-center gap-1.5 whitespace-nowrap"><span class="dot ok"></span> En línea</span>'}
-                            </h1>
-                            <p class="text-xs text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5"><span data-network-status class="tower-net lg:hidden"></span><span class="whitespace-nowrap">Última sincronización: ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</span></p>
-                        </div>
-                    </div>
-
-                    ${this.renderTabs(state)}
-
-                    <div class="flex items-center gap-3 lg:gap-6 flex-wrap">
-                        <div class="flex items-center gap-3">
-                            <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
-                                <span class="text-xs text-slate-400 font-medium block">Flota activa</span>
-                                <span class="text-sm font-bold text-white font-mono"><span data-count="${operating}" data-count-key="kpi-operating">${operating}</span> / ${fleet.length}</span>
-                            </div>
-                            <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
-                                <span class="text-xs text-slate-400 font-medium block">Alertas en ruta</span>
-                                <span class="text-sm font-bold text-white font-mono"><span data-count="${alerts.length}" data-count-key="kpi-alerts">${alerts.length}</span> novedades</span>
-                            </div>
-                            <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
-                                <span class="text-xs text-slate-400 font-medium block">Gálibo reportado</span>
-                                <span class="text-sm font-bold text-white font-mono"><span data-count="${clearanceAlerts}" data-count-key="kpi-clearance">${clearanceAlerts}</span> alertas</span>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-3 pl-4 border-l border-slate-800">
-                            <div class="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-200 font-bold text-xs">
-                                ${esc(this.initials(user))}
-                            </div>
-                            <div class="text-left">
-                                <div class="text-xs font-bold text-slate-200">${esc(user ? (user.firstName + ' ' + user.lastName) : 'Coordinador')}</div>
-                                <div class="text-xs text-slate-400">${esc(window.CoordinatorPanel.roleLabel(state.sessionRole))}</div>
-                            </div>
-                            <button onclick="window.app.logout()" class="ml-1 w-9 h-9 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs" title="Cerrar sesión" aria-label="Cerrar sesión">
-                                <i class="fas fa-right-from-bracket"></i>
-                            </button>
-                        </div>
-                    </div>
-                </header>
+                ${this.renderHeader(state)}
 
                 ${window.ui.syncBanner(state)}
 
@@ -318,18 +266,89 @@ window.CoordinatorPanel = {
     },
 
     /** Pestañas del rol COORDINADOR: torre de control (toda la flota) y panel del generador (sus envíos). */
+    /** Cabecera de la torre: título, pestañas, indicadores y sesión. La comparten Restricciones y Usuarios. */
+    renderHeader(state) {
+        const esc = window.ui.escape;
+        const fleet = window.TruckCarData.fleetVehicles || [];
+        const alerts = window.TruckCarData.communityAlerts || [];
+        const user = state.currentUser;
+        const operating = fleet.filter(t => t.status === 'EN_TRANSITO' || t.status === 'DISPONIBLE').length;
+        const clearanceAlerts = alerts.filter(a => a.type === 'bridge').length;
+        return `
+        <header class="min-h-16 px-4 lg:px-6 py-2 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between z-30 shrink-0 gap-x-4 gap-y-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-10 h-10 shrink-0 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100">
+                    <i class="fas fa-tower-broadcast text-lg"></i>
+                </div>
+                <!-- min-w-0: en 390 px la columna se encoge y sus filas se apilan en lugar de montarse una sobre otra. -->
+                <div class="min-w-0 flex-1">
+                    <h1 class="text-base font-bold text-white tracking-tight leading-tight flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+                        <span>Central de monitoreo de flota</span>
+                        ${Object.keys(state.dataStatus.errors).length
+                            ? '<span class="text-xs font-semibold text-warn-500 flex items-center gap-1.5 whitespace-nowrap"><i class="fas fa-triangle-exclamation"></i> Con errores</span>'
+                            : '<span class="text-xs font-medium text-slate-400 flex items-center gap-1.5 whitespace-nowrap"><span class="dot ok"></span> En línea</span>'}
+                    </h1>
+                    <p class="text-xs text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5"><span data-network-status class="tower-net lg:hidden"></span><span class="whitespace-nowrap">Última sincronización: ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</span></p>
+                </div>
+            </div>
+
+            ${this.renderTabs(state)}
+
+            <div class="flex items-center gap-3 lg:gap-6 flex-wrap">
+                <div class="flex items-center gap-3">
+                    <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
+                        <span class="text-xs text-slate-400 font-medium block">Flota activa</span>
+                        <span class="text-sm font-bold text-white font-mono"><span data-count="${operating}" data-count-key="kpi-operating">${operating}</span> / ${fleet.length}</span>
+                    </div>
+                    <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
+                        <span class="text-xs text-slate-400 font-medium block">Alertas en ruta</span>
+                        <span class="text-sm font-bold text-white font-mono"><span data-count="${alerts.length}" data-count-key="kpi-alerts">${alerts.length}</span> novedades</span>
+                    </div>
+                    <div class="px-3.5 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
+                        <span class="text-xs text-slate-400 font-medium block">Gálibo reportado</span>
+                        <span class="text-sm font-bold text-white font-mono"><span data-count="${clearanceAlerts}" data-count-key="kpi-clearance">${clearanceAlerts}</span> alertas</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 pl-4 border-l border-slate-800">
+                    <div class="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-200 font-bold text-xs">
+                        ${esc(this.initials(user))}
+                    </div>
+                    <div class="text-left">
+                        <div class="text-xs font-bold text-slate-200">${esc(user ? (user.firstName + ' ' + user.lastName) : 'Coordinador')}</div>
+                        <div class="text-xs text-slate-400">${esc(window.CoordinatorPanel.roleLabel(state.sessionRole))}</div>
+                    </div>
+                    <button onclick="window.app.logout()" class="ml-1 w-9 h-9 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs" title="Cerrar sesión" aria-label="Cerrar sesión">
+                        <i class="fas fa-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+        `;
+    },
+
     renderTabs(state) {
-        const tab = state.coordinatorTab === 'shipments' ? 'shipments' : 'fleet';
+        const tab = this.activeTab(state);
+        // En el teléfono solo los íconos: cuatro pestañas con texto no caben en 390 px. El nombre queda en aria-label.
         const item = (key, icon, text) => `
-            <button onclick="window.app.setCoordinatorTab('${key}')" role="tab" aria-selected="${tab === key}"
-                    class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${tab === key ? 'bg-accent-500/15 text-accent-500' : 'text-slate-300 hover:bg-slate-800'}">
-                <i class="fas ${icon}"></i> ${text}
+            <button onclick="window.app.setCoordinatorTab('${key}')" role="tab" aria-selected="${tab === key}" aria-label="${text}" title="${text}"
+                    class="px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${tab === key ? 'bg-accent-500/15 text-accent-500' : 'text-slate-300 hover:bg-slate-800'}">
+                <i class="fas ${icon}"></i><span class="hidden sm:inline">${text}</span>
             </button>`;
         return `
             <nav class="flex items-center gap-1 p-1 bg-slate-950/60 border border-slate-800 rounded-xl" role="tablist" aria-label="Vistas del coordinador">
                 ${item('fleet', 'fa-tower-broadcast', 'Torre de control')}
                 ${item('shipments', 'fa-boxes-stacked', 'Mis envíos')}
+                ${item('restrictions', 'fa-road-barrier', 'Restricciones')}
+                ${state.sessionRole === 'ADMIN' ? item('users', 'fa-users', 'Usuarios') : ''}
             </nav>`;
+    },
+
+    /** Pestaña visible: "Usuarios" es solo del ADMIN; cualquier otro valor vuelve a la torre. */
+    activeTab(state) {
+        const tab = state.coordinatorTab;
+        if (tab === 'users') return state.sessionRole === 'ADMIN' ? 'users' : 'fleet';
+        return ['shipments', 'restrictions'].includes(tab) ? tab : 'fleet';
     },
 
     initials(user) {
