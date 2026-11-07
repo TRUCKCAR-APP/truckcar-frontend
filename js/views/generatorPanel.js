@@ -243,6 +243,46 @@ window.GeneratorPanel = (function () {
         `;
     }
 
+    /** Paso en curso: aún no ocurrió, pero sí se sabe qué está pasando (no solo "Pendiente"). */
+    function progressItem(icon, title, when, detail) {
+        const esc = window.ui.escape;
+        return `
+            <li class="flex gap-2.5" aria-current="step">
+                <span class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] bg-slate-800 text-slate-200 border border-slate-500"><i class="fas ${icon}"></i></span>
+                <div class="text-[11px] leading-tight pt-0.5">
+                    <div class="font-bold text-white">${esc(title)}</div>
+                    <div class="text-slate-400">${[when ? formatDate(when) : '', detail].filter(Boolean).map(esc).join(' · ')}</div>
+                </div>
+            </li>
+        `;
+    }
+
+    /**
+     * Entre publicar y aceptar: a quién se le propuso, si se busca otro conductor o si no hay disponibles. Lo decide
+     * el motor de asignación (Load-Allocation assignmentStatus); "Mis envíos" se refresca cada 10 s.
+     */
+    function matchingStep(load) {
+        if (load.status !== 'AVAILABLE') return '';
+        const raw = load.raw || {};
+        const changed = raw.assignmentStatusChangedAt;
+        const attempts = Number(raw.assignmentAttempts) > 1 ? ' (intento ' + raw.assignmentAttempts + ')' : '';
+        switch (load.assignmentStatus) {
+            case 'PROPOSED':
+            case 'NOTIFIED':
+                return progressItem('fa-paper-plane', 'Propuesta a ' + (load.assignedDriverName || 'un conductor') + attempts,
+                    changed, 'esperando su respuesta');
+            case 'REJECTED':
+                return progressItem('fa-rotate', 'Buscando otro conductor', changed, 'el anterior la rechazó');
+            case 'TIMEOUT':
+                return progressItem('fa-rotate', 'Buscando otro conductor', changed, 'el anterior no respondió a tiempo');
+            case 'UNASSIGNED_NO_DRIVERS':
+                return progressItem('fa-triangle-exclamation', 'Sin conductores disponibles', changed,
+                    'el motor vuelve a intentar cada 2 minutos');
+            default:
+                return progressItem('fa-magnifying-glass', 'Buscando conductor', null, 'el motor de asignación evalúa la flota');
+        }
+    }
+
     function renderDetail(state, load, truck) {
         const esc = window.ui.escape;
         if (!load) {
@@ -282,7 +322,8 @@ window.GeneratorPanel = (function () {
                     ${timelineItem(true, 'fa-upload', 'Publicada', load.publishedAt)}
                     ${cancelled
                         ? timelineItem(true, 'fa-ban', 'Cancelada', load.cancelledAt, load.cancellationReason)
-                        : timelineItem(assigned, 'fa-handshake', 'Aceptada por el conductor', load.assignedAt)
+                        : matchingStep(load)
+                            + timelineItem(assigned, 'fa-handshake', 'Aceptada por el conductor', load.assignedAt)
                             + timelineItem(!!load.tripStartedAt, 'fa-truck-moving', 'En ruta', load.tripStartedAt)
                             + timelineItem(load.status === 'DELIVERED', 'fa-flag-checkered', 'Entregada', load.deliveredAt,
                                 load.podReceiverName ? 'recibió ' + load.podReceiverName : '')}
@@ -373,7 +414,7 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    return { render, selectedLoad, truckFor, updateTruckLine, CITIES, FORM_STEPS, findCity, validate };
+    return { render, selectedLoad, truckFor, updateTruckLine, CITIES, FORM_STEPS, findCity, validate, matchingStep };
 })();
 
 window.generatorCtrl = (function () {
