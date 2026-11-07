@@ -298,16 +298,16 @@ window.TowerAdmin = (function () {
                 const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email;
                 const statusTone = u.status === 'ACTIVE' ? 'ok' : '';
                 return `
-                    <article class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                        <div class="flex items-start justify-between gap-3">
+                    <article class="bg-slate-900 border border-slate-800 rounded-2xl p-4 min-w-0">
+                        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
                             <div class="min-w-0">
                                 <h3 class="font-bold text-sm text-white truncate">${esc(name)}${own ? ' <span class="text-slate-400 font-medium">· su cuenta</span>' : ''}</h3>
                                 <p class="text-xs text-slate-400 truncate">${esc(u.email)}</p>
                             </div>
                             <span class="text-xs text-slate-300 whitespace-nowrap flex items-center gap-1.5"><span class="dot ${statusTone}"></span>${esc(STATUSES[u.status] || u.status)}</span>
                         </div>
-                        <div class="grid grid-cols-[1fr_auto] gap-2 mt-3 items-end">
-                            <label class="block">
+                        <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 mt-3 items-end">
+                            <label class="block min-w-0">
                                 <span class="block text-[11px] font-semibold text-slate-400 mb-1">Rol</span>
                                 <select onchange="window.TowerAdmin.changeRole('${esc(u.id)}', this)" class="login-input w-full text-xs" ${own || busy ? 'disabled' : ''} data-current="${esc(u.role)}">
                                     ${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === u.role ? 'selected' : ''}>${v}</option>`).join('')}
