@@ -652,7 +652,10 @@ window.app = {
         });
         if (!saved) return;
         window.store.setState({});
-        window.ui.toast(firstTime ? 'Vehículo registrado: ya puede recibir cargas.' : 'Vehículo actualizado.', 'success');
+        const pending = window.DriverApp.accountPending(window.store.state);
+        window.ui.toast(!firstTime ? 'Vehículo actualizado.'
+            : pending ? 'Vehículo registrado. Recibirá cargas cuando un administrador verifique su cuenta.'
+                : 'Vehículo registrado: ya puede recibir cargas.', 'success');
     },
 
     async toggleAvailability() {
