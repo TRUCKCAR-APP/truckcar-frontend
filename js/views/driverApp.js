@@ -422,7 +422,6 @@ window.DriverApp = {
                     <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Consultar estado</button>
                 </div>`
             : pending ? `
-                ${this.renderCountdown(load)}
                 <div class="screen-actions">
                     <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('accept', 'check-circle')}Aceptar carga y ver ruta</button>
                     <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('reject', 'x-circle')}Rechazar</button>
@@ -441,6 +440,7 @@ window.DriverApp = {
         return `
             <div class="screen-scroll">
                 <p class="status-line">${this.dotText(this.statusLabel(statusCode), inTransit ? 'ok' : '')}<span class="status-sub"> · ${esc(load.id)}${esc(startedAt)}</span></p>
+                ${pending && load.assignmentStatus === 'NOTIFIED' ? this.renderCountdown(load) : ''}
 
                 <div class="trip">
                     <div class="trip-rail"><span class="trip-stop"></span><span class="trip-line"></span></div>
