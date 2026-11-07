@@ -198,6 +198,8 @@ window.app = {
         clearTimeout(this.sessionRefreshTimer);
         clearInterval(this.pollTimer);
         clearInterval(this.shipmentsTimer);
+        clearInterval(this.driverTimer);
+        clearInterval(this.countdownTimer);
         window.SosMonitor.stop();
         window.DriverTelemetry.stop();
         window.RouteGuidance.reset();
@@ -280,6 +282,65 @@ window.app = {
             if (!state.isAuthenticated || !onShipments || typing || podOpen) return;
             await window.generatorCtrl.refresh(true);
         }, 10000);
+        // El conductor sin viaje en curso se entera de una propuesta sin tocar nada: tiene minutos para responder.
+        clearInterval(this.driverTimer);
+        this.driverTimer = setInterval(() => this.pollDriverProposals(), window.TruckCarConfig.driverPollingMs);
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = setInterval(() => this.tickCountdowns(), 1000);
+    },
+
+    async pollDriverProposals() {
+        const state = window.store.state;
+        const current = window.TruckCarData.activeLoadOrder;
+        const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+        const overlayOpen = document.querySelector('.sheet-backdrop');
+        const onTrip = current && (current.status === 'ASSIGNED' || current.status === 'IN_TRANSIT');
+        if (!state.isAuthenticated || state.activeRole !== 'driver' || state.sessionRole !== 'CONDUCTOR'
+            || state.busyAction || typing || overlayOpen || onTrip || this.pollingProposals) return;
+        this.pollingProposals = true;
+        try {
+            const key = (l) => (l ? [l.backendId, l.status, l.assignmentStatus].join(':') : '');
+            await window.TruckCarService.loadDriverAssignment();
+            const after = window.TruckCarData.activeLoadOrder;
+            const change = window.DriverApp.proposalChange(current, after);
+            if (change === 'new') this.announceProposal(after);
+            if (change === 'gone') {
+                window.ui.toast('La propuesta ya no está disponible', 'info',
+                    { description: 'Venció o se asignó a otro conductor. Le avisaremos cuando llegue otra.' });
+            }
+            if (key(current) !== key(after)) window.store.setState(change === 'new' && window.store.state.driverScreen !== 'navigation'
+                ? { driverScreen: 'assigned_load' } : {});
+        } finally {
+            this.pollingProposals = false;
+        }
+    },
+
+    /** Nueva propuesta: aviso visible, vibración y voz (el conductor puede no estar mirando el teléfono). */
+    announceProposal(load) {
+        const route = (load.origin.city || 'Origen') + ' → ' + (load.destination.city || 'destino');
+        const minutes = window.TruckCarConfig.assignmentResponseMinutes;
+        window.ui.toast('Nueva carga propuesta', 'success',
+            { description: route + ' · ' + load.netWeight + ' t. Tiene ' + minutes + ' minutos para responder.' });
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        window.voiceEngine.speak('Nueva carga propuesta: ' + route.replace('→', 'a') + ', ' + load.netWeight
+            + ' toneladas. Tiene ' + minutes + ' minutos para responder.');
+    },
+
+    /** Actualiza la cuenta regresiva de la propuesta sin redibujar la pantalla; al vencer, consulta de nuevo. */
+    tickCountdowns() {
+        document.querySelectorAll('[data-deadline]').forEach((el) => {
+            const text = el.querySelector('[data-countdown-text]');
+            const left = window.DriverApp.countdownText(Number(el.dataset.deadline));
+            if (left) {
+                const b = text.querySelector('b');
+                if (b) b.textContent = left;
+                return;
+            }
+            if (el.dataset.expired) return;
+            el.dataset.expired = '1';
+            text.textContent = 'El plazo venció · el motor la ofrecerá a otro conductor';
+            this.pollDriverProposals();
+        });
     },
 
     async reloadData() {

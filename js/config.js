@@ -73,6 +73,10 @@
         requestTimeoutMs: 15000,
         // Intervalo de refresco de flota/alertas en la torre de control (ms).
         pollingIntervalMs: 30000,
+        // El conductor sin viaje consulta sus propuestas con esta frecuencia (ms): la propuesta vence en minutos.
+        driverPollingMs: 10000,
+        // Plazo para responder una propuesta NOTIFIED (Load-Allocation TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES).
+        assignmentResponseMinutes: 5,
         storageKeys: {
             session: 'truckcar.session'
         }

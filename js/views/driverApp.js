@@ -251,6 +251,52 @@ window.DriverApp = {
         `;
     },
 
+    /** Propuesta que el conductor ya puede aceptar o rechazar (Load-Allocation la dejó NOTIFIED). */
+    isOpenProposal(load) {
+        return Boolean(load && load.status === 'AVAILABLE' && load.assignmentStatus === 'NOTIFIED');
+    },
+
+    /**
+     * Qué cambió entre dos consultas de /loads/mine: 'new' si llegó una propuesta que no estaba, 'gone' si la que
+     * estaba ya no está (venció, la rechazó o se asignó a otro), null si nada que avisar.
+     */
+    proposalChange(before, after) {
+        const open = (l) => this.isOpenProposal(l);
+        if (open(after) && !(open(before) && before.backendId === after.backendId)) return 'new';
+        if (open(before) && !(after && after.backendId === before.backendId)) return 'gone';
+        return null;
+    },
+
+    /**
+     * Hora límite (ms) para responder: el servidor vence la propuesta cuando lleva assignmentResponseMinutes en
+     * NOTIFIED. assignmentStatusChangedAt es hora local del servidor (TZ America/Bogota), como la del teléfono.
+     */
+    proposalDeadline(load, minutes) {
+        const changed = load && load.raw && load.raw.assignmentStatusChangedAt;
+        const start = changed ? new Date(changed).getTime() : NaN;
+        return Number.isFinite(start) ? start + minutes * 60 * 1000 : null;
+    },
+
+    /** Plazo para responder la propuesta; window.app.tickCountdowns actualiza el texto cada segundo sin re-render. */
+    renderCountdown(load) {
+        const config = window.TruckCarConfig || {};
+        const deadline = this.proposalDeadline(load, config.assignmentResponseMinutes || 5);
+        if (!deadline) return '';
+        const left = this.countdownText(deadline);
+        return `
+            <div class="countdown" data-deadline="${deadline}" role="timer" aria-live="off">
+                ${this.icon('warning')}
+                <span data-countdown-text>${left ? `Responda en <b>${left}</b> · después el motor la ofrece a otro conductor` : 'El plazo venció · el motor la ofrecerá a otro conductor'}</span>
+            </div>`;
+    },
+
+    /** "4:05" para lo que falta, o null si ya venció. */
+    countdownText(deadline, now = Date.now()) {
+        const left = Math.ceil((deadline - now) / 1000);
+        if (left <= 0) return null;
+        return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+    },
+
     /**
      * Disponible para cargas (ACTIVO) o no (INACTIVO). Con un viaje en curso no se puede apagar: la carga ya va a
      * bordo y la torre lo sigue viendo en ruta.
@@ -324,6 +370,7 @@ window.DriverApp = {
                     <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Consultar estado</button>
                 </div>`
             : pending ? `
+                ${this.renderCountdown(load)}
                 <div class="screen-actions">
                     <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('accept', 'check-circle')}Aceptar carga y ver ruta</button>
                     <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('reject', 'x-circle')}Rechazar</button>
