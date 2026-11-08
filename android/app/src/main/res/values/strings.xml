@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">TruckCar</string>
+    <string name="title_activity_main">TruckCar</string>
+    <string name="custom_url">co.com.truckcar.app</string>
+    <string name="location_service_title">TruckCar - Rastreo Activo</string>
+    <string name="location_service_desc">Transmitiendo telemetría y coordenadas GPS a Torre de Control</string>
+</resources>

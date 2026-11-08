@@ -131,6 +131,11 @@
         await done(tx);
         await refreshStatus();
         if (!isOffline()) scheduleFlush(0);
+        if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'SyncManager' in window) {
+            navigator.serviceWorker.ready.then(reg => {
+                reg.sync.register('truckcar-outbox-sync').catch(() => {});
+            }).catch(() => {});
+        }
         return event;
     }
 

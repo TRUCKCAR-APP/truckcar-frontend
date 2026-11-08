@@ -285,7 +285,6 @@
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
             getVehicle: (plate) => http.get('/fleets-drivers/vehicles/' + enc(plate)),
             updateState: (state) => http.post('/fleets-drivers/state', state),
-            /** Registra o actualiza el vehículo asociado a un conductor en fleets-drivers. */
             registerVehicle: (driverId, vehicleData) => http.post('/fleets-drivers/state', {
                 driverId,
                 vehiclePlate: vehicleData.plate ? String(vehicleData.plate).toUpperCase().trim() : undefined,

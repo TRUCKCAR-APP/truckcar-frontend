@@ -40,6 +40,7 @@
     const MAP_PROVIDERS = {
         stadia: {
             url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+            lightUrl: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
             keyParam: 'api_key',
             maxZoom: 20,
             attribution: '&copy; <a href="https://stadiamaps.com/" target="_blank" rel="noopener">Stadia Maps</a> '
@@ -48,6 +49,7 @@
         },
         carto: {
             url: 'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png',
+            lightUrl: 'https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png',
             keyParam: 'key',
             maxZoom: 20,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> '
@@ -57,7 +59,8 @@
     const mapKeyTag = document.querySelector('meta[name="truckcar-map-api-key"]');
     const mapApiKey = window.TRUCKCAR_MAP_API_KEY || (mapKeyTag && mapKeyTag.content) || '';
     const provider = MAP_PROVIDERS[MAP_PROVIDER];
-    const tileUrl = mapApiKey ? provider.url + '?' + provider.keyParam + '=' + encodeURIComponent(mapApiKey) : provider.url;
+    const withKey = (url) => mapApiKey ? url + '?' + provider.keyParam + '=' + encodeURIComponent(mapApiKey) : url;
+    const tileUrl = withKey(provider.url);
 
     // Herramientas de simulación (GPS, pérdida de señal, foto, giro de pantalla): solo con ?demo=1. Sin el parámetro
     // la app del conductor no muestra ninguna (css/main.css oculta .demo-only salvo en <html data-demo="1">).
@@ -66,7 +69,7 @@
 
     window.TruckCarConfig = Object.freeze({
         demoTools,
-        map: Object.freeze({ provider: MAP_PROVIDER, tileUrl, attribution: provider.attribution, maxZoom: provider.maxZoom }),
+        map: Object.freeze({ provider: MAP_PROVIDER, tileUrl, lightTileUrl: withKey(provider.lightUrl), attribution: provider.attribution, maxZoom: provider.maxZoom }),
         environment: isLocal ? 'local' : 'production',
         gatewayUrl,
         apiBaseUrl: gatewayUrl + API_PREFIX,

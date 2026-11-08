@@ -28,6 +28,46 @@
     --radius-card: var(--radius-lg);
 }
 
+.theme-select-wrap { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-secondary); }
+.theme-select {
+    min-height: 44px;
+    max-width: 126px;
+    padding: 0 28px 0 10px;
+    border: var(--border-elevated);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-size: var(--text-caption);
+}
+.theme-select:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.theme-setting { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.theme-setting .theme-select { max-width: 168px; }
+
+:root[data-theme="light"] .text-accent-400,
+:root[data-theme="light"] .text-accent-500,
+:root[data-theme="light"] .text-brand-400,
+:root[data-theme="light"] .text-brand-500 { color: #875309; }
+:root[data-theme="light"] .text-ok-400,
+:root[data-theme="light"] .text-ok-500 { color: #28784D; }
+:root[data-theme="light"] .text-warn-400,
+:root[data-theme="light"] .text-warn-500,
+:root[data-theme="light"] .text-rose-400 { color: #805600; }
+:root[data-theme="light"] .text-graphite-950 { color: #21190D; }
+:root[data-theme="light"] .text-slate-900 { color: #181D24; }
+:root[data-theme="light"] .bg-white { background-color: #FFFFFF; }
+:root[data-theme="light"] .bg-white.text-slate-900 { color: #181D24; }
+:root[data-theme="light"] .bg-slate-100 { background-color: #EEF1F4 !important; }
+:root[data-theme="light"] .border-slate-200,
+:root[data-theme="light"] .border-slate-300 { border-color: #D7DCE2 !important; }
+:root[data-theme="light"] #ai-inspection-modal,
+:root[data-theme="light"] #vehicle-registration-modal,
+:root[data-theme="light"] #driver-dispatch-modal { background: rgb(12 14 18 / 0.58) !important; }
+
+@media (max-width: 420px) {
+    #top-nav .theme-select { width: 80px; max-width: 80px; padding-left: 6px; padding-right: 16px; }
+}
+
 /* ------------------------------------------------------------------ base móvil */
 html {
     -webkit-tap-highlight-color: transparent;   /* sin destello gris/azul al tocar: cada control tiene su :active */

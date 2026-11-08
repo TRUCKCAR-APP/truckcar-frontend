@@ -17,6 +17,7 @@ const ROUTE_PINS = {
 class MapController {
     constructor() {
         this.map = null;
+        this.baseTileLayer = null;
         this.truckMarker = null;
         this.optimalRouteLayer = null;
         this.alertMarkersLayer = null;
@@ -59,6 +60,7 @@ class MapController {
                 console.warn(e);
             }
             this.map = null;
+            this.baseTileLayer = null;
             this.truckMarker = null;
             this.optimalRouteLayer = null;
             this.shipmentLayer = null;
@@ -81,7 +83,8 @@ class MapController {
         // Teselas oscuras del proveedor configurado en js/config.js (Stadia Maps; CARTO como plan B). crossOrigin hace
         // legibles sus cabeceras: el Service Worker guarda cada tesela con el vencimiento que estas indican.
         const tiles = window.TruckCarConfig.map;
-        L.tileLayer(tiles.tileUrl, {
+        const theme = window.TruckCarTheme ? window.TruckCarTheme.getTheme() : 'dark';
+        this.baseTileLayer = L.tileLayer(theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl, {
             maxZoom: tiles.maxZoom,
             attribution: tiles.attribution,
             crossOrigin: true
@@ -651,3 +654,9 @@ class MapController {
 }
 
 window.mapCtrl = new MapController();
+window.addEventListener('truckcar:themechange', (event) => {
+    const tiles = window.TruckCarConfig.map;
+    if (window.mapCtrl.baseTileLayer) {
+        window.mapCtrl.baseTileLayer.setUrl(event.detail.theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl);
+    }
+});

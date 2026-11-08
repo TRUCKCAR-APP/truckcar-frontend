@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Service Worker de TruckCar (PWA offline-first del conductor).
  *
  *  - App shell (HTML, CSS, JS propios): precargado al instalar (sin pasar por la caché HTTP). Con red se sirve la
@@ -15,7 +15,7 @@
  */
 importScripts('js/tileStore.js');
 
-const VERSION = 'v17';
+const VERSION = 'v19';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 // v1 guardaba hasta 1.500 teselas de OpenStreetMap sin vencimiento: al activarse esta versión se borra entera.
@@ -40,6 +40,7 @@ const SHELL = [
     'css/navigation.css',
     'css/tailwind.css',
     'js/config.js',
+    'js/theme.js',
     'js/api.js',
     'js/mockData.js',
     'js/state.js',
@@ -63,6 +64,10 @@ const SHELL = [
     'js/views/generatorPanel.js',
     'js/views/sosMonitor.js',
     'js/views/publicTracking.js',
+    'assets/vendor/leaflet/leaflet.css',
+    'assets/vendor/leaflet/leaflet.js',
+    'js/messagingService.js',
+    'js/notifications.js',
     'js/app.js'
 ];
 
@@ -245,3 +250,47 @@ async function reconcileTiles() {
         if (orphans.length) await self.TileStore.remove(orphans);
     } catch (error) { /* sin IndexedDB: nada que reconciliar */ }
 }
+
+
+self.addEventListener('push', (event) => {
+    let data = {};
+    try {
+        data = event.data ? event.data.json() : {};
+    } catch (e) {
+        data = { title: 'TruckCar', body: event.data ? event.data.text() : 'Nueva actualización' };
+    }
+    const title = data.title || 'TruckCar';
+    const options = {
+        body: data.body || 'Novedad en su ruta o asignación.',
+        icon: 'assets/icon-192.png',
+        badge: 'assets/icon-192.png',
+        vibrate: [100, 50, 100],
+        data: data.data || { url: './' }
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const targetUrl = (event.notification.data && event.notification.data.url) || './';
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+            for (const client of clientList) {
+                if (client.url.includes(self.location.origin) && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) return clients.openWindow(targetUrl);
+        })
+    );
+});
+
+self.addEventListener('sync', (event) => {
+    if (event.tag === 'truckcar-outbox-sync') {
+        event.waitUntil(
+            clients.matchAll().then(clientList => {
+                clientList.forEach(client => client.postMessage({ type: 'TRUCKCAR_BACKGROUND_SYNC' }));
+            })
+        );
+    }
+});

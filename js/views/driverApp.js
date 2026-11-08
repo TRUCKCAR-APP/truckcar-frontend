@@ -21,7 +21,7 @@ window.DriverApp = {
     render(state) {
         const currentScreen = state.driverScreen;
         const isLandscape = state.isLandscape;
-        
+
         let screenContent = '';
         if (currentScreen === 'profile') {
             screenContent = this.renderProfileScreen(state);
@@ -183,11 +183,15 @@ window.DriverApp = {
     renderProfileScreen(state) {
         const esc = window.ui.escape;
         const driver = window.TruckCarData.currentDriver;
+        const themeSetting = window.TruckCarTheme
+            ? `<div class="theme-setting list-row"><span class="list-label">Apariencia</span>${window.TruckCarTheme.selector()}</div>`
+            : '';
         if (!driver) {
-            return state.dataStatus.loading
+            const empty = state.dataStatus.loading
                 ? this.renderEmptyState('loading', 'Cargando el perfil', 'Consultando sus datos y los del vehículo.')
                 : this.renderEmptyState('warning', 'No se pudo cargar el perfil', 'Revise la señal e intente de nuevo.',
                     `<button onclick="window.app.reloadData()" class="btn-quiet">${this.icon('arrows-clockwise')}Reintentar</button>`);
+            return `<div class="screen-scroll"><h1 class="large-title">Perfil</h1>${themeSetting}${empty}</div>`;
         }
         const v = driver.vehicle;
         const load = window.TruckCarData.activeLoadOrder;
@@ -198,6 +202,7 @@ window.DriverApp = {
         return `
             <div class="screen-scroll">
                 <h1 class="large-title">Vehículo</h1>
+                ${themeSetting}
                 ${v ? `
                     <div class="vehicle-id">
                         <span class="plate" aria-label="Placa ${esc(v.plate)}">${esc(this.plateText(v.plate))}</span>
@@ -635,5 +640,98 @@ window.DriverApp = {
                     </div>` : ''}
             </div>
         `;
+    },
+
+    openDispatchModal() {
+        let modal = document.getElementById('driver-dispatch-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'driver-dispatch-modal';
+            modal.className = 'fixed inset-0 z-[1100] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3';
+            document.body.appendChild(modal);
+        }
+        this.renderDispatchModalContent(modal);
+        modal.classList.remove('hidden');
+    },
+
+    closeDispatchModal() {
+        const modal = document.getElementById('driver-dispatch-modal');
+        if (modal) modal.classList.add('hidden');
+    },
+
+    renderDispatchModalContent(modal) {
+        const esc = window.ui.escape;
+        const messages = window.store.state.chatMessages || [];
+        const replies = (window.TruckCarMessaging && window.TruckCarMessaging.QUICK_REPLIES) || [];
+        modal.innerHTML = `
+            <div class="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-5 max-w-md w-full shadow-2xl flex flex-col max-h-[85vh]">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 shrink-0">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-xl bg-accent-500/15 text-accent-500 grid place-items-center">
+                            <i class="fas fa-headset text-sm"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-sm text-white leading-tight">Central de Despacho</h3>
+                            <p class="text-[10px] text-slate-400">Canal bidireccional en tiempo real</p>
+                        </div>
+                    </div>
+                    <button type="button" onclick="window.DriverApp.closeDispatchModal()" class="w-8 h-8 rounded-lg text-slate-400 hover:text-white grid place-items-center text-lg">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div id="driver-chat-messages" class="flex-1 overflow-y-auto my-3 space-y-2 pr-1 text-xs">
+                    ${messages.length === 0 ? '<p class="text-center text-slate-500 py-6">Mensajería no disponible: falta habilitar el servicio del backend.</p>' : ''}
+                    ${messages.map(m => `
+                        <div class="p-2.5 rounded-2xl max-w-[85%] ${m.sender === 'driver' ? 'bg-accent-500/20 border border-accent-500/40 text-slate-100 ml-auto' : 'bg-slate-800 border border-slate-700 text-slate-200'}">
+                            <div class="flex justify-between items-center gap-2 mb-1">
+                                <span class="font-bold text-[10px] ${m.sender === 'driver' ? 'text-accent-400' : 'text-slate-400'}">${esc(m.senderName || (m.sender === 'driver' ? 'Usted' : 'Torre'))}</span>
+                                <span class="text-[9px] text-slate-500 font-mono">${esc(m.time)}</span>
+                            </div>
+                            <p class="leading-relaxed">${esc(m.text)}</p>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="border-t border-slate-800 pt-2 shrink-0 space-y-2">
+                    <div class="text-[10px] font-semibold text-slate-400">Respuestas rápidas para cabina:</div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        ${replies.map(r => `
+                            <button type="button" onclick="window.DriverApp.sendQuickReply('${esc(r)}')" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-[11px] font-semibold text-left truncate transition">
+                                ${esc(r)}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <form onsubmit="window.DriverApp.sendDriverMessage(event)" class="flex gap-2 pt-1">
+                        <input id="driver-chat-input" type="text" placeholder="Escribir mensaje a la torre..." class="login-input flex-1 text-xs" enterkeyhint="send">
+                        <button type="submit" class="w-10 h-9 bg-accent-500 hover:bg-accent-600 text-graphite-950 font-bold rounded-xl grid place-items-center text-xs transition">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        `;
+        const container = document.getElementById('driver-chat-messages');
+        if (container) container.scrollTop = container.scrollHeight;
+    },
+
+    async sendQuickReply(text) {
+        if (window.TruckCarMessaging) {
+            try {
+                await window.TruckCarMessaging.sendMessage(text);
+            } catch (error) {
+                window.ui.failure('No se pudo enviar el mensaje', error, 'contactar a la torre');
+            }
+        }
+    },
+
+    async sendDriverMessage(event) {
+        event.preventDefault();
+        const input = document.getElementById('driver-chat-input');
+        if (!input || !input.value.trim()) return;
+        const text = input.value.trim();
+        input.value = '';
+        await this.sendQuickReply(text);
     }
 };

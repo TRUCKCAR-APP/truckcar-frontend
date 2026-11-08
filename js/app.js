@@ -86,7 +86,45 @@ window.app = {
                 this.endSession();
                 window.Sheet.explainError({ status: 401 });
 
+            }
+        });
+        // 403: la cuenta no tiene permiso para esa vista. Se vuelve a la vista propia del rol, sin franja de error.
+        window.addEventListener('truckcar:forbidden', () => {
+            const state = window.store.state;
+            if (!state.isAuthenticated) return;
+            const home = this.roleToView(state.sessionRole);
+            if (state.activeRole !== home) {
+                window.store.setState({ activeRole: home });
+                window.ui.toast(home === 'generator'
+                    ? 'Su cuenta de generador de carga solo tiene acceso a "Mis envíos".'
+                    : 'Su cuenta no tiene acceso a esa vista.', 'info');
+                window.TruckCarService.loadAll();
+            }
+        });
+
+        const session = window.TruckCarApi.session;
+        if (session.isActive()) {
+            this.startSession(session.get());
+        } else if (session.isRenewable()) {
+            // Access token vencido (dura 15 min) pero con refresh token: se renueva sin pedir login.
+            window.TruckCarApi.ensureFreshSession()
+                .then(renewed => this.startSession(renewed))
+                .catch(() => {
+                    session.clear();
+                    this.renderCurrentView(window.store.state);
+                });
+        } else {
+            session.clear();
+            this.renderCurrentView(window.store.state);
+        }
+    },
+
+
     startDemoSession(role = 'driver') {
+        if (!window.TruckCarConfig.demoTools) {
+            window.ui.toast('La sesión de demostración solo está disponible con ?demo=1.', 'warning');
+            return;
+        }
         const isDriver = role === 'driver';
         const session = {
             accessToken: 'demo-token',
@@ -215,7 +253,7 @@ window.app = {
                     deadheadDistanceKm: 4.2,
                     decisionStatus: 'ACCEPTED',
                     executedAt: 'Hace 1 h',
-                    reason: 'Mayor compatibilidad de gálibo y cercanía al punto de carga en Bogotá.'',
+                    reason: 'Mayor compatibilidad de gálibo y cercanía al punto de carga en Bogotá.',
                 }
             ]
         };
@@ -260,39 +298,6 @@ window.app = {
         });
 
         window.ui.toast('Sesión demo iniciada como ' + (isDriver ? 'Conductor' : 'Torre de Control'), 'success');
-    },
-            }
-        });
-
-        // 403: la cuenta no tiene permiso para esa vista. Se vuelve a la vista propia del rol, sin franja de error.
-        window.addEventListener('truckcar:forbidden', () => {
-            const state = window.store.state;
-            if (!state.isAuthenticated) return;
-            const home = this.roleToView(state.sessionRole);
-            if (state.activeRole !== home) {
-                window.store.setState({ activeRole: home });
-                window.ui.toast(home === 'generator'
-                    ? 'Su cuenta de generador de carga solo tiene acceso a "Mis envíos".'
-                    : 'Su cuenta no tiene acceso a esa vista.', 'info');
-                window.TruckCarService.loadAll();
-            }
-        });
-
-        const session = window.TruckCarApi.session;
-        if (session.isActive()) {
-            this.startSession(session.get());
-        } else if (session.isRenewable()) {
-            // Access token vencido (dura 15 min) pero con refresh token: se renueva sin pedir login.
-            window.TruckCarApi.ensureFreshSession()
-                .then(renewed => this.startSession(renewed))
-                .catch(() => {
-                    session.clear();
-                    this.renderCurrentView(window.store.state);
-                });
-        } else {
-            session.clear();
-            this.renderCurrentView(window.store.state);
-        }
     },
 
     // ------------------------------------------------------------------ vista por dispositivo
@@ -346,6 +351,11 @@ window.app = {
         this.schedulePolling();
         window.Native.applyShortcut();
         window.Native.Install.maybeOffer();
+        if (window.TruckCarMessaging) {
+            const load = window.TruckCarData.activeLoadOrder;
+            const driver = window.TruckCarData.currentDriver;
+            window.TruckCarMessaging.initContext(load ? load.backendId : null, driver ? driver.id : null);
+        }
     },
 
     /**
@@ -826,6 +836,11 @@ window.app = {
                 if (!hadController || reloading) return;
                 reloading = true;
                 window.location.reload();
+            });
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'TRUCKCAR_BACKGROUND_SYNC') {
+                    if (window.OfflineQueue) window.OfflineQueue.flush();
+                }
             });
         }
         const data = window.TruckCarData;

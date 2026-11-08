@@ -136,7 +136,7 @@ window.CoordinatorPanel = {
                                                 <button onclick="window.coordinatorCtrl.showAiInspectionModal('${esc(c.driverId)}')" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg text-[11px] font-bold transition">
                                                     <i class="fas fa-magnifying-glass"></i> Ver criterios
                                                 </button>
-                                                 <a href="tel:${esc(c.driverPhone || '3001234567')}" class="px-2.5 py-1.5 bg-slate-800 hover:bg-ok-600/30 hover:text-ok-400 border border-slate-700 text-slate-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5" title="Llamar al conductor"><i class="fas fa-phone"></i> Llamar</a>
+                                                 ${c.driverPhone ? `<a href="tel:${esc(c.driverPhone)}" class="px-2.5 py-1.5 bg-slate-800 hover:bg-ok-600/30 hover:text-ok-400 border border-slate-700 text-slate-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5" title="Llamar a ${esc(c.driverName)}"><i class="fas fa-phone"></i> Llamar</a>` : `<span class="px-2.5 py-1.5 bg-slate-800/40 border border-slate-800 text-slate-500 rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-not-allowed" title="Sin teléfono registrado"><i class="fas fa-phone-slash"></i> Sin tel.</span>`}
                                             </div>
                                         </div>
                                     `).join('') : `
@@ -176,7 +176,7 @@ window.CoordinatorPanel = {
                                                 <span class="text-xs font-semibold ${truck.status === 'DESCANSO' ? 'text-warn-500' : 'text-slate-200'}">${truck.status === 'DESCANSO' ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(window.DriverApp.statusLabel(truck.status))}</span>
                                                 <div class="text-[10px] text-slate-400 font-mono mt-0.5">${truck.speed} km/h · ${esc(truck.lastCheckin)}</div>
                                             </div>
-                                            <a href="tel:${esc(truck.phone || '3001234567')}" onclick="event.stopPropagation()" class="w-7 h-7 rounded-lg bg-slate-700/80 hover:bg-ok-600/30 hover:text-ok-400 text-slate-300 grid place-items-center text-xs transition border border-slate-600/50" title="Llamar a ${esc(truck.driverName)}" aria-label="Llamar por teléfono"><i class="fas fa-phone"></i></a>
+                                            ${truck.phone ? `<a href="tel:${esc(truck.phone)}" onclick="event.stopPropagation()" class="w-7 h-7 rounded-lg bg-slate-700/80 hover:bg-ok-600/30 hover:text-ok-400 text-slate-300 grid place-items-center text-xs transition border border-slate-600/50" title="Llamar a ${esc(truck.driverName)}" aria-label="Llamar por teléfono"><i class="fas fa-phone"></i></a>` : `<span class="w-7 h-7 rounded-lg bg-slate-800/50 text-slate-600 grid place-items-center text-xs border border-slate-800 cursor-not-allowed" title="Conductor sin teléfono registrado" aria-label="Sin teléfono"><i class="fas fa-phone-slash"></i></span>`}
                                             <button type="button" onclick="event.stopPropagation(); window.coordinatorCtrl.openVehicleModal('${esc(truck.driverId || truck.id)}')" class="w-7 h-7 rounded-lg bg-slate-700/80 hover:bg-slate-600 text-slate-300 hover:text-white grid place-items-center text-xs transition border border-slate-600/50" title="Editar vehículo" aria-label="Editar vehículo"><i class="fas fa-truck"></i></button>
                                         </div>
                                     </div>
@@ -199,7 +199,7 @@ window.CoordinatorPanel = {
                                     <span class="font-bold text-xs text-white">Monitoreo GPS y alertas</span>
                                 </div>
                                 <div class="text-[11px] text-slate-300">
-                                    ${fleet.length} vehículo(s) con posición · ${alerts.length} alerta(s) activa(s)
+                                    ${fleet.filter(truck => truck.coords).length} vehículo(s) con posición · ${alerts.length} alerta(s) activa(s)
                                 </div>
                                 <div data-telemetry-status class="flex items-center gap-1.5 text-[10px] text-slate-400" title="Posiciones de la flota por WebSocket (/topic/fleet-locations)"></div>
                                 <div class="flex gap-2 pt-1">
@@ -559,28 +559,31 @@ window.coordinatorCtrl = {
 
     focusTruck(truckId) {
         const truck = (window.TruckCarData.fleetVehicles || []).find(t => t.id === truckId);
-        if (truck) window.mapCtrl.focusOn(truck.coords, 12);
+        if (truck && truck.coords) window.mapCtrl.focusOn(truck.coords, 12);
     },
 
     selectTruck(truckId) {
         const truck = (window.TruckCarData.fleetVehicles || []).find(t => t.id === truckId);
         if (!truck) return;
-        window.mapCtrl.focusOn(truck.coords, 12);
+        if (truck.coords) window.mapCtrl.focusOn(truck.coords, 12);
         window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + window.DriverApp.statusLabel(truck.status) + ' · ' + truck.speed + ' km/h · conducción ' + truck.hoursActive, 'info');
     },
 
-    sendDispatchMessage() {
+    async sendDispatchMessage() {
         const input = document.getElementById('coord-msg-input');
         if (!input || !input.value.trim()) return;
         const text = input.value.trim();
-        const time = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
-        window.store.setState({
-            chatMessages: [...(window.store.state.chatMessages || []), { sender: 'coordinator', text, time }]
-        });
-        window.voiceEngine.speak('Mensaje de central: ' + text);
+        input.value = '';
+        if (window.TruckCarMessaging) {
+            try {
+                await window.TruckCarMessaging.sendMessage(text);
+            } catch (error) {
+                window.ui.failure('No se pudo enviar el mensaje', error, 'contactar al conductor');
+            }
+        }
     },
 
-    openVehicleModal(selectedDriverId) {
+    async openVehicleModal(selectedDriverId) {
         const modal = document.getElementById('vehicle-registration-modal');
         if (!modal) return;
         const select = document.getElementById('veh-driver-id');
@@ -605,8 +608,12 @@ window.coordinatorCtrl = {
             const cd = window.TruckCarData.currentDriver;
             if (!driverMap.has(cd.id)) driverMap.set(cd.id, { id: cd.id, name: cd.name, driver: cd });
         }
+        const submitBtn = document.getElementById('veh-submit-btn');
         if (driverMap.size === 0) {
-            driverMap.set('driver-1', { id: 'driver-1', name: 'Carlos Conductor' });
+            select.innerHTML = '<option value="" disabled selected>No hay conductores disponibles para vincular</option>';
+            if (submitBtn) submitBtn.disabled = true;
+            modal.classList.remove('hidden');
+            return;
         }
 
         select.innerHTML = Array.from(driverMap.values()).map(d => {
@@ -661,11 +668,28 @@ window.coordinatorCtrl = {
         const tare = parseFloat(document.getElementById('veh-tare').value);
         const payload = parseFloat(document.getElementById('veh-payload').value);
 
-        const driverId = select ? select.value : 'driver-1';
+        const driverId = select ? select.value : '';
+        if (!driverId) {
+            window.ui.toast('Seleccione un conductor válido registrado.', 'warning');
+            return;
+        }
         const driverName = (select && select.options[select.selectedIndex]) ? select.options[select.selectedIndex].text : driverId;
 
+        const plateClean = plate.replace(/[^A-Z0-9]/g, '');
+        const plateRegex = /^[A-Z]{3}[0-9]{3}$/;
+        if (!plateRegex.test(plateClean)) {
+            window.ui.toast('Placa inválida: debe tener formato colombiano (3 letras y 3 números, Ej: TDK-410).', 'warning');
+            return;
+        }
         if (!plate || !model || isNaN(height) || isNaN(tare) || isNaN(payload)) {
             window.ui.toast('Complete todos los campos del vehículo.', 'warning');
+            return;
+        }
+        const duplicate = (window.TruckCarData.fleetVehicles || []).find(vehicle =>
+            String(vehicle.plate || '').replace(/[^A-Z0-9]/gi, '').toUpperCase() === plateClean
+            && vehicle.driverId !== driverId);
+        if (duplicate) {
+            window.ui.toast('Esta placa ya está asociada a otro conductor de la flota.', 'warning');
             return;
         }
 
@@ -679,65 +703,18 @@ window.coordinatorCtrl = {
                 plate, model, type, height, tareWeight: tare, maxPayload: payload
             });
 
-            const fleet = window.TruckCarData.fleetVehicles || [];
-            const existing = fleet.find(t => t.id === driverId || t.driverId === driverId);
-            if (existing) {
-                existing.plate = plate;
-                existing.model = model;
-                existing.rawType = type;
-                existing.vehicleType = model + ' • ' + type;
-                existing.height = height;
-                existing.tareWeight = tare;
-                existing.maxPayload = payload;
-            } else {
-                fleet.push({
-                    id: driverId,
-                    driverId,
-                    driverName,
-                    plate,
-                    model,
-                    rawType: type,
-                    vehicleType: model + ' • ' + type,
-                    height,
-                    tareWeight: tare,
-                    maxPayload: payload,
-                    status: 'DISPONIBLE',
-                    speed: 0,
-                    hoursActive: '0h',
-                    lastCheckin: 'Ahora',
-                    coords: [4.6097, -74.0817]
-                });
-                window.TruckCarData.fleetVehicles = fleet;
-            }
-
             if (window.TruckCarData.currentDriver && (window.TruckCarData.currentDriver.id === driverId || window.TruckCarData.currentDriver.userId === driverId)) {
                 const cd = window.TruckCarData.currentDriver;
                 cd.hasVehicle = true;
                 cd.vehicle = { plate, brand: model, category: type, height, tareWeight: tare, maxPayload: payload, grossWeight: tare, badges: ['Verificado'] };
             }
 
+            await window.TruckCarService.loadFleet();
             window.store.setState({});
             window.ui.toast('Vehículo ' + plate + ' vinculado con éxito a ' + driverName + '.', 'success');
             this.closeVehicleModal();
         } catch (err) {
-            const fleet = window.TruckCarData.fleetVehicles || [];
-            const existing = fleet.find(t => t.id === driverId || t.driverId === driverId);
-            if (existing) {
-                existing.plate = plate;
-                existing.model = model;
-                existing.rawType = type;
-                existing.vehicleType = model + ' • ' + type;
-                existing.height = height;
-                existing.tareWeight = tare;
-                existing.maxPayload = payload;
-            }
-            if (window.TruckCarData.currentDriver) {
-                window.TruckCarData.currentDriver.hasVehicle = true;
-                window.TruckCarData.currentDriver.vehicle = { plate, brand: model, category: type, height, tareWeight: tare, maxPayload: payload, grossWeight: tare };
-            }
-            window.store.setState({});
-            window.ui.toast('Vehículo ' + plate + ' registrado para ' + driverName + '.', 'success');
-            this.closeVehicleModal();
+            window.ui.failure('No se pudo registrar el vehículo', err, 'registrar el vehículo');
         } finally {
             if (btn) {
                 btn.disabled = false;

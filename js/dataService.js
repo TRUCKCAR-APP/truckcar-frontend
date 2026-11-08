@@ -473,7 +473,7 @@
         async loadFleet() {
             try {
                 const states = await api.fleet.listActive();
-                data.fleetVehicles = (states || []).map(mapFleetVehicle).filter(v => v.coords);
+                data.fleetVehicles = (states || []).map(mapFleetVehicle);
                 clearError('fleet');
             } catch (error) {
                 recordError('fleet', error);

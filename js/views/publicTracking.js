@@ -16,6 +16,7 @@ window.PublicTracking = (function () {
     let token = null;
     let timer = null;
     let map = null;
+    let tileLayer = null;
     let marker = null;
     let last = null;
     let offline = false;
@@ -125,7 +126,9 @@ window.PublicTracking = (function () {
         map = window.L.map(el, { zoomControl: false, attributionControl: false }).setView([4.6, -74.08], 6);
         // Atribución obligatoria y legible, como en la app del conductor.
         window.L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
-        window.L.tileLayer(tiles.tileUrl, { maxZoom: tiles.maxZoom, attribution: tiles.attribution, crossOrigin: true }).addTo(map);
+        const theme = window.TruckCarTheme ? window.TruckCarTheme.getTheme() : 'dark';
+        tileLayer = window.L.tileLayer(theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl,
+            { maxZoom: tiles.maxZoom, attribution: tiles.attribution, crossOrigin: true }).addTo(map);
         // El contenedor puede cambiar de tamaño después de crearse (fuentes, estilos, giro): se vuelve a medir y a
         // encuadrar el camión, una vez por cuadro.
         if (typeof ResizeObserver === 'function') {
@@ -208,6 +211,11 @@ window.PublicTracking = (function () {
         document.addEventListener('visibilitychange', () => { if (!document.hidden && timer) refresh(); });
         return true;
     }
+
+    window.addEventListener('truckcar:themechange', (event) => {
+        if (tileLayer) tileLayer.setUrl(event.detail.theme === 'light'
+            ? window.TruckCarConfig.map.lightTileUrl : window.TruckCarConfig.map.tileUrl);
+    });
 
     return { maybeStart, tokenFromUrl, refresh, stopPolling };
 })();
