@@ -57,12 +57,13 @@ window.CoordinatorPanel = {
 
                                 ${!load.assignmentStatus || load.assignmentStatus === 'UNASSIGNED_NO_DRIVERS' ? `
                                     <button onclick="window.coordinatorCtrl.requestMatching(${load.backendId})" ${state.busyAction === 'matching' ? 'disabled' : ''} class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 disabled:opacity-60 text-graphite-950 rounded-xl text-xs font-bold transition">
-                                        <i class="fas ${state.busyAction === 'matching' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}"></i> Ejecutar matching con IA
+                                        <i class="fas ${state.busyAction === 'matching' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}"></i> Ejecutar matching automático
                                     </button>
                                 ` : ''}
 
                                 <div class="space-y-2">
                                     <span class="text-xs font-semibold text-slate-400">Decisiones del motor de asignación</span>
+                                    ${evaluation.latestExplanation ? `<p class="p-3 rounded-xl bg-slate-950/60 border border-slate-700/40 text-[11px] leading-relaxed text-slate-200" data-allocation-explanation><b>Síntesis del algoritmo:</b> ${esc(evaluation.latestExplanation)}</p>` : ''}
                                     ${evaluation.candidates.length ? evaluation.candidates.map((c, i) => `
                                         <div class="p-3 rounded-xl border transition ${c.isCurrentAssignment ? 'bg-slate-800/60 border-ok-500/50' : 'bg-slate-800/40 border-slate-700/40'}">
                                             <div class="flex items-center justify-between mb-1.5">
@@ -447,6 +448,7 @@ window.coordinatorCtrl = {
             <div class="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl text-slate-200">
                 <b>Justificación del motor:</b> ${esc(candidate.reason || 'Sin detalle registrado')}
             </div>
+            ${candidate.explanation ? `<div class="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl text-slate-200"><b>Síntesis del algoritmo:</b> ${esc(candidate.explanation)}</div>` : ''}
         `;
         modal.classList.remove('hidden');
     },
@@ -498,7 +500,7 @@ window.coordinatorCtrl = {
             const result = await window.TruckCarService.requestMatching(loadId);
             const message = result && result.selectedDriverName
                 ? 'Matching ejecutado: propuesta para ' + result.selectedDriverName + ' (' + Math.round(result.matchingScore) + '/100).'
-                : 'Matching ejecutado: ' + ((result && result.reasonDetails) || (result && result.status) || 'sin candidatos');
+                : 'Matching ejecutado: ' + ((result && (result.explanation || result.reasonDetails)) || (result && result.status) || 'sin candidatos');
             window.ui.toast(message, result && result.selectedDriverName ? 'success' : 'warning');
         } catch (error) {
             window.ui.failure('No se pudo ejecutar el matching', error, 'ejecutar el matching');

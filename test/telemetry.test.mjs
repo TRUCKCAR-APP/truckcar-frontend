@@ -201,3 +201,25 @@ test("si el gateway no entrega el ticket no se abre el socket y se reintenta", a
   assert.equal(states.at(-1), "reconnecting");
   w.LiveTracking.unfollowFleet();
 });
+
+test("bloqueos de la IA: una sola suscripción a /topic/road-blockages que se cancela con stopAll", () => {
+  const { w } = browser();
+  const subscribed = [];
+  let cancelled = 0;
+  let deliver = null;
+  w.TruckCarTelemetry.subscribe = (destination, handler) => {
+    subscribed.push(destination);
+    deliver = handler;
+    return () => { cancelled++; };
+  };
+  const received = [];
+
+  w.LiveTracking.followBlockages((b) => received.push("conductor:" + b.alertId));
+  w.LiveTracking.followBlockages((b) => received.push("torre:" + b.alertId));   // cambia el manejador, no re-suscribe
+  deliver({ alertId: 21, latitude: 4.6, longitude: -74.0 });
+  w.LiveTracking.stopAll();
+
+  assert.deepEqual(subscribed, ["/topic/road-blockages"]);
+  assert.deepEqual(received, ["torre:21"]);
+  assert.equal(cancelled, 1);
+});
