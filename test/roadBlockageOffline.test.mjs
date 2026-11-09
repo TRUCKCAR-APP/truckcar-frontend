@@ -143,6 +143,8 @@ test("la ruta queda guardada y, al reabrir sin señal, la guía sigue con el avi
   assert.ok(offline.spoken.some((t) => /^Atención: En 1,1 kilómetros, gálibo de 3,80 metros; su vehículo mide 4,10\.$/.test(t)),
     offline.spoken.join(" | "));
   assert.match(offline.hud("clearance").text, /Gálibo de 3,80 m en 1,1 km/);
+  assert.equal(offline.w.RouteGuidance.hudText(offline.w.RouteGuidance.snapshot()).street,
+    "Sin señal: guía con la ruta guardada en el teléfono");
 });
 
 test("fuera de ruta y sin señal, avisa de los puentes bajos cercanos del corredor guardado", async () => {

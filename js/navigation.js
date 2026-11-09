@@ -36,6 +36,8 @@ window.RouteGuidance = (function () {
     const DETOUR_OFFSET_DEG = 0.03;
     // Con la ruta restaurada sin señal, se vuelve a intentar OSRM como mucho una vez por minuto.
     const RETRY_ONLINE_MS = 60000;
+    // Desvío limpio: la confirmación verde de la IA se retira sola (el HUD no debe crecer hasta tapar el panel).
+    const AI_ALERT_OK_MS = 20000;
 
     // { key, source, geometry, cumulative, steps, totalM, durationS, choice: { evaluated, index, restricted, blocking } }
     let route = null;
@@ -54,6 +56,7 @@ window.RouteGuidance = (function () {
     let aiAlert = null;          // aviso del HUD: { text, sub, warning }
     const handledBlockages = new Set();
     let lastNetworkTry = 0;
+    let aiAlertTimer = null;
 
     // ------------------------------------------------------------------ geometría
     const toRad = (deg) => deg * Math.PI / 180;
@@ -624,6 +627,11 @@ window.RouteGuidance = (function () {
             aiAlert = { text: headline, warning: !!restricted, sub: restricted
                 ? 'desvío calculado, pero con restricciones de gálibo o peso para su vehículo'
                 : 'desvío calculado sin restricciones de gálibo ni peso' };
+            if (!restricted) {
+                const shown = aiAlert;
+                clearTimeout(aiAlertTimer);
+                aiAlertTimer = setTimeout(() => { if (aiAlert === shown) { aiAlert = null; notify(); } }, AI_ALERT_OK_MS);
+            }
             if (window.voiceEngine) window.voiceEngine.speak(restricted
                 ? 'Desvío calculado. Atención: tiene restricciones no aptas para su vehículo.'
                 : 'Desvío calculado sin restricciones para su vehículo.', true);
@@ -721,7 +729,8 @@ window.RouteGuidance = (function () {
                 ? formatDuration(route.durationS * (p && p.remainingM != null ? p.remainingM : route.totalM) / route.totalM) : '—',
             speed,
             clearance: clearanceHud(p),
-            routeNotice: routeNotice(),
+            // El aviso de la IA ya dice si el desvío tiene restricciones: no se repite con el de ruta alternativa.
+            routeNotice: aiAlert ? null : routeNotice(),
             aiAlert,
             restored: !!(route && route.restored)
         };
@@ -757,6 +766,7 @@ window.RouteGuidance = (function () {
         if (s.status === 'idle') return { distance: '—', instruction: 'Preparando la navegación…', street: '' };
         // Sin GPS o fuera de ruta, el aviso ya está dentro de la tarjeta (triángulo y texto): la línea gris no lo repite.
         if (!s.hasPosition || s.offRoute) return { distance: s.distance, instruction: s.instruction, street: '' };
+        if (s.restored) return { distance: s.distance, instruction: s.instruction, street: 'Sin señal: guía con la ruta guardada en el teléfono' };
         return { distance: s.distance, instruction: s.instruction, street: currentStreet(s) };
     }
 
@@ -804,6 +814,7 @@ window.RouteGuidance = (function () {
         nearby = [];
         avoidPoints = [];
         aiAlert = null;
+        clearTimeout(aiAlertTimer);
         handledBlockages.clear();
         lastNetworkTry = 0;
     }
