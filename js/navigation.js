@@ -16,10 +16,13 @@ window.RouteGuidance = (function () {
     // Restricciones de la ruta (Routing-Restrictions): se anuncian una vez al quedar a 3 km o menos.
     const CLEARANCE_ANNOUNCE_M = 3000;
     const CLEARANCE_MAX_POINTS = 400;
+    // OSRM devuelve hasta 3 rutas con alternatives=true (solo entre dos puntos: con puntos intermedios no hay alternativas).
+    const MAX_ALTERNATIVES = 3;
     const ARRIVED_M = 60;
     const NEAR_ANNOUNCE_M = 300;
 
-    let route = null;          // { key, source, geometry, cumulative, steps, totalM, durationS }
+    // { key, source, geometry, cumulative, steps, totalM, durationS, choice: { evaluated, index, restricted, blocking } }
+    let route = null;
     let status = 'idle';       // idle | loading | ready | unavailable
     let progress = null;       // { stepIndex, toNextM, remainingM, offRoute, arrived, position }
     let pendingKey = null;
@@ -150,15 +153,16 @@ window.RouteGuidance = (function () {
         return points.length >= 2 ? { key: 'CARGA-' + load.backendId, source: 'carga', points } : null;
     }
 
-    async function requestRoute(points) {
+    /** Rutas de OSRM entre los puntos: la principal y, entre dos puntos, hasta dos alternativas, en el orden de OSRM. */
+    async function requestRoutes(points) {
         const url = OSRM_URL + points.map(c => c[1] + ',' + c[0]).join(';')
-            + '?overview=full&geometries=geojson&steps=true';
+            + '?overview=full&geometries=geojson&steps=true' + (points.length === 2 ? '&alternatives=true' : '');
         const response = await fetch(url);
         if (!response.ok) throw new Error('OSRM ' + response.status);
         const json = await response.json();
-        const best = json.routes && json.routes[0];
-        if (!best || !best.geometry || !best.legs) throw new Error('OSRM sin ruta');
-        return best;
+        const routes = (json.routes || []).filter(r => r && r.geometry && r.legs).slice(0, MAX_ALTERNATIVES);
+        if (!routes.length) throw new Error('OSRM sin ruta');
+        return routes;
     }
 
     function buildRoute(osrm, key, source) {
@@ -209,12 +213,13 @@ window.RouteGuidance = (function () {
         announced.clear();
         notify();
         try {
-            const osrm = await requestRoute(target.points);
+            const candidates = (await requestRoutes(target.points)).map(osrm => buildRoute(osrm, target.key, target.source));
             if (pendingKey !== target.key) return;
-            route = buildRoute(osrm, target.key, target.source);
+            const chosen = await chooseRoute(candidates);
+            if (pendingKey !== target.key) return;
+            useRoute(chosen, candidates);
             status = 'ready';
-            if (window.mapCtrl && window.mapCtrl.drawGuidanceLine) window.mapCtrl.drawGuidanceLine(route.geometry);
-            checkClearance(route);
+            announceChoice(chosen);
             const fix = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
             if (fix) update(fix); else notify();
         } catch (e) {
@@ -234,13 +239,14 @@ window.RouteGuidance = (function () {
         const destination = route.geometry[route.geometry.length - 1];
         const key = route.key;
         try {
-            const osrm = await requestRoute([position, destination]);
+            const candidates = (await requestRoutes([position, destination])).map(osrm => buildRoute(osrm, key, 'recalculada'));
             if (!route || route.key !== key) return;
-            route = buildRoute(osrm, key, 'recalculada');
+            const chosen = await chooseRoute(candidates);
+            if (!route || route.key !== key) return;
             announced.clear();
-            checkClearance(route);
-            if (window.mapCtrl && window.mapCtrl.drawGuidanceLine) window.mapCtrl.drawGuidanceLine(route.geometry);
+            useRoute(chosen, candidates);
             if (window.voiceEngine) window.voiceEngine.speak('Ruta recalculada.', false);
+            announceChoice(chosen);
             update({ coords: position });
         } catch (e) {
             // Sin OSRM se sigue mostrando la ruta anterior con el aviso de fuera de ruta.
@@ -312,38 +318,109 @@ window.RouteGuidance = (function () {
         return { ...base, text: 'Precaución', sub: title, spoken: 'precaución: ' + title };
     }
 
-    /**
-     * Pide a Routing-Restrictions las restricciones activas a lo largo de la geometría real (la de OSRM), con la altura y
-     * el peso del vehículo registrado. Sin vehículo o sin respuesta no se inventa nada: el HUD no muestra el aviso.
-     */
-    async function checkClearance(target) {
+    function currentVehicle() {
         const driver = window.TruckCarData && window.TruckCarData.currentDriver;
         const vehicle = driver && driver.vehicle;
+        return vehicle && Number.isFinite(vehicle.height) && Number.isFinite(vehicle.grossWeight) ? vehicle : null;
+    }
+
+    /**
+     * Pide a Routing-Restrictions las restricciones activas a lo largo de la geometría real de una ruta (la de OSRM), con
+     * la altura y el peso bruto del vehículo registrado. Devuelve el estado y las restricciones que incumple (blocking) o
+     * que solo informan (warnings). Sin vehículo o sin respuesta no se inventa nada.
+     */
+    async function validateRoute(candidate) {
+        const vehicle = currentVehicle();
         const api = window.TruckCarApi && window.TruckCarApi.restrictions;
-        if (!vehicle || !Number.isFinite(vehicle.height) || !Number.isFinite(vehicle.grossWeight)) {
-            clearance = { key: target.key, status: 'no-vehicle', items: [] };
-            return;
-        }
-        if (!api || !api.validateRoute) return;
-        clearance = { key: target.key, status: 'checking', items: [] };
+        if (!vehicle) return { key: candidate.key, status: 'no-vehicle', items: [], blocking: 0 };
+        if (!api || !api.validateRoute) return { key: candidate.key, status: 'unavailable', items: [], blocking: 0 };
         try {
             const result = await api.validateRoute({
                 vehiclePlate: vehicle.plate,
                 heightMeters: vehicle.height,
                 grossWeightTons: vehicle.grossWeight,
-                path: samplePath(target.geometry)
+                path: samplePath(candidate.geometry)
             });
-            if (route !== target) return;
             const items = [
                 ...(result.blocking || []).map(item => clearanceItem(item, vehicle, false)),
                 ...(result.warnings || []).map(item => clearanceItem(item, vehicle, true))
             ].sort((a, b) => a.alongM - b.alongM);
-            clearance = { key: target.key, status: items.length ? 'found' : 'ok', items };
+            return { key: candidate.key, status: items.length ? 'found' : 'ok', items,
+                blocking: items.filter(item => !item.warning).length };
         } catch (e) {
-            if (route !== target) return;
-            clearance = { key: target.key, status: 'unavailable', items: [] };
+            return { key: candidate.key, status: 'unavailable', items: [], blocking: 0 };
         }
-        notify();
+    }
+
+    /**
+     * Elige la ruta para el camión: valida todas las alternativas contra Routing-Restrictions y toma la primera, en el
+     * orden de OSRM, que no incumpla ningún gálibo ni límite de peso. Si todas incumplen, la de menor impacto: menos
+     * restricciones incumplidas y, a igualdad, la más corta. Sin vehículo o sin Routing-Restrictions, la principal.
+     */
+    async function chooseRoute(candidates) {
+        const results = await Promise.all(candidates.map(validateRoute));
+        const checked = results.every(r => r.status === 'ok' || r.status === 'found');
+        let index = 0;
+        if (checked) {
+            const clean = results.findIndex(r => r.blocking === 0);
+            index = clean >= 0 ? clean : results.reduce((best, r, i) =>
+                (r.blocking < results[best].blocking
+                    || (r.blocking === results[best].blocking && candidates[i].totalM < candidates[best].totalM)) ? i : best, 0);
+        }
+        const chosen = candidates[index];
+        chosen.clearance = results[index];
+        chosen.choice = {
+            evaluated: candidates.length,
+            index,
+            checked,
+            restricted: checked && results[index].blocking > 0,
+            blocking: results[index].blocking,
+            avoided: checked && index > 0 && results[index].blocking === 0
+                ? results.slice(0, index).reduce((sum, r) => sum + r.blocking, 0) : 0
+        };
+        return chosen;
+    }
+
+    /** Deja la ruta elegida como la de la guía y la dibuja; las alternativas descartadas quedan en gris en el mapa. */
+    function useRoute(chosen, candidates) {
+        route = chosen;
+        clearance = chosen.clearance;
+        if (window.mapCtrl && window.mapCtrl.drawGuidanceLine) {
+            window.mapCtrl.drawGuidanceLine(route.geometry, candidates.filter(c => c !== chosen).map(c => c.geometry));
+        }
+        if (window.mapCtrl && window.mapCtrl.useGuidedRoute) window.mapCtrl.useGuidedRoute(route);
+    }
+
+    /** Se dice una vez por ruta: si se esquivó una restricción o si ninguna alternativa es apta para el vehículo. */
+    function announceChoice(chosen) {
+        const choice = chosen.choice;
+        if (!choice || !window.voiceEngine) return;
+        if (choice.restricted) {
+            window.voiceEngine.speak('Atención: la ruta contiene restricciones no aptas para su vehículo. '
+                + 'Se eligió la alternativa con menos restricciones.', true);
+        } else if (choice.avoided) {
+            window.voiceEngine.speak('Se eligió una ruta alternativa que evita restricciones de gálibo o peso para su vehículo.', false);
+        }
+    }
+
+    /** Aviso de la ruta elegida para el HUD (null si la ruta principal ya era apta o no se pudo validar). */
+    function routeNotice() {
+        const choice = route && route.choice;
+        if (!choice || !choice.checked) return null;
+        if (choice.restricted) {
+            return {
+                warning: true,
+                text: 'Atención: La ruta contiene restricciones no aptas para su vehículo',
+                sub: choice.evaluated > 1
+                    ? 'se eligió la de menor impacto (' + choice.blocking + ' de ' + choice.evaluated + ' rutas evaluadas)'
+                    : 'no hay rutas alternativas para comparar'
+            };
+        }
+        if (choice.avoided) {
+            return { warning: false, text: 'Ruta alternativa apta para su vehículo',
+                sub: 'evita ' + choice.avoided + (choice.avoided === 1 ? ' restricción' : ' restricciones') + ' de la ruta principal' };
+        }
+        return null;
     }
 
     /** La próxima restricción de la ruta desde la posición actual (las ya pasadas no cuentan); primero las que bloquean. */
@@ -396,7 +473,8 @@ window.RouteGuidance = (function () {
             remainingTime: route && route.durationS && route.totalM
                 ? formatDuration(route.durationS * (p && p.remainingM != null ? p.remainingM : route.totalM) / route.totalM) : '—',
             speed,
-            clearance: clearanceHud(p)
+            clearance: clearanceHud(p),
+            routeNotice: routeNotice()
         };
     }
 
@@ -447,6 +525,12 @@ window.RouteGuidance = (function () {
         document.querySelectorAll('[data-nav-clearance]').forEach(el => { el.hidden = !s.clearance; });
         set('[data-nav-clearance-text]', s.clearance ? s.clearance.text : '');
         set('[data-nav-clearance-sub]', s.clearance ? '· ' + s.clearance.sub : '');
+        document.querySelectorAll('[data-nav-route-notice]').forEach(el => {
+            el.hidden = !s.routeNotice;
+            el.classList.toggle('is-ok', !!(s.routeNotice && !s.routeNotice.warning));
+        });
+        set('[data-nav-route-notice-text]', s.routeNotice ? s.routeNotice.text : '');
+        set('[data-nav-route-notice-sub]', s.routeNotice ? '· ' + s.routeNotice.sub : '');
     }
 
     function reset() {
@@ -464,6 +548,6 @@ window.RouteGuidance = (function () {
         get route() { return route; },
         get clearance() { return clearance; },
         // Expuestos para pruebas.
-        instruction, formatDistance, formatDuration, glyph, project, samplePath, checkClearance
+        instruction, formatDistance, formatDuration, glyph, project, samplePath, validateRoute, chooseRoute, routeNotice
     };
 })();

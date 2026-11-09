@@ -65,6 +65,8 @@
 /* Avisos dentro de la tarjeta (fuera de ruta, GPS): triángulo y texto. El GPS solo aparece si hay algo que advertir. */
 .hud-row { padding: var(--space-3) var(--space-4); border-top: var(--border-subtle); font-size: var(--text-footnote); }
 .hud-row[hidden], .hud-gps:empty, .hud-gps[data-state="ok"] { display: none; }
+/* Ruta alternativa que evitó una restricción: confirmación en verde, no advertencia (la advertencia sigue en ámbar). */
+.hud-route-notice.is-ok .warn-line { color: var(--color-ok); }
 .hud-gps { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); }
 
 /* Panel vertical derecho, por encima de la atribución del mapa. */

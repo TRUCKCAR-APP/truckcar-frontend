@@ -234,14 +234,21 @@ class MapController {
         else this.map.setView(position, Math.max(this.map.getZoom(), 12), { animate: true });
     }
 
-    /** Línea de la ruta que sigue la guía (la del plan o la recalculada desde la posición actual). */
-    drawGuidanceLine(geometry) {
+    /**
+     * Línea de la ruta que sigue la guía (la del plan o la recalculada desde la posición actual). Las alternativas que la
+     * guía descartó por gálibo o peso se dibujan debajo, en gris discontinuo, para que se vea qué se evitó.
+     */
+    drawGuidanceLine(geometry, discarded = []) {
         if (!this.map || !geometry || geometry.length < 2 || !document.getElementById('live-nav-map-container')) return;
         if (this.guidanceLayer) {
             try { this.map.removeLayer(this.guidanceLayer); } catch (e) { /* capa ya removida */ }
         }
         this.guidanceLines = this.routeLines(geometry);
-        this.guidanceLayer = L.layerGroup(this.guidanceLines.layers).addTo(this.map);
+        const alternatives = (discarded || []).filter(g => g && g.length > 1).map(g => L.polyline(g, {
+            color: mapToken('--color-route-done', '#3A4049'), weight: 4, opacity: 0.9, dashArray: '6 8',
+            lineCap: 'round', lineJoin: 'round', interactive: false
+        }));
+        this.guidanceLayer = L.layerGroup(alternatives.concat(this.guidanceLines.layers)).addTo(this.map);
         if (this.truckMarker && !this.navGuidanceFramed) {
             this.navGuidanceFramed = true;
             this.frameNextLeg(this.truckMarker.getLatLng());
@@ -339,8 +346,27 @@ class MapController {
         }
     }
 
+    /**
+     * La ruta que eligió la guía (la primera alternativa sin gálibo ni peso incumplidos) es la que se muestra en Rutas:
+     * misma línea, distancia y tiempo que la navegación.
+     */
+    useGuidedRoute(guided) {
+        if (!guided || !guided.geometry || guided.geometry.length < 2) return;
+        this.cachedOptimalRoadGeometry = guided.geometry;
+        this.routeSummary = { distanceKm: guided.totalM / 1000, durationMin: guided.durationS / 60 };
+        this.routeSummaryFailed = false;
+        if (this.optimalRouteLayer && this.map) this.renderRoutes();
+        this.renderRouteFigures();
+    }
+
     /** Geometría vial real entre los puntos de la ruta (OSRM público); si falla se mantienen tramos rectos. */
     async fetchRealRoadGeometry(waypoints, routeKey) {
+        const guided = window.RouteGuidance && window.RouteGuidance.route;
+        if (guided && guided.choice) {
+            // La guía ya eligió la ruta apta para el camión: no se pide otra a OSRM que podría pasar bajo el puente.
+            this.useGuidedRoute(guided);
+            return;
+        }
         try {
             this.isFetchingRoute = true;
             const coordString = waypoints.map(w => w.coords[1] + ',' + w.coords[0]).join(';');
