@@ -57,6 +57,11 @@ window.RouteGuidance = (function () {
     const handledBlockages = new Set();
     let lastNetworkTry = 0;
     let aiAlertTimer = null;
+    // Avisos del HUD: como máximo MAX_HUD_ALERTS a la vista; el resto en "+N avisos" (se despliega al tocarlo).
+    const MAX_HUD_ALERTS = 2;
+    const EXPANDED_ALERTS_MS = 15000;
+    let alertsExpanded = false;
+    let expandedTimer = null;
 
     // ------------------------------------------------------------------ geometría
     const toRad = (deg) => deg * Math.PI / 180;
@@ -800,7 +805,124 @@ window.RouteGuidance = (function () {
         });
         set('[data-nav-ai-alert-text]', s.aiAlert ? s.aiAlert.text : '');
         set('[data-nav-ai-alert-sub]', s.aiAlert ? '· ' + s.aiAlert.sub : '');
+        layoutAlerts();
     }
+
+    // ------------------------------------------------------------------ pila de avisos del HUD
+    /**
+     * Prioridad de cada fila (data-hud-alert, menor = más importante): bloqueo de la IA (1) > restricción de gálibo o
+     * peso próxima (2) > ruta con restricciones (2,5) > fuera de ruta (3) > ruta alternativa apta (4) > GPS (5).
+     */
+    function alertPriority(el) {
+        if (el.hasAttribute('data-nav-route-notice') && el.classList.contains('is-ok')) return 4;
+        return Number(el.dataset.hudAlert) || 9;
+    }
+
+    function isActive(el) {
+        if (el.hidden) return false;
+        if (el.classList.contains('hud-gps')) return !!el.textContent.trim() && el.dataset.state !== 'ok';
+        return true;
+    }
+
+    /**
+     * Ordena los avisos activos por prioridad, deja a la vista los dos primeros (cada uno en 3 líneas como máximo) y
+     * resume el resto en "+N avisos". Si aun así la tarjeta llega al panel de velocidad: 1) se oculta la fila de altura y
+     * peso (los avisos de gálibo ya dicen cuánto mide el vehículo), 2) el panel pasa a una fila al pie del mapa y 3) se
+     * deja un solo aviso. Desplegado, se ven todos y el panel
+     * se oculta mientras se leen (se repliega solo a los 15 s o al tocar de nuevo).
+     */
+    function layoutAlerts() {
+        if (typeof document === 'undefined') return;
+        const card = document.querySelector('.nav-screen .hud-card');
+        if (!card) return;
+        const screen = card.closest('.nav-screen');
+        const more = card.querySelector('[data-hud-more]');
+        const meta = card.querySelector('.hud-meta');
+        const all = Array.from(card.querySelectorAll('[data-hud-alert]'));
+        const rows = all.filter(isActive)
+            .map((el, i) => ({ el, i, p: alertPriority(el) }))
+            .sort((a, b) => a.p - b.p || a.i - b.i)
+            .map(item => item.el);
+        rows.forEach(el => { if (more) card.insertBefore(el, more); });
+        all.forEach(el => el.classList.remove('is-overflow'));
+        if (rows.length <= MAX_HUD_ALERTS) collapseAlerts(false);
+        if (meta) meta.hidden = false;
+        const panel = screen && screen.querySelector('.hud-panel');
+        if (panel) panel.classList.remove('is-row');
+
+        let visible = alertsExpanded ? rows.length : Math.min(rows.length, MAX_HUD_ALERTS);
+        const apply = () => {
+            rows.forEach((el, i) => el.classList.toggle('is-overflow', i >= visible));
+            const rest = rows.length - visible;
+            if (!more) return;
+            more.hidden = !(rest > 0 || alertsExpanded);
+            more.setAttribute('aria-expanded', alertsExpanded ? 'true' : 'false');
+            const label = more.querySelector('[data-hud-more-text]');
+            if (label) label.textContent = alertsExpanded ? 'Ocultar avisos' : '+' + rest + (rest === 1 ? ' aviso' : ' avisos');
+        };
+        apply();
+
+        // Lo que la tarjeta no puede tapar: lo que está debajo de ella en su columna (panel de velocidad, barra del
+        // viaje, atribución del mapa) y el borde inferior del mapa. En vertical el panel queda bajo la tarjeta; en horizontal, al lado.
+        const area = screen && screen.querySelector('.nav-map-area');
+        const below = (el) => {
+            if (!el || !(el.offsetHeight > 0)) return false;
+            const c = card.getBoundingClientRect();
+            const r = el.getBoundingClientRect();
+            return r.left < c.right && r.right > c.left && r.top > c.top;
+        };
+        const limit = (withPanel = true) => {
+            let bound = area && area.offsetHeight > 0 ? area.getBoundingClientRect().bottom : Infinity;
+            [withPanel ? panel : null, screen && screen.querySelector('.trip-bar'),
+                screen && screen.querySelector('.leaflet-control-attribution')].forEach(el => {
+                if (below(el)) bound = Math.min(bound, el.getBoundingClientRect().top);
+            });
+            return bound;
+        };
+        const overlaps = () => card.getBoundingClientRect().bottom + 8 > limit();
+        card.style.maxHeight = '';
+        card.style.overflowY = '';
+        if (!alertsExpanded && rows.length && overlaps()) {
+            if (meta) meta.hidden = true;
+            if (overlaps() && below(panel)) panel.classList.add('is-row');
+            while (visible > 1 && overlaps()) {
+                visible--;
+                apply();
+            }
+            if (overlaps()) {
+                // Ni con un solo aviso cabe (pantallas muy bajas): la tarjeta llega hasta el límite y se desplaza.
+                card.style.maxHeight = Math.max(120, limit() - card.getBoundingClientRect().top - 8) + 'px';
+                card.style.overflowY = 'auto';
+            }
+        }
+        if (alertsExpanded) {
+            // Desplegada (panel oculto): hasta el borde del mapa o la barra del viaje, con desplazamiento interno.
+            card.style.maxHeight = Math.max(120, limit(false) - card.getBoundingClientRect().top - 8) + 'px';
+            card.style.overflowY = 'auto';
+        }
+        if (screen) screen.classList.toggle('alerts-expanded', alertsExpanded);
+    }
+
+    function collapseAlerts(relayout = true) {
+        clearTimeout(expandedTimer);
+        if (!alertsExpanded) return;
+        alertsExpanded = false;
+        if (relayout) layoutAlerts();
+    }
+
+    /** Toque en "+N avisos" / "Ocultar avisos". */
+    function toggleAlerts() {
+        if (alertsExpanded) {
+            collapseAlerts();
+            return;
+        }
+        alertsExpanded = true;
+        clearTimeout(expandedTimer);
+        expandedTimer = setTimeout(() => collapseAlerts(), EXPANDED_ALERTS_MS);
+        layoutAlerts();
+    }
+
+    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', () => layoutAlerts());
 
     function reset() {
         route = null;
@@ -815,6 +937,8 @@ window.RouteGuidance = (function () {
         avoidPoints = [];
         aiAlert = null;
         clearTimeout(aiAlertTimer);
+        clearTimeout(expandedTimer);
+        alertsExpanded = false;
         handledBlockages.clear();
         lastNetworkTry = 0;
     }
@@ -828,7 +952,7 @@ window.RouteGuidance = (function () {
     }
 
     return {
-        prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, handleBlockage,
+        prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, handleBlockage, layoutAlerts, toggleAlerts,
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
         get clearance() { return clearance; },
