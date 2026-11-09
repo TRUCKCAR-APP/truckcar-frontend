@@ -142,7 +142,8 @@ test("el gálibo y el peso de la ruta real llegan de Routing-Restrictions y se a
   await w.RouteGuidance.prepare(LOAD);
   await sleep(5);
 
-  assert.equal(requests.length, 1);
+  assert.equal(requests.filter((r) => !r.corridorMeters).length, 1, "una validación de la ruta");
+  assert.ok(requests.filter((r) => r.corridorMeters).every((r) => r.corridorMeters === 500), "y la del corredor ampliado (vecinas)");
   assert.equal(JSON.stringify(requests[0].path), "[[4.6,-74],[4.61,-74],[4.61,-73.99]]", "la geometría de OSRM, no texto del corredor");
   assert.equal(requests[0].heightMeters, 4.1);
   assert.equal(requests[0].grossWeightTons, 40);

@@ -15,7 +15,7 @@
  */
 importScripts('js/tileStore.js');
 
-const VERSION = 'v21';
+const VERSION = 'v22';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 // v1 guardaba hasta 1.500 teselas de OpenStreetMap sin vencimiento: al activarse esta versión se borra entera.
@@ -51,6 +51,7 @@ const SHELL = [
     'js/dataService.js',
     'js/geolocation.js',
     'js/telemetry.js',
+    'js/routeStore.js',
     'js/navigation.js',
     'js/ui/native.js',
     'js/speechEngine.js',

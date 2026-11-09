@@ -490,6 +490,8 @@
     // =================================================================== receptores (torre y generador)
     let fleetUnsubscribe = null;
     const tripSubscriptions = new Map();   // loadId -> unsubscribe
+    let blockageUnsubscribe = null;
+    let blockageHandler = null;
 
     function applyFleetLocation(msg) {
         const data = window.TruckCarData;
@@ -566,9 +568,29 @@
             this.followTrips([]);
         },
 
+        /**
+         * Bloqueos viales que la IA de route-ai-agent detectó en las alertas de la comunidad (fleets-drivers los
+         * reenvía por /topic/road-blockages). El conductor recalcula si caen en su ruta; la torre los ve como aviso.
+         * Una sola suscripción por sesión: llamar de nuevo solo cambia el manejador.
+         */
+        followBlockages(onBlockage) {
+            blockageHandler = onBlockage;
+            if (blockageUnsubscribe) return;
+            blockageUnsubscribe = TruckCarTelemetry.subscribe('/topic/road-blockages', (msg) => {
+                if (msg && blockageHandler) blockageHandler(msg);
+            }, () => { blockageUnsubscribe = null; });
+        },
+
+        unfollowBlockages() {
+            if (blockageUnsubscribe) blockageUnsubscribe();
+            blockageUnsubscribe = null;
+            blockageHandler = null;
+        },
+
         stopAll() {
             this.unfollowFleet();
             this.unfollowTrips();
+            this.unfollowBlockages();
         }
     };
 

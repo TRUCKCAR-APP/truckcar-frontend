@@ -55,7 +55,7 @@ test("pide las alternativas a OSRM y toma la primera que no incumple gálibo ni 
   await w.RouteGuidance.prepare(LOAD);
 
   assert.match(fetches[0], /alternatives=true/);
-  assert.equal(validated.length, 3, "se valida cada alternativa con la altura y el peso del camión");
+  assert.equal(validated.filter((r) => !r.corridorMeters).length, 3, "se valida cada alternativa con la altura y el peso del camión");
   assert.ok(validated.every((r) => r.heightMeters === 4.1 && r.grossWeightTons === 40));
   const route = w.RouteGuidance.route;
   assert.equal(JSON.stringify(route.geometry[1]), "[4.605,-73.995]", "la alternativa 1, la primera libre en el orden de OSRM");

@@ -203,7 +203,7 @@ window.app = {
         clearInterval(this.inboxTimer);
         window.SosMonitor.stop();
         window.DriverTelemetry.stop();
-        window.RouteGuidance.reset();
+        window.RouteGuidance.forget(null);
         window.DeviceLocation.forget();
         window.LiveTracking.stopAll();
         window.TruckCarTelemetry.disconnect();
@@ -489,6 +489,25 @@ window.app = {
         } else {
             live.unfollowTrips();
         }
+
+        // Bloqueos de la IA: el conductor con un viaje en curso recalcula si le afectan; la torre recibe el aviso.
+        const load = window.TruckCarData.activeLoadOrder;
+        const driving = state.activeRole === 'driver' && load && load.status === 'IN_TRANSIT';
+        if (driving) {
+            live.followBlockages((blockage) => window.RouteGuidance.handleBlockage(blockage));
+        } else if (onTower) {
+            live.followBlockages((blockage) => this.notifyTowerBlockage(blockage));
+        } else {
+            live.unfollowBlockages();
+        }
+    },
+
+    /** Aviso en la torre de un bloqueo detectado por la IA (o confirmado por la comunidad). */
+    notifyTowerBlockage(blockage) {
+        const what = blockage.description || blockage.title || 'bloqueo vial';
+        const confidence = Number.isFinite(blockage.confidence) ? ' (confianza ' + Math.round(blockage.confidence * 100) + ' %)' : '';
+        const by = blockage.source === 'COMMUNITY' ? 'Confirmado por la comunidad' : 'Alerta procesada por IA' + confidence;
+        window.ui.toast(by + ': ' + what + '. Los conductores en esa vía recalculan su ruta.', 'warning');
     },
 
     /**
@@ -756,7 +775,7 @@ window.app = {
         if (!delivered) return;
         window.voiceEngine.speak('Entrega registrada. Viaje finalizado.');
         window.ui.toast('Entrega registrada (DELIVERED) con firma y prueba de entrega.', 'success');
-        window.RouteGuidance.reset();
+        window.RouteGuidance.forget(load.backendId);
         window.store.setState({ busyAction: null, driverScreen: 'assigned_load' });
     },
 

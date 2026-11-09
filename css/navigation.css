@@ -67,6 +67,11 @@
 .hud-row[hidden], .hud-gps:empty, .hud-gps[data-state="ok"] { display: none; }
 /* Ruta alternativa que evitó una restricción: confirmación en verde, no advertencia (la advertencia sigue en ámbar). */
 .hud-route-notice.is-ok .warn-line { color: var(--color-ok); }
+/* Bloqueo detectado por la IA en la ruta: aviso de la vía (tono SOS) hasta que el desvío quede calculado. */
+.hud-ai-alert { background: var(--color-sos-soft); }
+.hud-ai-alert .warn-line { color: var(--color-sos-text); }
+.hud-ai-alert.is-ok { background: var(--color-ok-soft); }
+.hud-ai-alert.is-ok .warn-line { color: var(--color-ok); }
 .hud-gps { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); }
 
 /* Panel vertical derecho, por encima de la atribución del mapa. */

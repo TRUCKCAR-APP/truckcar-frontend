@@ -88,10 +88,27 @@
         if (load && load.status === 'IN_TRANSIT' && driver && driver.id) {
             window.DriverTelemetry.start(load, driver.id);
             window.RouteGuidance.prepare(load);
+        } else if (load && load.status === 'ASSIGNED' && driver && driver.id && window.RouteGuidance.prefetch) {
+            // Aceptada: la ruta queda guardada en el dispositivo por si el viaje empieza sin señal.
+            window.RouteGuidance.prefetch(load);
+            if (window.DriverTelemetry.isRunning) {
+                window.DriverTelemetry.stop();
+                window.RouteGuidance.reset();
+            }
         } else if (window.DriverTelemetry.isRunning) {
             window.DriverTelemetry.stop();
             window.RouteGuidance.reset();
         }
+    }
+
+    /**
+     * Viaje guardado en el dispositivo (routeStore.js) para reabrir la app sin red: solo si el fallo es de red y el
+     * viaje estaba aceptado o en curso.
+     */
+    async function savedTrip(driverId) {
+        if (!window.RouteStore) return null;
+        const saved = await window.RouteStore.latest(driverId);
+        return saved && saved.load && (saved.load.status === 'IN_TRANSIT' || saved.load.status === 'ASSIGNED') ? saved : null;
     }
 
     function recordError(section, error) {
@@ -305,6 +322,7 @@
                 statusClass: index === 0 ? 'success' : 'warning',
                 deadheadDistanceKm: d.deadheadDistanceKm,
                 reason: d.reasonDetails,
+                explanation: d.explanation || null,
                 decisionStatus: d.status,
                 executedAt: formatDateTime(d.executedAt),
                 isCurrentAssignment: load && d.selectedDriverId === load.assignedDriverId
@@ -312,6 +330,8 @@
         return {
             loadId: load ? load.id : null,
             evaluatedAt: decisions && decisions[0] ? formatDateTime(decisions[0].executedAt) : '—',
+            // Síntesis en lenguaje claro de la decisión más reciente (también si no hubo conductor: dice por qué).
+            latestExplanation: decisions && decisions[0] ? decisions[0].explanation || null : null,
             candidates
         };
     }
@@ -377,6 +397,8 @@
                     data.currentDriver = mapDriver(user, null);
                     clearError('driver');
                 } else {
+                    const saved = error.isNetworkError && !data.currentDriver ? await savedTrip(driverId) : null;
+                    if (saved && saved.driver) data.currentDriver = { ...saved.driver, restoredOffline: true };
                     recordError('driver', error);
                 }
             }
@@ -401,6 +423,12 @@
                 syncDriverTelemetry();
                 clearError('loads');
             } catch (error) {
+                const saved = error.isNetworkError && !data.activeLoadOrder ? await savedTrip(driver.id) : null;
+                if (saved) {
+                    // Sin red: el viaje en curso sigue desde lo guardado (la guía restaura su ruta de IndexedDB).
+                    data.activeLoadOrder = { ...mapLoad(saved.load), restoredOffline: true };
+                    syncDriverTelemetry();
+                }
                 recordError('loads', error);
             }
         },
