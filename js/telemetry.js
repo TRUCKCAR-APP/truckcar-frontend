@@ -400,6 +400,12 @@
     function renderDriverBadge() {
         const el = document.getElementById('driver-telemetry-badge');
         if (!el) return;
+        paintDriverBadge(el);
+        // La fila del GPS cuenta en la pila de avisos del HUD (máximo dos a la vista).
+        if (window.RouteGuidance && window.RouteGuidance.layoutAlerts) window.RouteGuidance.layoutAlerts();
+    }
+
+    function paintDriverBadge(el) {
         const live = status === 'online' && driver.lastSent && Date.now() - driver.lastSent < 8000;
         const p = driver.lastPoint;
         if (driver.mode === 'waiting' || !driver.mode) {

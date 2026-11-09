@@ -65,6 +65,41 @@
 /* Avisos dentro de la tarjeta (fuera de ruta, GPS): triángulo y texto. El GPS solo aparece si hay algo que advertir. */
 .hud-row { padding: var(--space-3) var(--space-4); border-top: var(--border-subtle); font-size: var(--text-footnote); }
 .hud-row[hidden], .hud-gps:empty, .hud-gps[data-state="ok"] { display: none; }
+/* Pila de avisos: los que exceden el máximo a la vista se resumen en "+N avisos". */
+.hud-row.is-overflow, .hud-meta[hidden] { display: none; }
+.hud-more {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    padding-block: var(--space-2);
+    background: none;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: var(--text-footnote);
+    font-weight: var(--weight-semibold);
+    text-align: left;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+.hud-more:active { background: var(--color-pressed); }
+/* Desplegados todos los avisos: la tarjeta se desplaza si no cabe y el panel se oculta mientras se leen. */
+.nav-screen.alerts-expanded .hud-card { max-height: calc(100% - var(--space-4) * 2); overflow-y: auto; overscroll-behavior: contain; }
+.nav-screen.alerts-expanded .hud-panel { visibility: hidden; }
+/* "Ocultar avisos" siempre a mano aunque la tarjeta desplegada se desplace. */
+.nav-screen.alerts-expanded .hud-more { position: sticky; bottom: 0; background: var(--color-glass-solid); }
+/* Plegados, cada aviso ocupa 3 líneas como máximo: el texto completo está al desplegar y en la voz. */
+.nav-screen:not(.alerts-expanded) .hud-row[data-hud-alert] .warn-line > span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+}
+/* Sin altura para tarjeta y panel vertical (360×800 con avisos): el panel pasa a una fila al pie del mapa. */
+.hud-panel.is-row { grid-auto-flow: column; align-items: end; }
 /* Ruta alternativa que evitó una restricción: confirmación en verde, no advertencia (la advertencia sigue en ámbar). */
 .hud-route-notice.is-ok .warn-line { color: var(--color-ok); }
 /* Bloqueo detectado por la IA en la ruta: aviso de la vía (tono SOS) hasta que el desvío quede calculado. */
