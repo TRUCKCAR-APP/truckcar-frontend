@@ -232,8 +232,16 @@ window.app = {
             const session = await window.TruckCarApi.auth.login(form.get('email').trim(), form.get('password'));
             await this.startSession(session);
         } catch (error) {
-            window.store.setState({ busyAction: null, authError: window.ui.errorMessage(error) });
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
         }
+    },
+
+    /** Error del login o del registro. El límite de intentos del gateway (429) se explica sin detalles técnicos. */
+    authErrorMessage(error) {
+        if (error && error.isRateLimited) {
+            return window.TruckCarApi.RATE_LIMITED_MESSAGE;
+        }
+        return window.ui.errorMessage(error);
     },
 
     async submitRegister(event) {
@@ -251,7 +259,7 @@ window.app = {
             });
             await this.startSession(session);
         } catch (error) {
-            window.store.setState({ busyAction: null, authError: window.ui.errorMessage(error) });
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
         }
     },
 
