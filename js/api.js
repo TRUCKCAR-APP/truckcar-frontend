@@ -7,20 +7,31 @@
 (function () {
     const config = window.TruckCarConfig;
 
+    /** Texto para el usuario cuando el gateway corta por el límite de intentos de /api/v1/auth (429). */
+    const RATE_LIMITED_MESSAGE = 'Demasiados intentos, espere unos segundos';
+
     class ApiError extends Error {
-        constructor(message, { status = 0, details = null, correlationId = null, path = '' } = {}) {
+        constructor(message, { status = 0, details = null, correlationId = null, path = '', retryAfterSeconds = null } = {}) {
             super(message);
             this.name = 'ApiError';
             this.status = status;
             this.details = details;
             this.correlationId = correlationId;
             this.path = path;
+            /** Segundos que pide esperar el gateway (cabecera Retry-After de un 429); null si no la envió. */
+            this.retryAfterSeconds = retryAfterSeconds;
         }
 
         get isUnauthorized() { return this.status === 401; }
         get isForbidden() { return this.status === 403; }
         get isNotFound() { return this.status === 404; }
+        get isRateLimited() { return this.status === 429; }
         get isNetworkError() { return this.status === 0; }
+    }
+
+    function retryAfterOf(response) {
+        const seconds = Number.parseInt(response.headers.get('Retry-After'), 10);
+        return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
     }
 
     // ---------------------------------------------------------------- sesión
@@ -142,6 +153,7 @@
             403: 'No tiene permisos para esta operación',
             404: 'Recurso no encontrado',
             409: 'Conflicto con el estado actual del recurso',
+            429: RATE_LIMITED_MESSAGE,
             502: 'El servicio de destino no está disponible',
             503: 'Servicio temporalmente no disponible',
             504: 'El servicio tardó demasiado en responder'
@@ -211,13 +223,19 @@
                 status: response.status,
                 details: payload,
                 correlationId: responseCorrelation,
-                path
+                path,
+                retryAfterSeconds: response.status === 429 ? retryAfterOf(response) : null
             });
             if (error.isUnauthorized && auth && !retried && session.isRenewable()) {
                 // Token vencido o revocado entre la comprobación y el envío: una renovación y un reintento.
                 try {
                     await refreshSession();
                 } catch (refreshError) {
+                    // /auth/refresh limitado (429): la sesión sigue siendo válida, solo hay que esperar. Cerrarla aquí
+                    // sacaría al conductor de la app por una ráfaga de renovaciones.
+                    if (refreshError && refreshError.isRateLimited) {
+                        throw refreshError;
+                    }
                     session.clear();
                     window.dispatchEvent(new CustomEvent('truckcar:unauthorized', { detail: error }));
                     throw error;
@@ -253,6 +271,7 @@
     // ---------------------------------------------------------------- endpoints
     window.TruckCarApi = {
         ApiError,
+        RATE_LIMITED_MESSAGE,
         session,
         ensureFreshSession,
         decodeJwt,
