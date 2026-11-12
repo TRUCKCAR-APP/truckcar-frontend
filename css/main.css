@@ -670,6 +670,26 @@ body[data-view="login"] #top-nav { display: none !important; }
     pointer-events: none;
 }
 .sos-alerts[hidden] { display: none; }
+.sos-alert-list { display: flex; flex-direction: column; gap: 6px; }
+.sos-alert-list:empty { display: none; }
+.sos-monitor-down {
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    color: var(--color-text);
+    background: var(--color-elevated);
+    border: 1px solid var(--color-border-elevated);
+    border-left: 4px solid var(--color-warn);
+    box-shadow: var(--elev-3);
+    font-size: 13px;
+    line-height: 1.35;
+}
+.sos-monitor-down > i { color: var(--color-warn); font-size: 16px; margin-top: 1px; flex: none; }
+.sos-monitor-down b { display: block; }
+.sos-monitor-down small { display: block; margin-top: 4px; font-size: 12px; color: var(--color-text-secondary); }
 .sos-alert {
     pointer-events: auto;
     display: flex;

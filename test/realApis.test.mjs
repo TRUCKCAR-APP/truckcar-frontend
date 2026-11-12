@@ -443,3 +443,87 @@ test("la cabecera del conductor separa el SOS de «Cerrar sesión» y el botón 
   assert.match(header, /onclick="window\.DriverActions\.confirmLogout\(this\)"[^>]*aria-label="Cerrar sesión"/);
   assert.doesNotMatch(header, /window\.app\.logout\(\)/);
 });
+
+function tower(loadActiveSos) {
+  const spoken = [];
+  const { w, toasts } = browser({ state: { activeRole: "coordinator", sessionRole: "COORDINADOR" }, service: { loadActiveSos, acknowledgeSos: async () => {} } });
+  w.voiceEngine = { speak: (text) => spoken.push(text) };
+  return { w, toasts, spoken };
+}
+const minutesAgo = (m) => new Date(Date.now() - m * 60000).toISOString();
+const sosItem = (id, m = 3) => ({ id, driverName: "Ana Ruiz", vehiclePlate: "TDK-410", latitude: 4.6, longitude: -74.08, status: "ACTIVE", triggeredAt: minutesAgo(m) });
+
+test("monitoreo SOS: un fallo aislado no muestra el banner; el segundo sí, una vez y con sonido; conserva la lista y se quita al recuperarse", async () => {
+  let mode = "ok";
+  const { w, spoken } = tower(async () => {
+    if (mode === "ok") return [sosItem(41)];
+    throw Object.assign(new Error("Sin conexión"), { status: 0 });
+  });
+  w.SosMonitor.sync(w.store.state);
+  await sleep(10);
+  assert.ok(w.document.querySelector("[data-sos-id='41']"));
+
+  mode = "fail";
+  await w.SosMonitor.poll();
+  assert.equal(w.document.querySelector(".sos-monitor-down"), null, "un solo fallo no muestra el banner");
+  await w.SosMonitor.poll();
+  const banner = w.document.querySelector(".sos-monitor-down");
+  assert.ok(banner, "el segundo fallo seguido muestra el banner");
+  assert.equal(banner.getAttribute("role"), "alert");
+  assert.equal(banner.dataset.sosMonitorDown, "network");
+  assert.ok(banner.querySelector("i[aria-hidden='true']"), "lleva ícono además del texto");
+  assert.match(banner.textContent, /Monitoreo SOS caído.*sin conexión o servidor no disponible.*Los SOS nuevos no aparecerán hasta que se recupere\./s);
+  assert.match(banner.textContent, /Lista desactualizada · última consulta correcta: \d/);
+  assert.ok(w.document.querySelector("[data-sos-id='41']"), "la lista previa sigue visible");
+  assert.deepEqual(spoken.filter((t) => /caído/.test(t)), ["Monitoreo SOS caído."]);
+
+  await w.SosMonitor.poll();
+  assert.equal(w.document.querySelector(".sos-monitor-down"), banner, "no se recrea mientras la causa no cambie");
+  assert.equal(spoken.filter((t) => /caído/.test(t)).length, 1, "el sonido suena una sola vez");
+
+  mode = "ok";
+  await w.SosMonitor.poll();
+  assert.equal(w.document.querySelector(".sos-monitor-down"), null, "se quita al recuperarse");
+  w.SosMonitor.stop();
+});
+
+test("monitoreo SOS: una sesión sin acceso muestra otro texto desde el primer fallo; si el audio falla el banner igual aparece", async () => {
+  const { w } = tower(async () => { throw Object.assign(new Error("Prohibido"), { status: 403 }); });
+  w.voiceEngine = { speak: () => { throw new Error("audio bloqueado"); } };
+  w.SosMonitor.sync(w.store.state);
+  await sleep(10);
+  const banner = w.document.querySelector(".sos-monitor-down");
+  assert.ok(banner, "aparece al primer fallo");
+  assert.equal(banner.dataset.sosMonitorDown, "auth");
+  assert.match(banner.textContent, /Monitoreo SOS detenido.*Su sesión no tiene acceso a las alertas SOS\. Vuelva a iniciar sesión\./s);
+  assert.doesNotMatch(banner.textContent, /servidor no disponible/);
+  assert.match(banner.textContent, /Aún no se ha podido consultar la torre\./);
+  assert.equal(w.document.querySelector(".sos-alerts").hidden, false);
+  w.SosMonitor.stop();
+});
+
+test("monitoreo SOS: las tarjetas no se recrean si la lista no cambia, el «hace X min» se actualiza y solo un SOS nuevo se anuncia", async () => {
+  let items = [sosItem(41, 3)];
+  const { w, toasts } = tower(async () => items.map((s) => ({ ...s })));
+  w.SosMonitor.sync(w.store.state);
+  await sleep(10);
+  const first = w.document.querySelector("[data-sos-id='41']");
+  assert.equal(first.getAttribute("role"), "alert", "el SOS nuevo se anuncia");
+  assert.equal(w.document.querySelector(".sos-alerts").getAttribute("aria-live"), null, "el contenedor no anuncia cada cambio");
+  assert.match(first.querySelector("[data-sos-ago]").textContent, /hace 3 min/);
+
+  items = [sosItem(41, 7)];
+  await w.SosMonitor.poll();
+  const same = w.document.querySelector("[data-sos-id='41']");
+  assert.equal(same, first, "la tarjeta no se recrea");
+  assert.equal(same.getAttribute("role"), null, "ya no se vuelve a anunciar");
+  assert.match(same.querySelector("[data-sos-ago]").textContent, /hace 7 min/);
+  assert.equal(toasts.filter((t) => /SOS ·/.test(t.title)).length, 1);
+
+  items = [sosItem(42, 0), sosItem(41, 7)];
+  await w.SosMonitor.poll();
+  assert.equal(w.document.querySelector("[data-sos-id='42']").getAttribute("role"), "alert");
+  assert.equal(w.document.querySelector("[data-sos-id='41']").getAttribute("role"), null);
+  assert.equal(toasts.filter((t) => /SOS ·/.test(t.title)).length, 2);
+  w.SosMonitor.stop();
+});
