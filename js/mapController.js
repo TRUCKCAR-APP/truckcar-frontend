@@ -399,7 +399,7 @@ class MapController {
 
     fleetPopup(truck) {
         return '<b>' + window.ui.escape(truck.driverName) + ' (' + window.ui.escape(truck.plate) + ')</b><br>'
-            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(window.DriverApp.statusLabel(truck.status)) + '</b> | Vel: '
+            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(window.ui.statusLabel(truck.status)) + '</b> | Vel: '
             + truck.speed + ' km/h' + (typeof truck.heading === 'number' ? ' | Rumbo: ' + Math.round(truck.heading) + '°' : '');
     }
 
@@ -576,7 +576,7 @@ class MapController {
 
     shipmentTruckPopup(truck) {
         const esc = window.ui.escape;
-        return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(window.DriverApp.statusLabel(truck.status)) + ' · '
+        return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(window.ui.statusLabel(truck.status)) + ' · '
             + truck.speed + ' km/h · ' + esc(truck.lastCheckin);
     }
 

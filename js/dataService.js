@@ -306,8 +306,14 @@
         };
     }
 
+    const loaders = {};
+
     const service = {
         mapLoad,
+
+        registerLoader(role, loader) {
+            loaders[role] = loader;
+        },
 
         async loadCurrentUser() {
             const user = await api.users.me();
@@ -496,16 +502,8 @@
             } catch (error) {
                 recordError('user', error);
             }
-            const role = window.store.state.activeRole;
-            if (role === 'generator') {
-                await this.refreshShipments();
-            } else if (role === 'coordinator') {
-                await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads(), this.loadPublishedLoads()]);
-            } else {
-                await this.loadDriverProfile();
-                await Promise.all([this.loadDriverAssignment(), this.loadAlerts()]);
-                await this.loadRoutePlan();
-            }
+            const loader = loaders[window.store.state.activeRole];
+            if (loader) await loader();
             setStatus({ loading: false, lastSync: new Date().toISOString() });
         },
 

@@ -29,6 +29,7 @@ const SHELL = [
     'js/api.js',
     'js/mockData.js',
     'js/state.js',
+    'js/ui.js',
     'js/ui/toaster.js',
     'js/ui/sheet.js',
     'js/offlineQueue.js',
@@ -53,7 +54,10 @@ const SHELL = [
     'assets/vendor/leaflet/leaflet.js',
     'js/messagingService.js',
     'js/notifications.js',
-    'js/app.js'
+    'js/app.js',
+    'js/surfaces/driver.js',
+    'js/surfaces/panel.js',
+    'js/demo/demoSession.js'
 ];
 
 const CDN_HOSTS = ['cdnjs.cloudflare.com', 'unpkg.com'];

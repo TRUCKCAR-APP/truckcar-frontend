@@ -96,7 +96,7 @@ window.CoordinatorPanel = {
                                     </div>
                                     <div class="flex justify-between gap-2">
                                         <span class="text-slate-400 font-medium">Asignación:</span>
-                                        <span class="font-semibold text-right ${this.assignmentColor(load.assignmentStatus)}">${this.assignmentWarn(load.assignmentStatus) ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(load.assignmentStatus ? window.DriverApp.statusLabel(load.assignmentStatus) : 'Sin asignar')}${load.assignedDriverName ? ' · ' + esc(load.assignedDriverName) : ''}</span>
+                                        <span class="font-semibold text-right ${this.assignmentColor(load.assignmentStatus)}">${this.assignmentWarn(load.assignmentStatus) ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(load.assignmentStatus ? window.ui.statusLabel(load.assignmentStatus) : 'Sin asignar')}${load.assignedDriverName ? ' · ' + esc(load.assignedDriverName) : ''}</span>
                                     </div>
                                 </div>
 
@@ -172,7 +172,7 @@ window.CoordinatorPanel = {
                                         </div>
                                         <div class="flex items-center gap-2 shrink-0">
                                             <div class="text-right">
-                                                <span class="text-xs font-semibold ${truck.status === 'DESCANSO' ? 'text-warn-500' : 'text-slate-200'}">${truck.status === 'DESCANSO' ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(window.DriverApp.statusLabel(truck.status))}</span>
+                                                <span class="text-xs font-semibold ${truck.status === 'DESCANSO' ? 'text-warn-500' : 'text-slate-200'}">${truck.status === 'DESCANSO' ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(window.ui.statusLabel(truck.status))}</span>
                                                 <div class="text-[10px] text-slate-400 font-mono mt-0.5">${truck.speed} km/h · ${esc(truck.lastCheckin)}</div>
                                             </div>
                                             ${truck.phone ? `<a href="tel:${esc(truck.phone)}" onclick="event.stopPropagation()" class="w-7 h-7 rounded-lg bg-slate-700/80 hover:bg-ok-600/30 hover:text-ok-400 text-slate-300 grid place-items-center text-xs transition border border-slate-600/50" title="Llamar a ${esc(truck.driverName)}" aria-label="Llamar por teléfono"><i class="fas fa-phone"></i></a>` : `<span class="w-7 h-7 rounded-lg bg-slate-800/50 text-slate-600 grid place-items-center text-xs border border-slate-800 cursor-not-allowed" title="Conductor sin teléfono registrado" aria-label="Sin teléfono"><i class="fas fa-phone-slash"></i></span>`}
@@ -487,7 +487,7 @@ window.coordinatorCtrl = {
             <div class="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-2">
                 <div class="flex justify-between"><span class="text-slate-400">Ponderación del modelo</span><span class="font-mono text-slate-300">Cercanía 50% · Capacidad 30% · Calificación 20%</span></div>
                 <div class="flex justify-between"><span class="text-slate-400">Distancia en vacío al cargue</span><span class="font-mono text-white font-bold">${candidate.deadheadDistanceKm != null ? candidate.deadheadDistanceKm.toFixed(1) + ' km' : '—'}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Estado de la decisión</span><span class="text-slate-200">${esc(window.DriverApp.statusLabel(candidate.decisionStatus))}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Estado de la decisión</span><span class="text-slate-200">${esc(window.ui.statusLabel(candidate.decisionStatus))}</span></div>
                 <div class="flex justify-between"><span class="text-slate-400">Ejecutada</span><span class="font-mono text-slate-200">${esc(candidate.executedAt)}</span></div>
             </div>
             <div class="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl text-slate-200">
@@ -560,7 +560,7 @@ window.coordinatorCtrl = {
         const truck = (window.TruckCarData.fleetVehicles || []).find(t => t.id === truckId);
         if (!truck) return;
         if (truck.coords) window.mapCtrl.focusOn(truck.coords, 12);
-        window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + window.DriverApp.statusLabel(truck.status) + ' · ' + truck.speed + ' km/h · conducción ' + truck.hoursActive, 'info');
+        window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + window.ui.statusLabel(truck.status) + ' · ' + truck.speed + ' km/h · conducción ' + truck.hoursActive, 'info');
     },
 
     async sendDispatchMessage() {
