@@ -660,7 +660,7 @@
         },
 
         async loadActiveSos() {
-            data.activeSos = (await api.alerts.activeSos()) || [];
+            data.activeSos = ((await api.alerts.activeSos()) || []).filter(s => s.status !== 'ACKNOWLEDGED' && s.status !== 'RESOLVED');
             return data.activeSos;
         },
 
