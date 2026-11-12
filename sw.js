@@ -15,7 +15,7 @@
  */
 importScripts('js/tileStore.js');
 
-const VERSION = 'v19';
+const VERSION = 'v20';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 // v1 guardaba hasta 1.500 teselas de OpenStreetMap sin vencimiento: al activarse esta versión se borra entera.
@@ -34,6 +34,8 @@ const SHELL = [
     'assets/icon-maskable-512.png',
     'assets/apple-touch-icon.png',
     'assets/icons.svg',
+    'assets/brand/truckcar-logo.png',
+    'assets/brand/truckcar-logo-blanco.png',
     'css/tokens.css',
     'fonts/manrope-latin-wght-normal.woff2',
     'css/main.css',

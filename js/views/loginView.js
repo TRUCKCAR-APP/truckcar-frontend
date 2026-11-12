@@ -14,7 +14,10 @@ window.LoginView = {
         return `
             <div data-screen class="login-screen">
                 <form onsubmit="window.app.${isRegister ? 'submitRegister' : 'submitLogin'}(event)" class="login-form">
-                    <img src="assets/icon.svg" alt="" class="login-mark">
+                    <span class="brand-logo login-mark">
+                        <img src="assets/brand/truckcar-logo.png" alt="TruckCar" class="brand-logo-light" width="854" height="831">
+                        <img src="assets/brand/truckcar-logo-blanco.png" alt="TruckCar" class="brand-logo-dark" width="854" height="831">
+                    </span>
                     <h1>${isRegister ? 'Cree su cuenta en TruckCar' : 'Inicie sesión en TruckCar'}</h1>
                     <p class="login-lead">${isRegister
                         ? 'Para conductores y empresas que generan carga.'
