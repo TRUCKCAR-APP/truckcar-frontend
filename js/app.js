@@ -345,7 +345,17 @@ window.app = {
         }, delay);
     },
 
+    clearSessionCaches() {
+        if (!('serviceWorker' in navigator)) return;
+        navigator.serviceWorker.ready
+            .then((registration) => {
+                if (registration.active) registration.active.postMessage({ type: 'TRUCKCAR_SESSION_ENDED' });
+            })
+            .catch(() => { });
+    },
+
     endSession() {
+        this.clearSessionCaches();
         clearTimeout(this.sessionRefreshTimer);
         clearInterval(this.pollTimer);
         clearInterval(this.shipmentsTimer);
