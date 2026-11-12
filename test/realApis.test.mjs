@@ -362,3 +362,84 @@ test("cancelar antes del envío no manda nada; después avisa que ya salió y pi
   none.w.document.querySelector("[data-sos-action='close']").click();
   await nothing;
 });
+
+function logoutHarness(status) {
+  const { w } = browser();
+  let logouts = 0;
+  w.app.logout = () => { logouts++; };
+  if (status === undefined) delete w.OfflineQueue;
+  else w.OfflineQueue.status = status;
+  const trigger = w.document.createElement("button");
+  w.document.body.appendChild(trigger);
+  return { w, trigger, logouts: () => logouts };
+}
+
+test("cerrar sesión pide confirmación accesible: Escape y «Seguir conectado» no cierran, confirmar cierra una sola vez", async () => {
+  const { w, trigger, logouts } = logoutHarness(() => ({ pending: 0, byKind: {} }));
+  w.DriverActions.confirmLogout(trigger);
+  const dialog = w.document.querySelector(".sos-confirm.is-neutral");
+  assert.ok(dialog);
+  assert.equal(dialog.getAttribute("role"), "alertdialog");
+  assert.equal(dialog.getAttribute("aria-describedby"), "sos-confirm-desc");
+  assert.equal(w.document.activeElement.id, "sos-confirm-title");
+  assert.equal(w.document.activeElement.textContent, "¿Cerrar sesión?");
+  assert.equal(dialog.querySelector(".sos-confirm-warning"), null);
+  const [yes, no] = dialog.querySelectorAll("button");
+  assert.equal(yes.textContent.trim(), "Cerrar sesión");
+  assert.equal(no.textContent.trim(), "Seguir conectado");
+  const tab = (shiftKey) => w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true }));
+  tab(false); assert.equal(w.document.activeElement, yes);
+  tab(false); assert.equal(w.document.activeElement, no);
+  tab(false); assert.equal(w.document.activeElement, yes);
+
+  w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(w.document.querySelector(".sos-confirm"), null);
+  assert.equal(w.document.activeElement, trigger);
+  w.DriverActions.confirmLogout(trigger);
+  w.document.querySelector("[data-sos-confirm='cancel']").click();
+  assert.equal(logouts(), 0);
+
+  w.DriverActions.confirmLogout(trigger);
+  const send = w.document.querySelector("[data-sos-confirm='send']");
+  const cancel = w.document.querySelector("[data-sos-confirm='cancel']");
+  send.click();
+  assert.ok(send.disabled && cancel.disabled);
+  send.click();
+  assert.equal(logouts(), 1);
+});
+
+test("con un SOS en cola, cerrar sesión lo avisa antes de confirmar", async () => {
+  const { w, trigger, logouts } = logoutHarness(() => ({ pending: 2, byKind: { "alert.sos": 1, position: 1 } }));
+  w.DriverActions.confirmLogout(trigger);
+  const dialog = w.document.querySelector(".sos-confirm");
+  assert.equal(dialog.getAttribute("aria-describedby"), "sos-confirm-desc sos-confirm-warning");
+  assert.equal(w.document.getElementById("sos-confirm-warning").textContent.trim(),
+    "Tiene una alerta SOS pendiente de enviarse. Si cierra sesión, no se enviará hasta que vuelva a iniciar sesión en este teléfono. Si es una emergencia, llame al 123.");
+  assert.equal(dialog.querySelector("[data-sos-confirm='send']").textContent.trim(), "Cerrar sesión de todos modos");
+  assert.equal(logouts(), 0, "no cierra sin que el conductor confirme");
+  dialog.querySelector("[data-sos-confirm='send']").click();
+  assert.equal(logouts(), 1);
+});
+
+test("si no se puede leer la cola, cerrar sesión muestra la confirmación normal y no se bloquea", async () => {
+  for (const status of [() => { throw new Error("IndexedDB no disponible"); }, undefined]) {
+    const { w, trigger, logouts } = logoutHarness(status);
+    w.DriverActions.confirmLogout(trigger);
+    const dialog = w.document.querySelector(".sos-confirm");
+    assert.ok(dialog);
+    assert.equal(dialog.querySelector(".sos-confirm-warning"), null);
+    dialog.querySelector("[data-sos-confirm='send']").click();
+    assert.equal(logouts(), 1);
+  }
+});
+
+test("la cabecera del conductor separa el SOS de «Cerrar sesión» y el botón pide confirmación", () => {
+  const css = readFileSync("css/main.css", "utf8");
+  assert.match(css, /\.app-header \.header-icon-btn \{ width: 48px; height: 48px; \}/);
+  const fab = css.match(/\.sos-fab \{[^}]*\}/)[0];
+  assert.match(fab, /right: calc\(64px \+ var\(--safe-right\)\)/);
+  assert.match(fab, /height: 48px/);
+  const header = readFileSync("js/views/driverApp.js", "utf8");
+  assert.match(header, /onclick="window\.DriverActions\.confirmLogout\(this\)"[^>]*aria-label="Cerrar sesión"/);
+  assert.doesNotMatch(header, /window\.app\.logout\(\)/);
+});

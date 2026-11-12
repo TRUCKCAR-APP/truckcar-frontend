@@ -368,24 +368,25 @@ window.DriverActions = (function () {
 
     let confirming = false;
 
-    function openSosConfirm(trigger) {
+    function openConfirm({ trigger, tone = '', iconName, title, description, warning = '', confirmLabel, confirmIcon = '', cancelLabel, onConfirm }) {
         if (confirming || document.body.classList.contains('sos-open')) return;
         confirming = true;
         const host = document.getElementById('phone-mockup-frame') || document.body;
         const previousFocus = trigger || document.activeElement;
         const dialog = document.createElement('div');
-        dialog.className = 'sos-modal sos-confirm';
+        dialog.className = 'sos-modal sos-confirm' + (tone ? ' ' + tone : '');
         dialog.setAttribute('role', 'alertdialog');
         dialog.setAttribute('aria-modal', 'true');
         dialog.setAttribute('aria-labelledby', 'sos-confirm-title');
-        dialog.setAttribute('aria-describedby', 'sos-confirm-desc');
+        dialog.setAttribute('aria-describedby', 'sos-confirm-desc' + (warning ? ' sos-confirm-warning' : ''));
         dialog.innerHTML = `
-            <svg class="sos-modal-icon" aria-hidden="true"><use href="assets/icons.svg#siren"></use></svg>
-            <h2 id="sos-confirm-title" tabindex="-1">¿Enviar SOS a la torre de control?</h2>
-            <p id="sos-confirm-desc">La torre recibirá su posición GPS, su vehículo y su carga.</p>
+            <svg class="sos-modal-icon" aria-hidden="true"><use href="assets/icons.svg#${iconName}"></use></svg>
+            <h2 id="sos-confirm-title" tabindex="-1">${esc(title)}</h2>
+            <p id="sos-confirm-desc">${esc(description)}</p>
+            ${warning ? `<p id="sos-confirm-warning" class="sos-confirm-warning">${icon('warning-fill')}<span>${esc(warning)}</span></p>` : ''}
             <span class="spacer"></span>
-            <button type="button" class="sos-call" data-sos-confirm="send">${icon('siren')}Sí, enviar SOS</button>
-            <button type="button" class="sos-close" data-sos-confirm="cancel">Cancelar</button>`;
+            <button type="button" class="sos-call" data-sos-confirm="send">${confirmIcon ? icon(confirmIcon) : ''}${esc(confirmLabel)}</button>
+            <button type="button" class="sos-close" data-sos-confirm="cancel">${esc(cancelLabel)}</button>`;
         const buttons = [...dialog.querySelectorAll('[data-sos-confirm]')];
         let sending = false;
         const close = () => {
@@ -412,14 +413,53 @@ window.DriverActions = (function () {
             sending = true;
             buttons.forEach(button => { button.disabled = true; });
             close();
-            window.Native.haptic('sos');
-            activate();
+            onConfirm();
         });
         buttons[1].addEventListener('click', () => { if (!sending) close(); });
         document.addEventListener('keydown', onKey);
         document.body.classList.add('sos-open');
         host.appendChild(dialog);
         dialog.querySelector('#sos-confirm-title').focus({ preventScroll: true });
+    }
+
+    function openSosConfirm(trigger) {
+        openConfirm({
+            trigger,
+            iconName: 'siren',
+            title: '¿Enviar SOS a la torre de control?',
+            description: 'La torre recibirá su posición GPS, su vehículo y su carga.',
+            confirmLabel: 'Sí, enviar SOS',
+            confirmIcon: 'siren',
+            cancelLabel: 'Cancelar',
+            onConfirm: () => {
+                window.Native.haptic('sos');
+                activate();
+            }
+        });
+    }
+
+    function hasPendingSos() {
+        try {
+            const status = window.OfflineQueue.status();
+            return !!(status && status.byKind && status.byKind['alert.sos'] > 0);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function confirmLogout(trigger) {
+        const pending = hasPendingSos();
+        openConfirm({
+            trigger,
+            tone: 'is-neutral',
+            iconName: 'sign-out',
+            title: '¿Cerrar sesión?',
+            description: 'Tendrá que volver a ingresar para seguir usando la app.',
+            warning: pending ? 'Tiene una alerta SOS pendiente de enviarse. Si cierra sesión, no se enviará hasta que vuelva a iniciar sesión en este teléfono. Si es una emergencia, llame al 123.' : '',
+            confirmLabel: pending ? 'Cerrar sesión de todos modos' : 'Cerrar sesión',
+            cancelLabel: 'Seguir conectado',
+            onConfirm: () => window.app.logout()
+        });
     }
 
     function syncSos(state) {
@@ -436,5 +476,5 @@ window.DriverActions = (function () {
         sos.hint.hidden = false;
     }
 
-    return { tripProgressHtml, openReportSheet, syncSos, activate, REPORTS };
+    return { tripProgressHtml, openReportSheet, syncSos, activate, confirmLogout, REPORTS };
 })();

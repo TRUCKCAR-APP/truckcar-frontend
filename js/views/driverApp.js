@@ -40,7 +40,7 @@ window.DriverApp = {
                     <span class="wordmark">TruckCar</span>
                     <span data-network-status aria-live="polite" class="min-w-0"></span>
                     <span class="app-header-spacer"></span>
-                    <button onclick="window.app.logout()" class="header-icon-btn" title="Cerrar sesión" aria-label="Cerrar sesión">
+                    <button type="button" onclick="window.DriverActions.confirmLogout(this)" class="header-icon-btn" title="Cerrar sesión" aria-label="Cerrar sesión">
                         ${this.icon('sign-out')}
                     </button>
                 </header>

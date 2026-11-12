@@ -512,9 +512,9 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .sos-fab {
     position: absolute;
     top: calc(var(--safe-top) + 6px);
-    right: calc(52px + var(--safe-right));
+    right: calc(64px + var(--safe-right));
     z-index: 600;
-    height: var(--touch-min);
+    height: 48px;
     display: inline-flex;
     align-items: center;
     touch-action: none;
@@ -635,6 +635,17 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
     .sos-call, .sos-close { transition: none; }
     .sos-call:active, .sos-close:active { transform: none; }
 }
+.sos-modal .sos-confirm-warning { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-4); font-weight: var(--weight-semibold); }
+.sos-confirm-warning svg { width: 20px; height: 20px; fill: currentColor; flex: none; margin-top: 3px; }
+.sos-modal.is-neutral { background: var(--color-bg); color: var(--color-text); }
+.sos-modal.is-neutral p { color: var(--color-text-secondary); }
+.sos-modal.is-neutral .sos-confirm-warning { color: var(--color-text); }
+.sos-modal.is-neutral .sos-confirm-warning svg { fill: var(--color-warn); }
+.sos-modal.is-neutral .sos-call { background: var(--color-text); color: var(--color-bg); }
+.sos-modal.is-neutral .sos-close { color: var(--color-text); }
+.sos-modal.is-neutral :focus-visible { outline-color: var(--color-focus); }
+.app-header .header-icon-btn { width: 48px; height: 48px; }
+.app-header .wordmark { max-width: calc(100% - 84px - max(96px, calc(52px + 2rem))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sos-modal:focus { outline: none; }
 body.sos-open .toaster { display: none; }
 .sos-modal :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 3px; }
@@ -887,7 +898,7 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .nav-logo { width: 40px; }
 
 .wordmark { font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: -0.01em; color: var(--color-text); flex: none; }
-.app-header-spacer { flex: 1; min-width: 96px; }
+.app-header-spacer { flex: 1; min-width: max(96px, calc(52px + 2rem)); }
 .header-icon-btn {
     width: var(--touch-min); height: var(--touch-min); flex: none;
     display: grid; place-items: center; border-radius: var(--radius-md);
