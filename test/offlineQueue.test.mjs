@@ -166,3 +166,14 @@ test("un SOS guardado sin señal sale primero, en su propio lote, antes que el v
   assert.equal(posts[0].body.events[0].kind, "alert.sos");
   assert.equal(queue.status().pending, 0);
 });
+
+test("el SOS encolado conserva el clientEventId del envío en línea y lo manda en el lote", async () => {
+  const id = globalThis.crypto.randomUUID();
+  const event = await queue.enqueue("alert.sos", { latitude: 4.6, longitude: -74.1 }, { tripId: 30, clientEventId: id });
+  assert.equal(event.clientEventId, id);
+  assert.match(queue.uuid(), UUID_V4);
+  online = true;
+  await queue.flush();
+  const batch = posts.find((p) => p.endpoint === "/alerts/sync/batch");
+  assert.deepEqual(batch.body.events.map((e) => e.clientEventId), [id]);
+});

@@ -73,14 +73,23 @@ test("sin acuse del servidor el SOS no dice que avisó a la torre: sin señal qu
   w.document.querySelector("[data-sos-action='close']").click();
   await done;
 
-  const failing = browser({ service: { triggerSos: async () => { throw new Error("Error HTTP 500"); } } });
+  const failing = browser({ service: { triggerSos: async () => { throw Object.assign(new Error("Datos inválidos"), { status: 400 }); } } });
   const again = failing.w.DriverActions.activate();
   await sleep(30);
   const failed = failing.w.document.querySelector("[data-sos-status]").textContent;
-  assert.match(failed, /No se pudo enviar el SOS: Error HTTP 500.*Llame al 123 ahora/s);
-  assert.doesNotMatch(failed, /Torre de control avisada/);
+  assert.match(failed, /La alerta NO se envió: Datos inválidos.*Llame al 123 ahora/s);
+  assert.doesNotMatch(failed, /Torre de control avisada|guardada/);
+  assert.equal(failing.w.document.getElementById("sos-modal-title").textContent, "SOS no enviado");
   failing.w.document.querySelector("[data-sos-action='close']").click();
   await again;
+
+  const unsaved = browser({ service: { triggerSos: async () => { throw new Error("IndexedDB no disponible"); } } });
+  const third = unsaved.w.DriverActions.activate();
+  await sleep(30);
+  assert.match(unsaved.w.document.querySelector("[data-sos-status]").textContent, /La alerta NO se envió ni quedó guardada: IndexedDB no disponible.*Llame al 123 ahora/s);
+  assert.equal(unsaved.w.document.getElementById("sos-modal-title").textContent, "SOS no enviado");
+  unsaved.w.document.querySelector("[data-sos-action='close']").click();
+  await third;
 });
 
 test("el enlace de seguimiento muestra la URL firmada que devuelve el backend y su vencimiento", async () => {
@@ -197,6 +206,8 @@ test("sin señal GPS el SOS usa la última posición real confirmada y dice su a
   await sleep(60);
   assert.deepEqual(calls, [[4.4389, -75.2322]]);
   assert.match(w.document.querySelector("[data-sos-reading]").textContent, /última confirmada hace 5 min/);
+  assert.match(w.document.querySelector("[data-sos-status]").textContent,
+    /Torre de control avisada.*La posición enviada es la última confirmada hace 5 min: puede no ser exacta\. Llame al 123 ahora\./s);
   w.document.querySelector("[data-sos-action='close']").click();
   await done;
 
@@ -204,7 +215,12 @@ test("sin señal GPS el SOS usa la última posición real confirmada y dice su a
   const again = none.w.DriverActions.activate();
   await sleep(60);
   assert.equal(calls.length, 1);
-  assert.match(none.w.document.querySelector("[data-sos-status]").textContent, /No hay posición GPS/);
+  const status = none.w.document.querySelector("[data-sos-status]").textContent;
+  assert.match(status, /La alerta NO se envió: no hay posición GPS.*Llame al 123 ahora\./s);
+  assert.doesNotMatch(status, /se enviará|avisada/);
+  assert.equal(none.w.document.getElementById("sos-modal-title").textContent, "SOS no enviado");
+  await sleep(1100);
+  assert.ok(none.w.document.querySelector(".sos-modal"), "el aviso sigue visible hasta que el conductor lo cierre");
   none.w.document.querySelector("[data-sos-action='close']").click();
   await again;
 });

@@ -94,7 +94,7 @@
             mediaRefs[name] = mediaId;
         });
         const event = {
-            clientEventId: uuid(),
+            clientEventId: options.clientEventId || uuid(),
             kind,
             occurredAt: new Date().toISOString(),
             seq,
@@ -262,5 +262,5 @@
     setInterval(() => { if (status.pending > 0 && !flushing && !isOffline()) flush(); }, PERIODIC_MS);
     refreshStatus().then(() => { if (status.pending > 0) scheduleFlush(1000); });
 
-    window.OfflineQueue = { enqueue, flush, onChange, isOffline, isConnectivityError, backoffDelay, status: () => ({ ...status }) };
+    window.OfflineQueue = { enqueue, flush, onChange, isOffline, isConnectivityError, backoffDelay, uuid, status: () => ({ ...status }) };
 })();

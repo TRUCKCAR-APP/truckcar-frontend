@@ -630,23 +630,33 @@
         async triggerSos(coords, accuracyMeters) {
             const driver = data.currentDriver || {};
             const load = data.activeLoadOrder;
+            const latitude = coords ? Number(coords[0]) : NaN;
+            const longitude = coords ? Number(coords[1]) : NaN;
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                throw new Error('La alerta NO se envió: no hay posición GPS');
+            }
             const sos = {
-                latitude: coords[0],
-                longitude: coords[1],
+                latitude,
+                longitude,
                 accuracyMeters: Number.isFinite(accuracyMeters) ? Math.round(accuracyMeters) : null,
                 loadId: load ? load.backendId : null,
                 vehiclePlate: (driver.vehicle && driver.vehicle.plate) || null,
                 driverName: driver.name || null
             };
-            return offlineCapable(
-                () => api.alerts.sos({
-                    ...sos,
-                    clientEventId: (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : undefined
-                }),
-                async () => {
-                    await window.OfflineQueue.enqueue('alert.sos', sos, { tripId: sos.loadId });
-                    return { ...sos, id: null, status: 'ACTIVE', triggeredAt: new Date().toISOString(), pendingSync: true };
-                });
+            const clientEventId = window.OfflineQueue.uuid();
+            const queue = async () => {
+                await window.OfflineQueue.enqueue('alert.sos', sos, { tripId: sos.loadId, clientEventId });
+                return { ...sos, id: null, status: 'ACTIVE', triggeredAt: new Date().toISOString(), pendingSync: true };
+            };
+            if (window.OfflineQueue.isOffline()) return queue();
+            try {
+                return await api.alerts.sos({ ...sos, clientEventId });
+            } catch (error) {
+                const status = error && Number.isFinite(error.status) ? error.status : 0;
+                const retriable = status === 0 || status >= 500 || [401, 408, 429].includes(status);
+                if (!retriable) throw error;
+                return queue();
+            }
         },
 
         async loadActiveSos() {

@@ -1,6 +1,7 @@
 window.DriverActions = (function () {
     const esc = (value) => window.ui.escape(value);
     const HOLD_MS = 1500;
+    const OLD_POSITION_MS = 2 * 60 * 1000;
     const icon = (name) => `<svg aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
 
     const STEPS = [
@@ -208,10 +209,14 @@ window.DriverActions = (function () {
             case 'sending': return `<div class="sos-line is-pending"><span>Avisando a la torre de control…</span></div>`;
             case 'sent': return `<div class="sos-line">${icon('check-circle-fill')}<span>Torre de control avisada · ${esc(detail)}</span></div>`;
             case 'queued': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>Sin señal: el aviso se enviará al recuperar la señal.${call}</span></div>`;
-            case 'no-gps': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>No hay posición GPS: ${esc(detail)} Sin ubicación la torre no puede ubicarlo.${call}</span></div>`;
-            default: return `<div class="sos-line is-pending">${icon('warning-fill')}<span>No se pudo enviar el SOS: ${esc(detail)}.${call}</span></div>`;
+            case 'no-gps': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>La alerta NO se envió: no hay posición GPS (${esc(detail)}). Sin ubicación la torre no puede ubicarlo.${call}</span></div>`;
+            case 'not-saved': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>La alerta NO se envió ni quedó guardada: ${esc(detail)}.${call}</span></div>`;
+            case 'old-position': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>La posición enviada es la ${esc(detail)}: puede no ser exacta.${call}</span></div>`;
+            default: return `<div class="sos-line is-pending">${icon('warning-fill')}<span>La alerta NO se envió: ${esc(detail)}.${call}</span></div>`;
         }
     }
+
+    const NOT_SENT = ['no-gps', 'failed', 'not-saved'];
 
     function openSosModal({ plate, load, onMount }) {
         return new Promise((resolve) => {
@@ -270,18 +275,24 @@ window.DriverActions = (function () {
             onMount(modal, tick) {
                 const status = modal.querySelector('[data-sos-status]');
                 const calm = modal.querySelector('[data-sos-calm]');
+                let oldPosition = '';
                 const show = (kind, detail) => {
-                    status.innerHTML = sosStatusHtml(kind, detail);
+                    const sent = kind === 'sent' || kind === 'queued';
+                    status.innerHTML = sosStatusHtml(kind, detail) + (sent && oldPosition ? sosStatusHtml('old-position', oldPosition) : '');
                     calm.hidden = kind !== 'sending' && kind !== 'sent';
+                    if (NOT_SENT.includes(kind)) modal.querySelector('#sos-modal-title').textContent = 'SOS no enviado';
                 };
                 send = (async () => {
                     const position = await sosPosition();
                     modal.querySelector('[data-sos-position]').textContent = positionLabel(position);
                     tick(() => { modal.querySelector('[data-sos-reading]').textContent = readingLabel(position); });
                     if (!position) {
-                        show('no-gps', window.DeviceLocation.error || 'sin señal GPS.');
+                        show('no-gps', String(window.DeviceLocation.error || 'sin señal GPS').replace(/\.\s*$/, ''));
                         window.Native.haptic('warning');
                         return;
+                    }
+                    if (position.stale && Date.now() - position.fix.time > OLD_POSITION_MS) {
+                        oldPosition = readingLabel(position);
                     }
                     try {
                         const sos = await window.TruckCarService.triggerSos(position.fix.coords, position.fix.accuracy);
@@ -296,7 +307,7 @@ window.DriverActions = (function () {
                             window.voiceEngine.speak('SOS enviado. La torre de control fue avisada.', true);
                         }
                     } catch (error) {
-                        show('failed', window.ui.errorMessage(error));
+                        show(Number.isFinite(error && error.status) && error.status > 0 ? 'failed' : 'not-saved', window.ui.errorMessage(error));
                         window.Native.haptic('warning');
                     }
                 })();
