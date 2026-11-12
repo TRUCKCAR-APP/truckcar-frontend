@@ -1,18 +1,9 @@
-/**
- * Toasts apilados con el modelo de interacción de Sonner, sin dependencias (la app no usa React ni build):
- *  - Pila de hasta 3 visibles: los anteriores se escalan hacia atrás; con el puntero encima (o al tocar) se expanden.
- *  - Deslizar horizontalmente descarta (por distancia o velocidad); el temporizador se pausa mientras se interactúa
- *    o la pestaña está oculta.
- *  - Entrada desde abajo con ease-out (400 ms) y salida en la dirección del gesto.
- *
- * Uso: Toaster.show({ title, description, type: 'success'|'error'|'warning'|'info', action: { label, onClick } })
- */
 window.Toaster = (function () {
     const VISIBLE = 3;
     const GAP = 10;
     const DURATION = 5000;
     const SWIPE_DISTANCE = 56;
-    const SWIPE_VELOCITY = 0.11; // px/ms
+    const SWIPE_VELOCITY = 0.11;
     const ICONS = {
         success: 'fa-circle-check',
         error: 'fa-circle-exclamation',
@@ -45,7 +36,6 @@ window.Toaster = (function () {
         layout();
     }
 
-    /** Posiciones: los más nuevos al frente (índice 0). Expandido, cada uno sube la altura de los de delante. */
     function layout() {
         let offset = 0;
         toasts.slice().reverse().forEach((t, index) => {
@@ -56,7 +46,6 @@ window.Toaster = (function () {
             el.dataset.hidden = String(index >= VISIBLE);
             offset += el.offsetHeight + GAP;
         });
-        // Altura del área expandida para que el puntero no la abandone al moverse entre toasts.
         root.style.height = expanded ? offset + 'px' : '0px';
     }
 
@@ -167,10 +156,8 @@ window.Toaster = (function () {
         while (toasts.length > 6) dismiss(toasts[0].id);
         bindSwipe(t);
         layout();
-        // Siguiente frame: el navegador ya pintó el estado inicial y la entrada se anima.
         requestAnimationFrame(() => requestAnimationFrame(() => { el.dataset.mounted = 'true'; }));
         resume(t);
-        // Un toque fuera contrae la pila expandida en pantallas táctiles.
         return t.id;
     }
 

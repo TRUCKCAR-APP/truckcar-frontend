@@ -1,9 +1,3 @@
-/* =====================================================================================================================
- * TruckCar · estilos de componentes
- * Todos los valores salen de css/tokens.css. Los nombres de abajo son alias de compatibilidad para los componentes
- * existentes; el código nuevo usa directamente los tokens semánticos (--color-*, --space-*, --radius-*, --elev-*).
- * ===================================================================================================================== */
-
 :root {
     --bg: var(--color-bg);
     --surface: var(--color-surface);
@@ -68,17 +62,16 @@
     #top-nav .theme-select { width: 80px; max-width: 80px; padding-left: 6px; padding-right: 16px; }
 }
 
-/* ------------------------------------------------------------------ base móvil */
 html {
-    -webkit-tap-highlight-color: transparent;   /* sin destello gris/azul al tocar: cada control tiene su :active */
-    -webkit-text-size-adjust: 100%;             /* sin inflado de texto en horizontal */
-    overscroll-behavior: none;                  /* la app tiene sus propios scrolls: sin pull-to-refresh del navegador */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
     background: var(--bg);
 }
 
 html, body {
     height: 100%;
-    height: 100dvh;                             /* el alto visible real, con la barra del navegador mostrada u oculta */
+    height: 100dvh;
 }
 
 * {
@@ -97,16 +90,13 @@ body {
     overflow: hidden;
 }
 
-/* Los controles no se seleccionan ni abren el menú de copiar al mantenerlos; el contenido (direcciones, números de
-   orden, errores) sigue siendo seleccionable. */
 button, [role="button"], .tappable, label:has(> input[type="file"]) {
-    touch-action: manipulation;                 /* sin espera de doble toque: el click sale al instante */
+    touch-action: manipulation;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
 }
 
-/* Respuesta al presionar (no al soltar): 140 ms, ease-out. "scale" se compone con los transform de Tailwind. */
 button:not(:disabled), [role="button"], .tappable {
     transition-property: scale, background-color, border-color, color, opacity, box-shadow, transform;
     transition-duration: var(--dur-press);
@@ -125,8 +115,6 @@ button:not(:disabled):active, [role="button"]:active, .tappable:active {
 ::selection { background: var(--color-accent-soft); color: var(--color-text); }
 input, textarea { caret-color: var(--color-accent); }
 
-/* Sin monoespaciada en la interfaz: las cifras (velocidad, peso, coordenadas) usan la sans con números tabulares para
-   que no bailen al cambiar. .font-mono queda como alias en el marcado existente. */
 .mono-font, .font-mono {
     font-family: var(--font-sans) !important;
     font-variant-numeric: var(--font-numeric);
@@ -135,12 +123,10 @@ input, textarea { caret-color: var(--color-accent); }
 .tnum { font-variant-numeric: tabular-nums; }
 
 @media (pointer: coarse) {
-    /* iOS hace zoom al enfocar un campo de menos de 16 px (y no vuelve): se corrige el tamaño, no se bloquea el zoom */
     input, select, textarea {
         font-size: 16px !important;
     }
 
-    /* Objetivos táctiles de 44x44 px sin mover el diseño: el área sensible crece con un pseudo-elemento */
     button, [role="button"] {
         position: relative;
     }
@@ -153,32 +139,23 @@ input, textarea { caret-color: var(--color-accent); }
         right: min(0px, calc((100% - 44px) / 2));
     }
 
-    /* Legibilidad en cabina: los textos de 10-11 px suben un punto */
     .text-\[9px\] { font-size: 10px !important; }
     .text-\[10px\] { font-size: 11px !important; }
     .text-\[11px\] { font-size: 12px !important; }
 }
 
-/* Gris de apoyo con más contraste bajo luz solar (slate-500 queda en ~4:1 sobre el fondo) */
 .text-slate-500 { color: var(--color-text-secondary) !important; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-pressed); border-radius: var(--radius-pill); }
 
-/* Contenedores con scroll propio: rebotan sin arrastrar la página */
 .overflow-y-auto, .overflow-auto { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 
-/* ------------------------------------------------------------------ áreas seguras */
-/* Solo en elementos sin padding vertical propio: ganan a las utilidades de Tailwind, que se cargan después. Donde hace
-   falta sumar un padding propio se usa calc(… + var(--safe-*)) en línea. */
 .safe-top { padding-top: var(--safe-top) !important; }
 .safe-bottom { padding-bottom: var(--safe-bottom) !important; }
 .safe-x { padding-left: var(--safe-left) !important; padding-right: var(--safe-right) !important; }
 
-/* ------------------------------------------------------------------ marco de demostración vs. teléfono real */
-/* Escritorio: columna centrada de 480 px a toda la altura, sin marco de teléfono (no imita un aparato). Solo el modo
-   horizontal de la demostración ("Rotar") conserva un contorno para simular el teléfono girado. */
 .phone-frame {
     transition: max-width 0.35s var(--ease-in-out), max-height 0.35s var(--ease-in-out);
     max-width: 480px;
@@ -208,7 +185,6 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     border: var(--border-subtle) !important;
 }
 
-/* En un teléfono (o instalada) la app ocupa toda la pantalla: sin marco simulado ni herramientas de demostración. */
 @media (max-width: 640px), (display-mode: standalone) {
     #app-main { padding: 0 !important; }
     .phone-frame, .phone-frame.landscape-mode, .coordinator-frame {
@@ -218,17 +194,14 @@ body[data-view="login"] #app-main { padding: 0 !important; }
         border-radius: 0 !important;
         box-shadow: none !important;
     }
-    /* El conductor tiene su propia barra superior: la de la marca sobra en el teléfono */
     body[data-view="driver"] #top-nav { display: none !important; }
 }
 
-/* ------------------------------------------------------------------ componentes */
 .card {
     background: var(--color-surface);
     border: var(--border-subtle);
     border-radius: var(--radius-lg);
 }
-/* Lo único que flota sobre el mapa: vidrio grafito con respaldo sólido donde no hay backdrop-filter. */
 .card-float {
     background: var(--color-glass);
     border: var(--border-elevated);
@@ -240,7 +213,6 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     .card-float { background: var(--color-glass-solid); }
 }
 
-/* Botón principal (hojas, formulario de publicar): ámbar plano, sin degradado ni halo de color. */
 .btn-cta {
     min-height: 56px;
     width: 100%;
@@ -285,9 +257,6 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     background: var(--color-elevated);
 }
 
-/* Barra inferior del conductor: seis pestañas iguales de 56 px más el área segura, fondo sólido y un micro-borde
-   superior. Inactiva: ícono de trazo y gris. Activa: ícono relleno, ámbar y una píldora al 15 % detrás del ícono; sin
-   línea superior ni otro indicador. */
 .driver-tabbar {
     flex: none;
     height: calc(var(--tabbar-height) + var(--safe-bottom));
@@ -308,7 +277,7 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     justify-content: center;
     gap: 2px;
     color: var(--color-icon-inactive);
-    font-size: var(--text-tab);          /* 12 px: única excepción al mínimo de 14 px */
+    font-size: var(--text-tab);
     font-weight: var(--weight-medium);
     line-height: 1.2;
     touch-action: manipulation;
@@ -341,7 +310,6 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     background: var(--color-warn);
     box-shadow: 0 0 0 2px var(--color-bg);
 }
-/* Acciones guardadas sin señal: número sobre el ícono de Offline (en el teléfono no hay tooltip). */
 .driver-tab-count {
     position: absolute;
     top: 4px;
@@ -368,10 +336,8 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     .driver-tab.is-active:hover { color: var(--color-accent); }
 }
 
-/* Los toasts del conductor aparecen sobre la barra de pestañas */
 body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) + var(--space-3)); }
 
-/* Paso a paso del viaje y del formulario de envío */
 .stepper { display: flex; align-items: center; gap: 6px; }
 .stepper-dot {
     width: 28px; height: 28px; border-radius: 999px;
@@ -384,8 +350,6 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .stepper-line { flex: 1; height: 3px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .stepper-line > span { display: block; height: 100%; background: var(--success); transform-origin: left; transition: transform 500ms var(--ease-out); }
 
-/* Indicador de red: punto pequeño y texto, sin píldora ni fondo tintado. Sin señal o reconectando es una advertencia
-   (triángulo y texto, nunca solo color). */
 .net-status {
     display: inline-flex;
     align-items: center;
@@ -405,15 +369,11 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .net-status[data-state="offline"],
 .net-status[data-state="reconnecting"] { color: var(--color-warn); font-weight: var(--weight-semibold); }
 .net-warn { width: 18px; height: 18px; fill: currentColor; flex: none; }
-/* Encabezado de la torre: el título ya dice "En línea" (datos cargados). El indicador de red solo aparece cuando avisa
-   algo (sincronizando, sin señal, reconectando) y con el tamaño del resto de la línea. */
 .tower-net .net-status { font-size: inherit; }
 .tower-net:has(.net-status[data-state="online"]) { display: none; }
 .tower-net .net-warn { width: 14px; height: 14px; }
 @media (prefers-reduced-motion: reduce) { .net-dot.is-busy { animation: none; } }
 
-/* ------------------------------------------------------------------ transiciones de pantalla */
-/* Solo al cambiar de pantalla (app.js marca la vista nueva): los re-render del refresco automático no animan. */
 .screen-enter {
     animation: screen-enter var(--dur-ui) var(--ease-out) both;
 }
@@ -429,7 +389,6 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .stagger > *:nth-child(4) { animation-delay: 120ms; }
 .stagger > *:nth-child(n+5) { animation-delay: 160ms; }
 
-/* ------------------------------------------------------------------ hojas inferiores y diálogos */
 .sheet-backdrop {
     position: fixed;
     inset: 0;
@@ -461,7 +420,7 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .sheet-backdrop.is-open .sheet { transform: translateY(0); }
 .sheet.is-dragging { transition: none; }
 .sheet-handle {
-    touch-action: none;                         /* el arrastre para cerrar es de la hoja, no del navegador */
+    touch-action: none;
     padding: var(--space-3) 0 var(--space-2);
     display: grid;
     place-items: center;
@@ -477,7 +436,6 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 }
 .sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-5); }
 
-/* En pantallas anchas el diálogo flota centrado en vez de subir desde abajo */
 @media (min-width: 768px) {
     .sheet-backdrop { align-items: center; }
     .sheet {
@@ -492,7 +450,6 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
     .sheet-handle { display: none; }
 }
 
-/* ------------------------------------------------------------------ toasts (modelo Sonner) */
 .toaster {
     position: fixed;
     left: 50%;
@@ -521,7 +478,7 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
     font-size: var(--text-footnote);
     line-height: var(--leading-snug);
     pointer-events: auto;
-    touch-action: pan-y;                        /* el deslizamiento horizontal descarta; el vertical es del navegador */
+    touch-action: pan-y;
     user-select: none;
     -webkit-user-select: none;
     transform: translateY(calc(var(--index) * -12px - var(--lift))) scale(calc(1 - var(--index) * 0.05));
@@ -534,7 +491,7 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 .toaster[data-expanded="true"] .toast { transform: translateY(calc(-1 * var(--offset))); }
 .toast-icon { flex: none; width: 20px; height: 20px; display: grid; place-items: center; margin-top: 1px; }
 .toast[data-type="success"] .toast-icon { color: var(--color-ok); }
-.toast[data-type="error"] .toast-icon { color: var(--color-warn); }   /* el rojo es solo del SOS */
+.toast[data-type="error"] .toast-icon { color: var(--color-warn); }
 .toast[data-type="warning"] .toast-icon { color: var(--color-warn); }
 .toast[data-type="info"] .toast-icon { color: var(--color-text-secondary); }
 .toast-title { font-weight: var(--weight-semibold); }
@@ -552,19 +509,15 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
     color: var(--color-on-accent);
 }
 
-/* ------------------------------------------------------------------ SOS (mantener para activar) */
-/* En la barra superior del conductor, junto a cerrar sesión: nunca tapa contenido ni botones de acción. Pequeño y plano
-   en reposo (cara visible de 40 px dentro de un área táctil de 44 px); mientras se mantiene, se llena de rojo de
-   izquierda a derecha durante 1,5 s. */
 .sos-fab {
     position: absolute;
-    top: calc(var(--safe-top) + 6px);            /* centrado en la cabecera de 56 px */
+    top: calc(var(--safe-top) + 6px);
     right: calc(52px + var(--safe-right));
     z-index: 600;
     height: var(--touch-min);
     display: inline-flex;
     align-items: center;
-    touch-action: none;                         /* el gesto de mantener es del botón */
+    touch-action: none;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
@@ -578,7 +531,7 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
     gap: 6px;
     border-radius: var(--radius-sm);
     background: var(--color-elevated);
-    color: var(--color-sos-text);               /* #FF6369 sobre #1B1F26: 5,7:1 */
+    color: var(--color-sos-text);
     font-size: var(--text-footnote);
     font-weight: var(--weight-bold);
     letter-spacing: 0.02em;
@@ -619,7 +572,6 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 }
 .sos-hint.is-visible { opacity: 1; transform: none; }
 
-/* SOS activo: rojo pleno sobre toda la app, texto blanco (5,6:1) y etiquetas al 92 % (5,0:1). */
 .sos-modal {
     position: absolute;
     inset: 0;
@@ -676,20 +628,15 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
 }
 .sos-call:active, .sos-close:active { transform: scale(var(--press-scale)); }
 .sos-modal:focus { outline: none; }
-/* Con el SOS activo no se muestra ningún aviso encima: nada puede tapar "Llamar al 123". */
 body.sos-open .toaster { display: none; }
 .sos-modal :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 3px; }
 
-/* Herramientas de simulación: ocultas salvo con ?demo=1 (js/config.js marca <html data-demo="1">). */
 html:not([data-demo="1"]) .demo-only { display: none !important; }
-/* El inicio de sesión no lleva la barra de la demostración (marca, roles, voz): solo el formulario, como el prototipo. */
 body[data-view="login"] #top-nav { display: none !important; }
 
-/* Herramienta de prueba "Simular GPS" activa: imposible de confundir con el GPS real. */
 .sim-toggle.is-active { background: var(--color-warn); color: var(--color-bg); border-color: var(--color-warn); }
 .sim-toggle.is-active i { color: var(--color-bg); }
 
-/* SOS en la torre de control: franja roja fija sobre el panel hasta que un coordinador lo atienda. */
 .sos-alerts {
     position: absolute;
     top: calc(var(--safe-top) + 8px);
@@ -712,7 +659,7 @@ body[data-view="login"] #top-nav { display: none !important; }
     padding: 9px 10px 9px 12px;
     border-radius: 16px;
     color: var(--color-on-sos);
-    background: var(--color-sos-solid);             /* rojo pleno: solo el SOS lo usa */
+    background: var(--color-sos-solid);
     border: 1px solid rgb(255 255 255 / 0.2);
     box-shadow: var(--elev-3);
     animation: sos-in 260ms var(--ease-out);
@@ -741,8 +688,6 @@ body[data-view="login"] #top-nav { display: none !important; }
     .sos-alert, .sos-alert-icon i { animation: none; }
 }
 
-/* Seguimiento público (?track=): sin barra de roles, herramientas de demostración ni voz (no hay navegación que
-   narrar), a pantalla completa. Mismo sistema que la app del conductor. */
 body[data-mode="public-tracking"] #role-switcher,
 body[data-mode="public-tracking"] #voice-btn,
 body[data-mode="public-tracking"] .demo-only { display: none !important; }
@@ -768,12 +713,10 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 }
 .public-track-empty-title { margin: 0 0 var(--space-2); font-size: var(--text-headline); font-weight: var(--weight-bold); }
 .public-track-map-card { background: var(--color-surface); border-radius: var(--radius-lg); overflow: hidden; }
-/* Alto fijo en CSS (no en una clase de Tailwind): Leaflet mide el contenedor al crearse. */
 .public-track-map { height: 280px; width: 100%; }
 @media (min-width: 768px) { .public-track-map { height: 360px; } }
 .public-track-position { padding: var(--space-3) var(--space-4); }
 .public-track-when { flex-basis: 100%; padding-left: calc(8px + var(--space-2)); color: var(--color-text-secondary); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
-/* Escritorio: datos y avance a la izquierda, el mapa grande a la derecha. */
 @media (min-width: 1024px) {
     .public-track-col {
         max-width: 1080px;
@@ -804,7 +747,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .track-step-text b { font-weight: var(--weight-semibold); }
 .track-step.is-done .track-step-text b { color: var(--color-text); }
 .track-step-text span { font-size: var(--text-caption); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
-/* El camión: claro sobre el mapa oscuro, con borde del fondo para despegarlo de las calles. */
 .public-truck-pin {
     width: 40px;
     height: 40px;
@@ -818,8 +760,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 }
 .public-truck-pin .ui-icon { width: 22px; height: 22px; }
 
-/* Cuadrícula de reporte vial: un toque por tipo */
-/* Banner de instalación de la PWA */
 .install-banner {
     position: fixed;
     left: 50%;
@@ -831,14 +771,10 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 }
 .install-banner.is-visible { transform: translate(-50%, 0); }
 
-/* ------------------------------------------------------------------ mapa y piezas existentes */
-/* Sin tesela (sin señal y sin copia guardada): el fondo oscuro del mapa, sin cuadros rotos. */
 .leaflet-container {
     background-color: var(--color-bg) !important;
     font-family: inherit;
 }
-/* Atribución obligatoria: siempre visible y legible (gris secundario 6:1 sobre su fondo). Los controles de cada
-   pantalla se colocan por encima de ella (--map-attribution-space). */
 .leaflet-control-attribution.leaflet-control {
     margin: 0 0 var(--space-2) var(--space-2);
     padding: 2px 6px;
@@ -847,13 +783,11 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     color: var(--color-text-secondary);
     font-size: var(--text-tab);
     line-height: 1.4;
-    white-space: nowrap;                 /* una sola línea: los controles de cada pantalla quedan por encima */
+    white-space: nowrap;
 }
 .leaflet-control-attribution a { color: var(--color-text-secondary); text-decoration: none; }
 :root { --map-attribution-space: 36px; }
 
-/* Marcadores de la ruta: distintos por forma, no por color. */
-/* Zoom sobre el mapa oscuro: superficie elevada, no el blanco de Leaflet. */
 .leaflet-bar { border: var(--border-elevated) !important; box-shadow: var(--elev-2) !important; border-radius: var(--radius-md) !important; overflow: hidden; }
 .leaflet-bar a, .leaflet-bar a:hover {
     width: var(--touch-min) !important; height: var(--touch-min) !important; line-height: var(--touch-min) !important;
@@ -917,7 +851,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end;
 }
 
-/* ------------------------------------------------------------------ movimiento reducido */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 1ms !important;
@@ -926,9 +859,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     button:not(:disabled):active, [role="button"]:active, .tappable:active { scale: 1; }
     .sheet, .toast, .install-banner, .stepper-line > span { transition-duration: 1ms !important; }
 }
-
-/* ================================================================== fase 3A: cabecera, Vehículo, Carga y Rutas */
-/* Estructura del prototipo B: listas agrupadas sin tarjetas anidadas, cifras grandes, estado como texto con punto. */
 
 .app-header {
     flex: none;
@@ -941,8 +871,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     background: var(--color-bg);
     border-bottom: var(--border-subtle);
 }
-/* Logo de marca: dos imágenes (clara y blanca) que se alternan según el tema resuelto en <html data-theme>, así respeta
-   la elección manual Claro/Oscuro y no solo la del sistema. */
 .brand-logo { display: block; flex: none; }
 .brand-logo img { display: block; width: 100%; height: auto; }
 .brand-logo .brand-logo-dark { display: none; }
@@ -951,7 +879,7 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .nav-logo { width: 40px; }
 
 .wordmark { font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: -0.01em; color: var(--color-text); flex: none; }
-.app-header-spacer { flex: 1; min-width: 96px; }                 /* deja el sitio del botón SOS (montado aparte) */
+.app-header-spacer { flex: 1; min-width: 96px; }
 .header-icon-btn {
     width: var(--touch-min); height: var(--touch-min); flex: none;
     display: grid; place-items: center; border-radius: var(--radius-md);
@@ -976,7 +904,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 }
 .secondary { color: var(--color-text-secondary); font-size: var(--text-footnote); }
 
-/* Lista agrupada (Ajustes de iOS): una superficie, filas con línea fina con sangría. */
 .list-title {
     margin: var(--space-8) 0 var(--space-2) var(--space-4);
     font-size: var(--text-caption);
@@ -1038,7 +965,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 }
 .status-sub { color: var(--color-text-secondary); font-weight: var(--weight-medium); }
 
-/* Placa colombiana de carga: amarilla, texto negro, nunca partida en dos líneas. */
 .vehicle-id { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-5); }
 .plate {
     flex: none;
@@ -1061,7 +987,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 }
 .vehicle-model { font-size: var(--text-body); font-weight: var(--weight-bold); }
 
-/* Carga: origen y destino grandes con un riel, el flete como número protagonista. */
 .trip { display: grid; grid-template-columns: 20px 1fr; column-gap: var(--space-3); margin-top: var(--space-6); }
 .trip-rail { display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
 .trip-stop { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--color-text); flex: none; }
@@ -1088,7 +1013,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 }
 .fare-amount small { margin-left: var(--space-1); font-size: var(--text-body); font-weight: var(--weight-semibold); letter-spacing: 0; color: var(--color-text-secondary); }
 
-/* Acción principal fija sobre la barra inferior, con un degradado que indica que hay más contenido debajo. */
 .screen-actions {
     position: sticky;
     z-index: 2;
@@ -1141,7 +1065,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 @keyframes net-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
 
-/* Estado vacío: anclado arriba, ícono neutro en un círculo, qué pasa y qué hacer. */
 .empty-state { margin-top: var(--space-4); padding: var(--space-8) var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); text-align: center; }
 .empty-mark { width: 64px; height: 64px; margin: 0 auto var(--space-4); border-radius: 50%; display: grid; place-items: center; background: var(--color-elevated); color: var(--color-text); }
 .empty-mark .ui-icon { width: 32px; height: 32px; }
@@ -1149,14 +1072,12 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .empty-state p { max-width: 32ch; margin: 0 auto var(--space-4); color: var(--color-text-secondary); font-size: var(--text-footnote); }
 .empty-state .btn-quiet { width: auto; display: inline-flex; padding: 0 var(--space-5); background: var(--color-elevated); }
 
-/* Telemetría como texto: punto verde al transmitir; sin posición o sin transmitir, triángulo y texto. */
 .telemetry-inline { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0 var(--space-2); }
 .telemetry-main { color: var(--color-text); }
 .telemetry-warn { display: inline-flex; align-items: center; gap: 6px; color: var(--color-warn); font-weight: var(--weight-semibold); }
 .telemetry-warn svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
 .telemetry-sub { color: var(--color-text-secondary); }
 
-/* Rutas: mapa a pantalla completa con una hoja inferior fija. */
 .route-screen { position: relative; height: 100%; overflow: hidden; }
 .route-map { position: absolute; inset: 0; }
 .route-map .leaflet-bottom { bottom: var(--map-bottom-inset, 0px); }
@@ -1197,9 +1118,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .route-sheet .notice { background: var(--color-elevated); }
 .sheet-actions-row { margin-top: var(--space-4); }
 
-/* ================================================================== fase 4A: Alertas, Offline y entrega (POD) */
-
-/* Filtros con desplazamiento horizontal, sin barra visible; el borde derecho se desvanece para indicar que hay más. */
 .filters {
     display: flex;
     gap: var(--space-2);
@@ -1245,13 +1163,11 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .alert-foot { margin-top: var(--space-2); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .alert-confirm { width: auto; min-height: 44px; padding: 0 var(--space-3); }
 
-/* Offline */
 .list-foot { margin: var(--space-2) var(--space-4) 0; font-size: var(--text-caption); color: var(--color-text-secondary); }
 .list-button { width: 100%; text-align: left; color: var(--color-text); touch-action: manipulation; }
 .list-button:active { background: var(--color-elevated); }
 .list-button .ui-icon { width: 18px; height: 18px; color: var(--color-text-secondary); }
 
-/* Entrega (POD): la hoja es una columna con cabecera, campos que se desplazan y "Confirmar entrega" fijo abajo. */
 .pod-form { padding-bottom: 0 !important; }
 .pod-head { flex: none; display: flex; align-items: flex-start; gap: var(--space-3); padding: 0 var(--space-2) var(--space-3) var(--gutter); }
 .pod-head > div { flex: 1; }
@@ -1278,7 +1194,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
     font-size: var(--text-body);
     outline: none;
 }
-/* Texto de ejemplo de todos los campos: gris secundario (6:1), legible bajo el sol; Firefox le baja la opacidad. */
 ::placeholder { color: var(--color-text-secondary); opacity: 1; }
 .field-input:focus { border-color: var(--color-focus); box-shadow: 0 0 0 3px var(--color-focus-soft); }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
@@ -1309,7 +1224,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .pod-error { margin-top: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-bg); }
 .pod-error p { margin: var(--space-1) 0 0 28px; font-size: var(--text-footnote); color: var(--color-text-secondary); }
 
-/* Franja de sincronización bajo la cabecera: actualizando en gris; un fallo, triángulo y texto (nunca rojo). */
 .sync-banner {
     flex: none;
     display: flex;
@@ -1328,9 +1242,6 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .sync-text svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
 .sync-retry { flex: none; min-height: 36px; padding: 0 var(--space-2); color: var(--color-text); font-weight: var(--weight-semibold); }
 
-/* ================================================================== fase 4B: inicio de sesión y hoja de reportar */
-
-/* Inicio de sesión: título grande, campos con rótulo y "Entrar" en ámbar plano; sin degradado, halo ni tinte. */
 .login-screen {
     height: 100%;
     overflow-y: auto;
@@ -1364,14 +1275,12 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .login-api { margin: var(--space-6) 0 0; text-align: center; font-size: var(--text-tab); color: var(--color-text-disabled); overflow-wrap: anywhere; }
 select.field-input { appearance: none; -webkit-appearance: none; }
 
-/* Hojas: cabecera con título, subtítulo y cerrar de 44 px. */
 .sheet-head { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-1) 0 var(--space-4); }
 .sheet-title { margin: 0 0 var(--space-1); font-size: var(--text-headline); font-weight: var(--weight-bold); letter-spacing: -0.01em; line-height: var(--leading-snug); color: var(--color-text); }
 .sheet-subtitle { margin: 0; font-size: var(--text-footnote); color: var(--color-text-secondary); line-height: var(--leading-snug); }
 .sheet-head .header-icon-btn { margin: -8px -8px 0 0; }
 .sheet-note { margin: var(--space-4) 0 0; font-size: var(--text-caption); color: var(--color-text-secondary); }
 
-/* Hoja de reportar: los 7 tipos en una cuadrícula de 4 columnas, íconos neutros (el texto dice qué es). */
 .report-gps { margin-bottom: var(--space-3); }
 .report-gps .status-line { gap: var(--space-2); }
 .report-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
@@ -1412,10 +1321,6 @@ select.field-input { appearance: none; -webkit-appearance: none; }
 .report-detail[open] summary svg:last-child { transform: rotate(180deg); }
 .report-detail-input { min-height: 72px; padding: var(--space-3) var(--space-4); resize: none; }
 
-/* ================================================================== fase 5: Torre de control y "Mis envíos" */
-
-/* Marcadores de la flota y de las alertas con la paleta nueva: verde = en tránsito, ámbar = descanso o peligro,
-   grafito = disponible o informativo. El rojo queda solo para el SOS. */
 .fleet-pin {
     position: relative;
     width: 32px;
@@ -1460,6 +1365,5 @@ select.field-input { appearance: none; -webkit-appearance: none; }
 }
 .alert-pin.is-warn { color: var(--color-warn); border-color: var(--color-warn); }
 
-/* Estado de un envío: texto con un punto (o triángulo si pide atención), sin chip teñido. */
 .status-badge { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; font-size: var(--text-caption); font-weight: var(--weight-semibold); color: var(--color-text); }
 .status-badge.is-warn { color: var(--color-warn); }

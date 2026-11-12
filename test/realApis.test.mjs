@@ -1,5 +1,3 @@
-// SOS del conductor, SOS en la torre, enlace de seguimiento del generador y vista pública: sin simulaciones, contra
-// un TruckCarService / TruckCarApi falsos que registran lo que la interfaz pide al backend.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -9,7 +7,6 @@ const SCRIPTS = ["js/ui/toaster.js", "js/ui/sheet.js", "js/ui/native.js", "js/ge
   "js/views/generatorPanel.js", "js/views/sosMonitor.js", "js/views/publicTracking.js"];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** gps: lo que entrega el chip GPS falso ({ latitude, longitude, accuracy } o null = sin señal); stored: última posición guardada. */
 function browser({ url = "http://localhost:5500/", service = {}, api = {}, state = {}, gps = { latitude: 4.60971, longitude: -74.08175, accuracy: 8 }, stored = null } = {}) {
   const dom = new JSDOM(`<!doctype html><html><body><div id="phone-mockup-frame"><div id="app-mount"></div></div></body></html>`,
     { runScripts: "outside-only", pretendToBeVisual: true, url });
@@ -34,7 +31,7 @@ function browser({ url = "http://localhost:5500/", service = {}, api = {}, state
   w.OfflineQueue = { status: () => ({ pending: 0 }), onChange() {} };
   w.TruckCarTelemetry = { status: "online", onStatusChange() {} };
   w.voiceEngine = { speak() {} };
-  w.app = { currentPosition: () => [9.99, -79.99] };   // posición de navegación/simulación: el SOS no debe usarla
+  w.app = { currentPosition: () => [9.99, -79.99] };
   w.TruckCarData = { activeLoadOrder: { id: "CARGA-30", backendId: 30 }, currentDriver: { name: "Ana Ruiz", vehicle: { plate: "TDK-410" } } };
   w.TruckCarService = service;
   w.TruckCarApi = { loads: api };
@@ -120,7 +117,6 @@ test("la torre ve cada SOS activo, recibe un aviso al llegar uno nuevo y lo marc
   assert.match(banner.textContent, /CARGA-30/);
   assert.ok(toasts.some((t) => t.type === "error" && /SOS · Ana Ruiz/.test(t.title)));
 
-  // La siguiente consulta no vuelve a avisar del mismo SOS.
   await w.SosMonitor.poll();
   assert.equal(toasts.filter((t) => /SOS ·/.test(t.title)).length, 1);
 
@@ -161,11 +157,9 @@ test("la vista pública muestra estado y posición sin sesión, y explica un enl
   assert.match(text, /Posición en vivo/);
   assert.match(text, /TDK-•••/);
   assert.equal(w.document.body.dataset.mode, "public-tracking");
-  // Horas y velocidad en su propia línea, sin un "·" suelto al inicio.
   assert.match(w.document.querySelector(".public-track-when").textContent, /^Actualizada el .* · 62 km\/h$/);
   assert.equal(w.document.querySelectorAll(".track-step.is-done").length, 3);
 
-  // Mismo sistema que la app: mapa del proveedor configurado, Phosphor, sin mayúsculas, chips teñidos ni texto pequeño.
   const source = readFileSync("js/views/publicTracking.js", "utf8");
   assert.match(source, /TruckCarConfig\.map/);
   assert.doesNotMatch(source, /tile\.openstreetmap\.org|uppercase|fa-|text-\[1[0-3]|rounded-full|emerald|brand-|rose-|amber-/);

@@ -2,20 +2,13 @@
 <html lang="es" class="h-full bg-slate-950 text-slate-100">
 <head>
     <meta charset="UTF-8">
-    <!-- Sin user-scalable=no ni maximum-scale: bloquear el zoom es una barrera de accesibilidad. El zoom accidental
-         al enfocar un campo se evita con campos de 16 px (css/main.css). viewport-fit=cover pinta bajo el notch y
-         las áreas seguras se rellenan con env(safe-area-inset-*). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
     <title>TruckCar</title>
     <meta name="description" content="Navegación, entregas con prueba digital y alertas viales para transporte pesado, con funcionamiento sin señal.">
-    <!-- URL del api-gateway en despliegue. Vacío = automático (localhost:8000 en local, mismo origen en producción). -->
     <meta name="truckcar-api-base-url" content="">
-    <!-- Clave de las teselas del mapa (js/config.js). Nunca en el repositorio: la pone el despliegue; vacía en local. -->
     <meta name="truckcar-map-api-key" content="">
-    <!-- Los enlaces públicos llevan el token en ?track=: hacia otros orígenes (teselas, CDN) solo viaja el origen. -->
     <meta name="referrer" content="strict-origin-when-cross-origin">
 
-    <!-- PWA: instalable y operable sin señal (sw.js + cola durable js/offlineQueue.js). -->
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="color-scheme" content="light dark">
     <meta name="theme-color" content="#0C0E12">
@@ -31,14 +24,11 @@
     <link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
     <script src="assets/vendor/leaflet/leaflet.js"></script>
 
-    <!-- Manrope se sirve desde la app (css/tokens.css): funciona sin señal y no depende de terceros. -->
     <link rel="preload" href="fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 
     <link rel="stylesheet" href="css/tokens.css">
     <link rel="stylesheet" href="css/main.css">
     <link rel="stylesheet" href="css/navigation.css">
-    <!-- Tailwind compilado en el despliegue (npm run build:css, configuración en tailwind.config.cjs). Va al final, donde
-         el CDN inyectaba su hoja: el orden de la cascada no cambia. -->
     <link rel="stylesheet" href="css/tailwind.css">
 </head>
 <body class="h-full flex flex-col overflow-hidden bg-slate-950 font-sans antialiased">
@@ -78,14 +68,11 @@
                     </button>
                 </div>
 
-                <!-- Herramientas de la demostración en escritorio: en el teléfono no se muestran. -->
                 <button id="rotate-device-btn" onclick="window.app.toggleRotation()" class="demo-only px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5" title="Rotar pantalla (Horizontal / Vertical)">
                     <i class="fas fa-rotate"></i>
                     <span class="hidden sm:inline">Rotar</span>
                 </button>
 
-                <!-- Herramienta de prueba: mueve la telemetría y la guía sobre la ruta sin GPS. Por defecto, GPS real.
-                     El SOS y los reportes nunca usan esta posición. -->
                 <button id="sim-toggle-btn" onclick="window.DriverTelemetry.toggleSimulation()" aria-pressed="false" class="demo-only sim-toggle px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5" title="Herramienta de prueba: simular el movimiento del GPS sobre la ruta">
                     <i class="fas fa-flask"></i>
                     <span class="hidden sm:inline" data-sim-label>Simular GPS</span>

@@ -1,5 +1,3 @@
-// Componentes de interfaz nativa (toasts, hojas, estado de red, progreso del viaje y formulario del generador) en un DOM
-// simulado (jsdom). Los scripts se cargan tal cual los carga index.html.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -83,7 +81,6 @@ test("el indicador de red distingue sin señal, sincronizando, reconectando y en
   w.Native.NetworkStatus.render();
   assert.equal(w.document.querySelector(".net-status").dataset.state, "syncing");
 
-  // Sin señal es una advertencia: triángulo y texto, no solo un color.
   const off = browser({ online: false });
   off.document.body.innerHTML = "<span data-network-status></span>";
   off.Native.NetworkStatus.render();
@@ -123,7 +120,6 @@ test("el formulario del generador valida en vivo y reconoce ciudades sin tildes"
 test("el formulario de entrega tiene un solo botón fijo «Confirmar entrega» y la X cierra sin registrar", async () => {
   const w = browser();
   w.PodEvidence = { sha256Hex: async () => "0".repeat(64), dataUrlToBlob: async () => new w.Blob(["x"]) };
-  // Lienzo sin dibujo real: cualquier método del contexto 2D es un no-op.
   w.HTMLCanvasElement.prototype.getContext = () => new Proxy({}, { get: () => () => {}, set: () => true });
   w.eval(readFileSync("js/views/podModals.js", "utf8"));
   const result = w.PodUI.openDeliveryForm({ id: "CARGA-88", destination: { name: "Ibagué, Tolima" } }, async () => {});

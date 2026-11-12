@@ -1,17 +1,3 @@
-/**
- * Índice de las teselas del mapa guardadas para usar sin señal (IndexedDB "truckcar-tiles"). Lo comparten el Service
- * Worker (sw.js, con importScripts), que decide qué guardar, hasta cuándo y qué expulsar, y la app, que lee hasta
- * cuándo hay mapa sin señal (pantalla Offline).
- *
- * Política (términos de Stadia Maps, docs/redesign/REPORTE.md §7):
- *  - Solo las teselas que el conductor ya vio: nunca se precargan zonas ni se descargan en bloque.
- *  - Cada tesela vence cuando lo dicen sus cabeceras (Cache-Control max-age, si no Expires); sin cabeceras, 7 días.
- *    Una tesela vencida no se sirve y se borra.
- *  - Tope de 100 MB por dispositivo, contado con el tamaño real de cada respuesta (las @2x pesan más y cuentan más).
- *    Al superarlo se expulsan primero las vencidas y después las de uso menos reciente.
- *
- * Cada registro: { url, bytes, expires, used } (fechas en ms).
- */
 (function (scope) {
     const DB_NAME = 'truckcar-tiles';
     const STORE = 'tiles';
@@ -42,10 +28,6 @@
         }));
     }
 
-    /**
-     * Milisegundos que la respuesta puede guardarse según sus cabeceras; 0 si no puede guardarse (no-store, no-cache,
-     * max-age=0, Expires vencido o inválido). Sin Cache-Control ni Expires: 7 días.
-     */
     function ttlFrom(headers, now) {
         const cacheControl = (headers.get('cache-control') || '').toLowerCase();
         if (/(^|,)\s*(no-store|no-cache)\b/.test(cacheControl)) return 0;
@@ -59,10 +41,6 @@
         return DEFAULT_TTL_MS;
     }
 
-    /**
-     * Qué expulsar para quedar bajo el tope: primero todas las vencidas, luego las de uso menos reciente hasta que el
-     * total quepa. Función pura (se prueba sin IndexedDB).
-     */
     function planEviction(records, now, maxBytes = MAX_BYTES) {
         const evict = [];
         let total = 0;
@@ -89,10 +67,6 @@
         remove: (urls) => run('readwrite', store => { [].concat(urls).forEach(url => store.delete(url)); }),
         all: () => run('readonly', store => store.getAll()),
 
-        /**
-         * Para la pantalla Offline: cuántas teselas vigentes hay, cuánto pesan y hasta cuándo dura la que vence antes
-         * (desde ahí, parte del mapa ya no estará sin señal) y la que vence después.
-         */
         async summary(now = Date.now()) {
             const fresh = (await TileStore.all()).filter(r => r.expires > now);
             return {

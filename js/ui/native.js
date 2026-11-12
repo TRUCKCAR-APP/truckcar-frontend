@@ -1,26 +1,15 @@
-/**
- * Piezas de "app nativa" de la PWA:
- *  - NetworkStatus: indicador de red que combina el navegador, la cola durable (js/offlineQueue.js) y la telemetría
- *    en vivo (STOMP). Estados: En línea · Sincronizando N pendientes · Modo sin señal · Reconectando telemática.
- *  - Instalación: botón "Instalar app" con beforeinstallprompt (Android/Chrome/Edge) e instrucciones en iOS, donde
- *    Safari no expone ese evento.
- *  - Movimiento: transición solo al cambiar de pantalla, contadores animados y vibración háptica.
- */
 window.Native = (function () {
     const esc = (value) => window.ui.escape(value);
     const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const standalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
-    // ------------------------------------------------------------------ vibración
-    /** Patrones cortos: confirmación, advertencia y SOS. Sin soporte (iOS Safari) no hace nada. */
     function haptic(kind = 'tap') {
         const patterns = { tap: 10, success: [12, 40, 18], warning: [30, 60, 30], sos: [90, 50, 90, 50, 200] };
         try {
             if (navigator.vibrate) navigator.vibrate(patterns[kind] || patterns.tap);
-        } catch (e) { /* sin vibración */ }
+        } catch (e) { }
     }
 
-    // ------------------------------------------------------------------ estado de red
     const NetworkStatus = {
         snapshot() {
             const state = window.store ? window.store.state : {};
@@ -58,12 +47,9 @@ window.Native = (function () {
         render() {
             const s = this.snapshot();
             document.querySelectorAll('[data-network-status]').forEach((el) => {
-                // En la cabecera, sin señal dice solo "Sin señal" (no cabe junto al SOS); los pendientes van en el título
-                // del indicador y en la pantalla Offline.
                 if (el.dataset.renderedState === s.state && el.dataset.renderedLabel === s.label) return;
                 el.dataset.renderedState = s.state;
                 el.dataset.renderedLabel = s.label;
-                // Punto + texto, sin píldora ni fondo. Sin señal o reconectando es una advertencia: triángulo y texto.
                 const warn = s.state === 'offline' || s.state === 'reconnecting';
                 const mark = warn
                     ? '<svg class="net-warn" aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>'
@@ -82,7 +68,6 @@ window.Native = (function () {
         }
     };
 
-    // ------------------------------------------------------------------ instalación
     const Install = {
         deferred: null,
         DISMISS_KEY: 'truckcar.installDismissedAt',
@@ -98,7 +83,7 @@ window.Native = (function () {
 
         init() {
             window.addEventListener('beforeinstallprompt', (event) => {
-                event.preventDefault(); // la app decide cuándo ofrecerlo: después del login, no al abrir
+                event.preventDefault();
                 this.deferred = event;
                 this.maybeOffer();
             });
@@ -109,7 +94,6 @@ window.Native = (function () {
             });
         },
 
-        /** iOS Safari no tiene beforeinstallprompt: "standalone" en navigator es su forma de saberlo. */
         canGuideIos() {
             return 'standalone' in window.navigator && !window.navigator.standalone;
         },
@@ -137,7 +121,7 @@ window.Native = (function () {
             document.body.appendChild(banner);
             banner.querySelector('[data-install]').addEventListener('click', () => this.install());
             banner.querySelector('[data-install-later]').addEventListener('click', () => {
-                try { localStorage.setItem(this.DISMISS_KEY, String(Date.now())); } catch (e) { /* sin almacenamiento */ }
+                try { localStorage.setItem(this.DISMISS_KEY, String(Date.now())); } catch (e) { }
                 this.hide();
             });
             setTimeout(() => banner.classList.add('is-visible'), 1200);
@@ -150,7 +134,7 @@ window.Native = (function () {
                 prompt.prompt();
                 const choice = await prompt.userChoice.catch(() => null);
                 if (choice && choice.outcome === 'dismissed') {
-                    try { localStorage.setItem(this.DISMISS_KEY, String(Date.now())); } catch (e) { /* sin almacenamiento */ }
+                    try { localStorage.setItem(this.DISMISS_KEY, String(Date.now())); } catch (e) { }
                 }
                 this.hide();
                 return;
@@ -177,10 +161,8 @@ window.Native = (function () {
         }
     };
 
-    // ------------------------------------------------------------------ movimiento
     let lastScreenKey = null;
 
-    /** Anima la entrada solo cuando cambia la pantalla: el refresco automático re-renderiza sin moverse. */
     function markScreen(mount, key) {
         if (key === lastScreenKey) return;
         const first = lastScreenKey === null;
@@ -189,18 +171,13 @@ window.Native = (function () {
         const target = mount.querySelector('[data-screen]') || mount.firstElementChild;
         if (!target) return;
         target.classList.remove('screen-enter');
-        void target.offsetWidth; // reinicia la animación si la clase ya estaba
+        void target.offsetWidth;
         target.classList.add('screen-enter');
-        // Entrada escalonada de las tarjetas de la pantalla nueva (solo en este cambio de pantalla).
         target.querySelectorAll('[data-stagger]').forEach(el => el.classList.add('stagger'));
     }
 
     const counterValues = new Map();
 
-    /**
-     * Contadores: <span data-count="12" data-count-key="kpi-fleet">12</span>. Animan desde el último valor mostrado
-     * hasta el nuevo (ease-out, 700 ms); en el primer render y con movimiento reducido se muestran directamente.
-     */
     function animateCounters(root = document) {
         root.querySelectorAll('[data-count]').forEach((el) => {
             const to = Number(el.dataset.count);
@@ -224,10 +201,8 @@ window.Native = (function () {
         });
     }
 
-    // ------------------------------------------------------------------ accesos directos del manifiesto
     const SHORTCUT_SCREENS = ['assigned_load', 'alerts', 'navigation', 'route_overview', 'offline', 'profile'];
 
-    /** ?screen=alerts (atajos del ícono instalado): se aplica una vez, al entrar como conductor. */
     function applyShortcut() {
         const params = new URLSearchParams(window.location.search);
         const screen = params.get('screen');

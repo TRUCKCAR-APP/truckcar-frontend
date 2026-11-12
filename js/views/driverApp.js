@@ -1,13 +1,10 @@
 window.DriverApp = {
-    /** Estados del backend en el español de la interfaz: el conductor nunca ve códigos como IN_TRANSIT. */
     STATUS_LABELS: {
         PROPOSED: 'Propuesta', NOTIFIED: 'Propuesta', AVAILABLE: 'Disponible', ASSIGNED: 'Aceptada',
         IN_TRANSIT: 'En tránsito', DELIVERED: 'Entregada', CANCELLED: 'Cancelada',
         DISPONIBLE: 'Disponible', EN_TRANSITO: 'En tránsito', DESCANSO: 'En descanso', SIN_VEHICULO: 'Sin vehículo',
-        // Asignación y flota (Torre de control y "Mis envíos").
         ACCEPTED: 'Aceptada', REJECTED: 'Rechazada', TIMEOUT: 'Sin respuesta a tiempo',
         UNASSIGNED_NO_DRIVERS: 'Sin conductores disponibles', ACTIVO: 'Activo', INACTIVO: 'Inactivo', DESCONOCIDO: 'Sin estado',
-        // Decisiones del motor de asignación (AI-powered-fleet-allocation, AllocationStatus).
         SUCCESSFUL: 'Conductor seleccionado', NO_DRIVERS_AVAILABLE: 'Sin conductores disponibles',
         DEGRADED_USING_CACHE: 'Con datos guardados', RECOMMENDATION_PENDING: 'Recomendación pendiente',
         ASSIGNMENT_CONFLICT: 'Rechazada por conflicto', ASSIGNMENT_FAILED: 'Asignación sin respuesta'
@@ -63,7 +60,6 @@ window.DriverApp = {
         `;
     },
 
-    /** Pestañas: [pantalla, etiqueta, ícono de Phosphor (assets/icons.svg; la activa usa su variante -fill)]. */
     TABS: [
         ['profile', 'Vehículo', 'truck'],
         ['assigned_load', 'Carga', 'package'],
@@ -84,10 +80,6 @@ window.DriverApp = {
             </button>`;
     },
 
-    /**
-     * Acciones guardadas sin señal: número sobre el ícono de Offline (en el teléfono no hay tooltip). El número es
-     * visual; los lectores de pantalla oyen el texto completo junto al nombre de la pestaña.
-     */
     offlineBadgeHtml() {
         const pending = window.OfflineQueue ? window.OfflineQueue.status().pending || 0 : 0;
         if (!pending) return '<span data-offline-badge hidden></span>';
@@ -95,7 +87,6 @@ window.DriverApp = {
         return `<span data-offline-badge><span class="driver-tab-count" aria-hidden="true">${pending > 99 ? '99+' : pending}</span><span class="sr-only">, ${text}</span></span>`;
     },
 
-    /** Actualiza el contador de la pestaña Offline en sitio (la cola cambia sin que se repinte la pantalla). */
     renderOfflineBadge() {
         document.querySelectorAll('[data-offline-badge]').forEach(el => { el.outerHTML = this.offlineBadgeHtml(); });
     },
@@ -120,7 +111,6 @@ window.DriverApp = {
         return routes && routes.optimal ? routes.optimal.distance : '—';
     },
 
-    /** Tipos de camión del backend con su nombre corriente en Colombia. */
     TRUCK_TYPES: {
         TRACTOMULA_3S3: 'Tractocamión 3S3', TRACTOMULA_3S2: 'Tractocamión 3S2', MINIMULA: 'Minimula',
         DOBLETROQUE: 'Doble troque', CUATRO_MANOS: 'Cuatro manos', SENCILLO: 'Sencillo', TURBO: 'Turbo',
@@ -136,28 +126,23 @@ window.DriverApp = {
         return `<svg class="ui-icon ${cls}" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
     },
 
-    /** Número con coma decimal (es-CO) y unidad; sin dato, "Sin información". */
     number(value, digits, unit) {
         if (typeof value !== 'number' || Number.isNaN(value)) return 'Sin información';
         return value.toLocaleString('es-CO', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + (unit ? ' ' + unit : '');
     },
 
-    /** Placa colombiana como se lee en el camión: "TDK 410". */
     plateText(plate) {
         return String(plate || '').replace(/[-\s]+/g, ' ').trim();
     },
 
-    /** Fila de una lista agrupada: rótulo a la izquierda, valor a la derecha. valueHtml ya viene escapado. */
     listRow(label, valueHtml, strong = false) {
         return `<div class="list-row"><span class="list-label">${window.ui.escape(label)}</span><span class="list-value${strong ? ' is-strong' : ''}">${valueHtml}</span></div>`;
     },
 
-    /** Estado como texto con un punto: verde solo para lo que está en curso y bien; gris para lo demás. */
     dotText(text, tone = '') {
         return `<span class="dot${tone ? ' ' + tone : ''}" aria-hidden="true"></span>${window.ui.escape(text)}`;
     },
 
-    /** Advertencia: siempre triángulo y texto, nunca solo color. */
     warnLine(text, sub = '') {
         return `<div class="warn-line">${this.icon('warning-fill')}<span>${window.ui.escape(text)}${sub ? ` <span class="warn-sub">${window.ui.escape(sub)}</span>` : ''}</span></div>`;
     },
@@ -166,7 +151,6 @@ window.DriverApp = {
         return '<span class="spinner" aria-hidden="true"></span>';
     },
 
-    /** Estado vacío anclado arriba, con un ícono neutro, qué pasa y qué hacer. */
     renderEmptyState(icon, title, text, actionHtml = '') {
         return `
             <div class="screen-scroll">
@@ -249,7 +233,6 @@ window.DriverApp = {
         `;
     },
 
-    /** Distancia por carretera de la ruta (OSRM, la misma línea del mapa), si ya se calculó. */
     roadDistanceKm() {
         const guided = window.RouteGuidance && window.RouteGuidance.route;
         if (guided && guided.totalM) return Math.round(guided.totalM / 1000);
@@ -262,7 +245,6 @@ window.DriverApp = {
         const load = window.TruckCarData.activeLoadOrder;
         const lastDelivery = window.TruckCarData.lastDelivery;
         if (!load && lastDelivery) {
-            // Recibo de la entrega recién registrada (firma y foto ya en memoria; no se vuelven a descargar).
             const pod = { ...lastDelivery.pod, loadId: lastDelivery.load.backendId,
                           driverName: lastDelivery.load.assignedDriverName, vehiclePlate: lastDelivery.load.assignedVehiclePlate,
                           tripStartedAt: lastDelivery.load.tripStartedAt };
@@ -354,11 +336,6 @@ window.DriverApp = {
         `;
     },
 
-    /**
-     * Restricciones, alertas en la ruta y riesgo (que decide la aptitud para el vehículo). Hoy ninguno tiene una fuente
-     * fiable: una sola fila lo dice, sin repetir "Sin información". Un dato real sale en su propia fila; lo que siga sin
-     * fuente queda agrupado.
-     */
     routeFactsHtml(opt) {
         const esc = window.ui.escape;
         const facts = [];
@@ -366,7 +343,7 @@ window.DriverApp = {
         const warnings = opt.warnings || [];
         if (warnings.length) facts.push(this.listRow('Restricciones', esc(warnings.join(' · '))));
         else missing.push('restricciones');
-        missing.push('alertas', 'riesgo');   // la API de alertas no filtra por ruta y el riesgo de Route-AI es un valor por defecto
+        missing.push('alertas', 'riesgo');
         if (missing.length) {
             const label = missing.join(', ').replace(/, ([^,]*)$/, ' y $1');
             facts.push(`<div class="list-row"><span class="list-label">${esc(label.charAt(0).toUpperCase() + label.slice(1))}<span class="list-note"> · sin fuente de datos todavía</span></span></div>`);
@@ -415,11 +392,6 @@ window.DriverApp = {
         `;
     },
 
-    /**
-     * Navegación paso a paso de la carga en tránsito. Las instrucciones salen de la ruta real (js/navigation.js:
-     * plan de Route-AI + maniobras de OSRM) y avanzan con la posición GPS; RouteGuidance.renderHud() actualiza los
-     * elementos data-nav-* en sitio para no recrear el mapa en cada posición.
-     */
     renderNavigationScreen(state, isLandscape) {
         const esc = window.ui.escape;
         const s = window.RouteGuidance.snapshot();
@@ -432,8 +404,6 @@ window.DriverApp = {
             : 'Sin carga en tránsito';
         const voice = state.voiceEnabled;
 
-        // Un solo HUD para vertical y horizontal: tarjeta superior de vidrio (maniobra, altura y peso bruto, avisos),
-        // panel vertical derecho y barra del viaje. Sin límite de velocidad: no hay fuente para ese dato.
         return `
             <div class="nav-screen${isLandscape ? ' is-landscape' : ''}">
                 <div class="nav-map-area">
@@ -477,13 +447,11 @@ window.DriverApp = {
         `;
     },
 
-    /** Filtros de Alertas: [tipo, etiqueta]. */
     ALERT_FILTERS: [
         ['all', 'Todas'], ['scale', 'Básculas'], ['bridge', 'Gálibos bajos'],
         ['police', 'Retenes'], ['rest', 'Paradores'], ['danger', 'Incidentes']
     ],
 
-    /** "Actualizado hace 1 min" a partir de la última sincronización. */
     updatedAgo(iso) {
         if (!iso) return '';
         const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
@@ -502,14 +470,12 @@ window.DriverApp = {
 
         let body;
         if (loading) {
-            // Cargando: esqueleto de la lista, no el vacío (no se afirma que no haya reportes).
             body = `
                 <section aria-busy="true" aria-label="Cargando alertas" class="alerts-loading">
                     <p class="status-line">${this.spinner()}<span class="status-sub">Buscando reportes cerca de usted…</span></p>
                     <div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
                 </section>`;
         } else if (errors.alerts && !allAlerts.length) {
-            // Error: distinto del vacío, con la causa y cómo seguir.
             body = `
                 <section class="empty-state" aria-labelledby="alerts-error-title">
                     <div class="empty-mark">${this.icon('wifi-slash')}</div>
@@ -518,7 +484,6 @@ window.DriverApp = {
                     ${retry}
                 </section>`;
         } else if (!alerts.length) {
-            // Vacío: no afirma que la vía sea segura, solo que no hay reportes.
             body = `
                 <section class="empty-state" aria-labelledby="alerts-empty-title">
                     <div class="empty-mark">${this.icon('megaphone')}</div>
@@ -558,7 +523,6 @@ window.DriverApp = {
         `;
     },
 
-    /** Lo que espera en la cola, agrupado como lo entiende el conductor. */
     QUEUE_GROUPS: [
         ['alert.sos', 'SOS', 'Ninguno'],
         ['position', 'Posiciones del viaje', 'Ninguna'],
@@ -571,7 +535,6 @@ window.DriverApp = {
         'alert.reported': 'Reporte de la vía', 'alert.confirmed': 'Confirmación de reporte', 'alert.sos': 'SOS'
     },
 
-    /** "hoy 3:40 a. m.", "mañana 4:30 a. m." o "8 nov, 3:40 a. m.": hasta cuándo dura el mapa guardado. */
     shortDateTime(ms) {
         const d = new Date(ms);
         const time = d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
@@ -586,7 +549,6 @@ window.DriverApp = {
     renderOfflineScreen(state) {
         const esc = window.ui.escape;
         const off = window.TruckCarData.offlineSyncData || {};
-        // Estado real de la cola durable (IndexedDB); se vuelve a pintar en cada cambio (app.js).
         const queue = window.OfflineQueue ? window.OfflineQueue.status()
             : { pending: 0, byKind: {}, rejected: [], lastSyncAt: null, lastError: null, nextRetryAt: null };
         const offline = !navigator.onLine || Boolean(state.isOffline);

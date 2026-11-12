@@ -1,18 +1,3 @@
-/*
- * TruckCar · design tokens (fuente única). Dirección B aprobada: grafito casi monocromo con un acento ámbar apagado.
- *
- * Todo color, tamaño de texto, espacio, radio, elevación y curva de movimiento de la interfaz sale de aquí. Los
- * componentes usan los tokens semánticos (--color-*, --text-*, --space-*, --radius-*, --elev-*), nunca valores
- * sueltos. Tailwind (index.html) lee las mismas variables, así que sus utilidades también son tokens.
- *
- * Escena de uso: conductor de carga pesada que mira de reojo, de noche o bajo sol directo, en un Android de gama
- * media montado en el tablero. Por eso: fondo grafito (no negro puro), texto #ECEEF1 (no blanco puro, que deslumbra de
- * noche), color solo para estado y un único acento en el botón principal y la pestaña activa.
- *
- * Las escalas se definen como canales RGB ("R G B") para que Tailwind pueda aplicar opacidad (bg-graphite-800/80).
- */
-
-/* Manrope servida desde la propia app (funciona sin señal): una sola familia, pesos 500, 600 y 700. */
 @font-face {
     font-family: "Manrope";
     src: url("../fonts/manrope-latin-wght-normal.woff2") format("woff2-variations"),
@@ -25,45 +10,38 @@
 :root {
     color-scheme: dark;
 
-    /* ── Escalas base (canales RGB) ─────────────────────────────────────────────────────────────────────────── */
-
-    /* Grafito neutro: 950 = fondo, 900 = superficie, 800 = elevada. */
     --graphite-50: 246 247 249;
-    --graphite-100: 236 238 241;   /* #ECEEF1 texto primario */
+    --graphite-100: 236 238 241;
     --graphite-200: 220 223 228;
     --graphite-300: 197 202 209;
-    --graphite-400: 138 145 156;   /* #8A919C texto secundario (5,6:1 sobre superficie) */
-    --graphite-500: 98 105 116;    /* #626974 solo deshabilitado: no apto para texto informativo */
-    --graphite-600: 58 64 73;      /* #3A4049 tramo ya recorrido de la ruta */
-    --graphite-700: 35 40 49;      /* #232831 presionado */
-    --graphite-800: 27 31 38;      /* #1B1F26 elevada */
-    --graphite-900: 20 23 28;      /* #14171C superficie */
-    --graphite-950: 12 14 18;      /* #0C0E12 fondo */
+    --graphite-400: 138 145 156;
+    --graphite-500: 98 105 116;
+    --graphite-600: 58 64 73;
+    --graphite-700: 35 40 49;
+    --graphite-800: 27 31 38;
+    --graphite-900: 20 23 28;
+    --graphite-950: 12 14 18;
 
-    /* Acento único: ámbar apagado, solo en el botón principal y la pestaña activa. Texto oscuro encima (9,1:1). */
     --accent-300: 244 201 140;
     --accent-400: 238 182 98;
-    --accent-500: 232 163 61;      /* #E8A33D */
+    --accent-500: 232 163 61;
     --accent-600: 214 143 38;
     --accent-700: 176 114 26;
 
-    /* Semánticos de estado: solo comunican estado, nunca decoran. */
     --ok-400: 108 208 152;
-    --ok-500: 91 196 138;          /* #5BC48A en línea, completado, transmitiendo */
+    --ok-500: 91 196 138;
     --ok-700: 54 142 95;
     --warn-400: 236 189 102;
-    --warn-500: 227 169 60;        /* #E3A93C advertencia: SIEMPRE con triángulo y texto (se parece al acento) */
+    --warn-500: 227 169 60;
     --warn-700: 172 124 35;
 
-    /* Rojo: EXCLUSIVO de SOS y emergencias. */
-    --sos-400: 255 99 105;         /* #FF6369 texto e ícono del SOS en reposo (5,7:1 sobre elevada) */
-    --sos-500: 229 72 77;          /* #E5484D */
-    --sos-600: 198 40 40;          /* #C62828 relleno al mantener y modal activo (texto blanco 5,6:1) */
+    --sos-400: 255 99 105;
+    --sos-500: 229 72 77;
+    --sos-600: 198 40 40;
     --sos-700: 160 30 30;
 
-    --route-500: 90 162 255;       /* #5AA2FF línea de la ruta sobre el mapa oscuro */
+    --route-500: 90 162 255;
 
-    /* ── Color semántico ────────────────────────────────────────────────────────────────────────────────────── */
     --color-bg: rgb(var(--graphite-950));
     --color-surface: rgb(var(--graphite-900));
     --color-elevated: rgb(var(--graphite-800));
@@ -75,8 +53,8 @@
 
     --color-accent: rgb(var(--accent-500));
     --color-accent-pressed: rgb(var(--accent-600));
-    --color-on-accent: rgb(var(--graphite-950));        /* texto e íconos sobre el acento */
-    --color-accent-soft: rgb(var(--accent-500) / 0.15); /* píldora de la pestaña activa */
+    --color-on-accent: rgb(var(--graphite-950));
+    --color-accent-soft: rgb(var(--accent-500) / 0.15);
 
     --color-ok: rgb(var(--ok-500));
     --color-ok-soft: rgb(var(--ok-500) / 0.14);
@@ -93,35 +71,28 @@
     --border-elevated: 1px solid rgba(255, 255, 255, 0.10);
     --color-border: rgba(255, 255, 255, 0.07);
     --color-border-elevated: rgba(255, 255, 255, 0.10);
-    /* Anillo de foco: blanco (texto primario), separado 2 px del control. 16,6:1 sobre el fondo, 14,2:1 sobre la
-       superficie elevada y 4,8:1 sobre el rojo del SOS. No ámbar: es el color de la acción principal. */
     --color-focus: rgb(var(--graphite-100));
     --color-focus-soft: rgb(var(--graphite-100) / 0.18);
 
-    /* Vidrio del HUD de navegación (con respaldo sólido donde no hay backdrop-filter). */
     --color-glass: rgb(var(--graphite-900) / 0.78);
     --color-glass-solid: rgb(var(--graphite-900));
     --blur-glass: 16px;
 
-    /* Ruta sobre el mapa oscuro: azul con borde del color del fondo; lo recorrido en grafito. */
     --color-route: rgb(var(--route-500));
     --color-route-casing: rgb(var(--graphite-950));
     --color-route-done: rgb(var(--graphite-600));
 
-    /* ── Tipografía ─────────────────────────────────────────────────────────────────────────────────────────── */
-    /* Una sola familia, servida localmente; cifras tabulares. Sin monoespaciada en la interfaz. */
     --font-sans: "Manrope", system-ui, sans-serif;
     --font-numeric: tabular-nums;
 
-    /* Escala para lectura a un vistazo: apoyo ≥14, cuerpo 17, cifras clave ≥28. */
-    --text-tab: 0.75rem;           /* 12px  solo etiquetas de la barra inferior (excepción aceptada) */
-    --text-caption: 0.875rem;      /* 14px  textos de apoyo: nunca menos */
-    --text-footnote: 0.9375rem;    /* 15px */
-    --text-body: 1.0625rem;        /* 17px  texto principal */
-    --text-headline: 1.25rem;      /* 20px  título de hoja o tarjeta */
-    --text-title: 1.75rem;         /* 28px  cifras clave, título de formulario */
-    --text-large-title: 2.125rem;  /* 34px  título de pantalla, ciudades de la carga, distancia a la maniobra */
-    --text-display: 2.75rem;       /* 44px  flete */
+    --text-tab: 0.75rem;
+    --text-caption: 0.875rem;
+    --text-footnote: 0.9375rem;
+    --text-body: 1.0625rem;
+    --text-headline: 1.25rem;
+    --text-title: 1.75rem;
+    --text-large-title: 2.125rem;
+    --text-display: 2.75rem;
 
     --leading-tight: 1.1;
     --leading-snug: 1.3;
@@ -132,14 +103,13 @@
     --weight-semibold: 600;
     --weight-bold: 700;
 
-    --tracking-display: -0.02em;   /* títulos y cifras grandes */
+    --tracking-display: -0.02em;
     --tracking-body: 0;
 
-    /* ── Espacio (múltiplos de 4px) ─────────────────────────────────────────────────────────────────────────── */
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
-    --space-4: 16px;               /* margen lateral y rejilla del HUD */
+    --space-4: 16px;
     --space-5: 20px;
     --space-6: 24px;
     --space-8: 32px;
@@ -148,25 +118,22 @@
     --space-16: 64px;
 
     --gutter: var(--space-4);
-    --touch-min: 44px;             /* área táctil mínima */
+    --touch-min: 44px;
     --tabbar-height: 56px;
     --header-height: 56px;
-    --row-min: 52px;               /* fila de lista agrupada */
+    --row-min: 52px;
 
-    /* ── Radios ─────────────────────────────────────────────────────────────────────────────────────────────── */
-    --radius-sm: 10px;             /* SOS */
-    --radius-md: 12px;             /* botones, grupos de lista */
-    --radius-lg: 16px;             /* tarjetas */
-    --radius-xl: 20px;             /* hojas y HUD */
+    --radius-sm: 10px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
     --radius-pill: 999px;
 
-    /* ── Elevación: sombras neutras con desplazamiento, nunca halos de color ────────────────────────────────── */
     --elev-0: none;
     --elev-1: 0 1px 2px rgba(0, 0, 0, 0.40);
     --elev-2: 0 8px 24px -8px rgba(0, 0, 0, 0.60);
-    --elev-3: 0 16px 40px -12px rgba(0, 0, 0, 0.70);   /* lo que flota: HUD, hojas, menús */
+    --elev-3: 0 16px 40px -12px rgba(0, 0, 0, 0.70);
 
-    /* ── Movimiento ─────────────────────────────────────────────────────────────────────────────────────────── */
     --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
     --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -176,7 +143,6 @@
     --dur-sos-hold: 1500ms;
     --press-scale: 0.98;
 
-    /* ── Áreas seguras ──────────────────────────────────────────────────────────────────────────────────────── */
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-left: env(safe-area-inset-left, 0px);

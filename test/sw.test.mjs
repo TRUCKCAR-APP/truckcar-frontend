@@ -1,5 +1,3 @@
-// Service Worker: el app shell precargado coincide con lo que carga index.html y las estrategias de caché nunca guardan
-// la API ni las evidencias firmadas.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -8,15 +6,12 @@ import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
 const ORIGIN = "http://localhost:5500";
 
-/** Carga sw.js con un ámbito de Service Worker mínimo y devuelve los manejadores registrados. */
 function loadServiceWorker() {
   const handlers = {};
-  // Reloj controlable (vencimiento de las teselas) e IndexedDB en memoria, nueva en cada carga.
   const clock = { now: Date.parse("2026-11-01T12:00:00Z") };
   class FakeDate extends Date { static now() { return clock.now; } }
   const cacheStores = new Map();
   const keyOf = (request) => (typeof request === "string" ? request : request.url);
-  // Como Cache Storage: "css/main.css" y "http://localhost:5500/css/main.css" son la misma entrada.
   const same = (a, b) => new URL(a, ORIGIN + "/").href === new URL(b, ORIGIN + "/").href;
   const cacheFor = (name) => {
     if (!cacheStores.has(name)) {
@@ -182,12 +177,10 @@ test("el manifiesto de la PWA es válido y sus íconos existen", () => {
   for (const icon of manifest.icons) assert.ok(existsSync(icon.src.replace(/^\.?\//, "")), `no existe el ícono ${icon.src}`);
 });
 
-// ------------------------------------------------------------------ teselas del mapa (términos de Stadia Maps)
 const TILE = "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/10/301/504@2x.png";
 const HOUR = 60 * 60 * 1000;
 const MB = 1024 * 1024;
 
-/** Respuesta CORS de una tesela, como la de Stadia (Cache-Control: max-age=21600 = 6 h). */
 function tileResponse(bytes = 11440, headers = { "content-type": "image/png", "cache-control": "max-age=21600" }, type = "cors") {
   const response = new Response(new Uint8Array(bytes), { status: 200, headers });
   Object.defineProperty(response, "type", { value: type });
@@ -256,7 +249,6 @@ test("sin señal y sin tesela guardada: PNG transparente válido, sin error de r
   assert.equal(response.status, 200);
   const png = new Uint8Array(await response.arrayBuffer());
   assert.equal(String.fromCharCode(...png.slice(1, 4)), "PNG");
-  // Píxel RGBA totalmente transparente: el mapa muestra su fondo oscuro.
   assert.equal(png[25], 6, "tipo de color RGBA");
 });
 
@@ -273,14 +265,12 @@ test("tope de 100 MB: se expulsan primero las vencidas y después las de uso men
   const { handlers, context, clock, tiles } = loadServiceWorker();
   assert.equal(tiles.MAX_BYTES, 100 * MB);
   const now = clock.now;
-  // 30 MB vencidos y 80 MB vigentes (60 usados hace 5 h, 20 hace 1 h) = 110 MB.
   await tiles.put({ url: "https://tiles.stadiamaps.com/vencida", bytes: 30 * MB, expires: now - 1, used: now - 1 });
   await tiles.put({ url: "https://tiles.stadiamaps.com/antigua", bytes: 60 * MB, expires: now + HOUR, used: now - 5 * HOUR });
   await tiles.put({ url: "https://tiles.stadiamaps.com/reciente", bytes: 20 * MB, expires: now + HOUR, used: now - HOUR });
   assert.deepEqual(Array.from(tiles.planEviction(await tiles.all(), now)), ["https://tiles.stadiamaps.com/vencida"],
     "sin las vencidas ya cabe: no se toca ninguna vigente");
 
-  // Una tesela nueva de 25 MB deja 105 MB vigentes: sale también la de uso menos reciente.
   context.fetch = async () => tileResponse(25 * MB);
   await requestTile(handlers);
   const left = await tiles.all();

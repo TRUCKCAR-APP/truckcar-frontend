@@ -5,7 +5,7 @@ window.DeviceLocation = (function () {
     let bgWatcherId = null;
     let lastFix = restore();
     let error = null;
-    let status = 'searching'; // searching | active | denied | offline
+    let status = 'searching';
 
     function restore() {
         try {

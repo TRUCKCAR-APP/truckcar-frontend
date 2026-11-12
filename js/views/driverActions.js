@@ -1,18 +1,8 @@
-/**
- * Acciones rápidas del conductor:
- *  - Progreso del viaje y botón principal que avanza el estado (Aceptar → Iniciar viaje → Llegué: registrar entrega).
- *  - Reporte vial de un toque: hoja con la cuadrícula de tipos (Community-Alerts; sin señal va a la cola offline).
- *  - SOS: botón flotante que se activa manteniéndolo presionado 1,5 s (un toque accidental no hace nada).
- *
- * El botón SOS se monta una vez fuera de #app-mount: las vistas se re-renderizan en cada setState (telemetría,
- * refresco) y un re-render a mitad de la presión la cancelaría.
- */
 window.DriverActions = (function () {
     const esc = (value) => window.ui.escape(value);
     const HOLD_MS = 1500;
     const icon = (name) => `<svg aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
 
-    // ------------------------------------------------------------------ progreso del viaje
     const STEPS = [
         { key: 'proposed', label: 'Propuesta' },
         { key: 'assigned', label: 'Aceptada' },
@@ -44,9 +34,6 @@ window.DriverActions = (function () {
         return `<div class="stepper card px-3 py-3" role="list" aria-label="Progreso del viaje">${parts.join('')}</div>`;
     }
 
-    // ------------------------------------------------------------------ reporte vial de un toque
-    /** Tipos del backend (Community-Alerts). "Trancón" no existe aún como tipo de alerta en el servidor. */
-    // Los 7 tipos de reporte con su ícono de Phosphor (assets/icons.svg). Sin colores: el texto dice qué es.
     const REPORTS = [
         { type: 'landslide', label: 'Derrumbe', icon: 'mountains' },
         { type: 'danger', label: 'Accidente', icon: 'car-profile' },
@@ -58,7 +45,6 @@ window.DriverActions = (function () {
     ];
     const warn = (text) => `<div class="warn-line">${icon('warning-fill')}<span>${esc(text)}</span></div>`;
 
-    /** Reporte vial con la posición GPS real del dispositivo: la reciente (≤ 2 min) o una lectura nueva al abrir. */
     function openReportSheet(preset) {
         let coords = window.app.currentPosition(2 * 60 * 1000);
         const body = document.createElement('div');
@@ -122,7 +108,6 @@ window.DriverActions = (function () {
         });
     }
 
-    // ------------------------------------------------------------------ SOS
     let sos = null;
 
     function buildSos(host) {
@@ -141,7 +126,6 @@ window.DriverActions = (function () {
         let startedAt = 0;
         let hintTimer = null;
 
-        // El relleno rojo avanza con el tiempo mantenido (0 a 1); al soltar antes de tiempo vuelve a vacío.
         const setProgress = (p) => { button.style.setProperty('--hold', String(p)); };
         const showHint = (visible) => {
             clearTimeout(hintTimer);
@@ -182,7 +166,6 @@ window.DriverActions = (function () {
         button.addEventListener('pointerup', release);
         button.addEventListener('pointercancel', release);
         button.addEventListener('lostpointercapture', release);
-        // Teclado: Enter/Espacio mantenidos también activan (accesibilidad), un toque suelto solo muestra la ayuda.
         button.addEventListener('keydown', (event) => {
             if ((event.key === 'Enter' || event.key === ' ') && !raf && !event.repeat) {
                 event.preventDefault();
@@ -196,11 +179,6 @@ window.DriverActions = (function () {
         return { hint, button };
     }
 
-    /**
-     * Posición del SOS: únicamente el GPS real del dispositivo (window.DeviceLocation). Una lectura de los últimos 15 s
-     * se usa al instante; si no, se pide una nueva (máx. 6 s) y, si no llega, la última posición real confirmada con su
-     * antigüedad. Nunca la guía de navegación, la simulación de prueba ni la posición guardada en el backend.
-     */
     async function sosPosition() {
         const recent = window.DeviceLocation.last(15000);
         if (recent) return { fix: recent, stale: false };
@@ -218,17 +196,12 @@ window.DriverActions = (function () {
         return decimal(fix.coords[0]) + ', ' + decimal(fix.coords[1]) + (fix.accuracy ? ' ±' + Math.round(fix.accuracy) + ' m' : '');
     }
 
-    /** Antigüedad de la lectura GPS que se envió ("hace 40 s"); si es la última confirmada, lo dice. */
     function readingLabel(position) {
         if (!position) return 'Sin lectura';
         const age = window.DeviceLocation.age(position.fix);
         return position.stale ? 'última confirmada ' + age : age;
     }
 
-    /**
-     * Estado del aviso. "Torre de control avisada" solo con el acuse del servidor (id y hora). Guardado sin señal, sin
-     * GPS o con error del servidor: triángulo, qué pasó y la instrucción de llamar al 123.
-     */
     function sosStatusHtml(kind, detail) {
         const call = ' <b>Llame al 123 ahora.</b>';
         switch (kind) {
@@ -240,10 +213,6 @@ window.DriverActions = (function () {
         }
     }
 
-    /**
-     * Modal del SOS activo: rojo pleno sobre toda la app (dentro del marco del teléfono). Resuelve 'call' o 'close'.
-     * Escape cierra; el foco vuelve al botón SOS al cerrar.
-     */
     function openSosModal({ plate, load, onMount }) {
         return new Promise((resolve) => {
             const host = document.getElementById('phone-mockup-frame') || document.body;
@@ -283,21 +252,13 @@ window.DriverActions = (function () {
             modal.querySelectorAll('[data-sos-action]').forEach(button =>
                 button.addEventListener('click', () => close(button.dataset.sosAction)));
             host.appendChild(modal);
-            // El foco va al modal, no a "Llamar al 123": con Enter mantenido para activar el SOS, la repetición de la tecla
-            // marcaría sin querer.
             modal.tabIndex = -1;
             modal.focus({ preventScroll: true });
-            // La antigüedad de la lectura sigue contando mientras el modal está abierto.
             const tick = (fn) => { clearInterval(ticker); fn(); ticker = setInterval(fn, 1000); };
             onMount(modal, tick);
         });
     }
 
-    /**
-     * SOS: POST /api/v1/alerts/sos con la posición GPS real del dispositivo. El modal se abre al instante y muestra el
-     * resultado real: torre avisada (id y hora del servidor), guardado sin señal (cola durable) o error. La llamada al
-     * 123 siempre está.
-     */
     async function activate() {
         const load = window.TruckCarData.activeLoadOrder;
         const driver = window.TruckCarData.currentDriver || {};
@@ -345,7 +306,6 @@ window.DriverActions = (function () {
         await send;
     }
 
-    /** Muestra el SOS solo al conductor autenticado, sobre la app y por encima de la barra de pestañas. */
     function syncSos(state) {
         const visible = state.isAuthenticated && state.activeRole === 'driver';
         if (!visible) {

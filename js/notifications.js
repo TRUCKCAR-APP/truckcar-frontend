@@ -1,11 +1,4 @@
-﻿/**
- * Servicio unificado de Notificaciones Push para TruckCar.
- *
- * Compatible con:
- * - Capacitor Nativo en Android (@capacitor/push-notifications con Firebase Cloud Messaging)
- * - PWA Web moderna (PushManager + Service Worker push event)
- */
-(function () {
+﻿(function () {
     const STORAGE_KEY = 'truckcar.pushToken';
 
     const TruckCarNotifications = {
@@ -23,7 +16,6 @@
         },
 
         async requestPermission() {
-            // 1. Entorno Capacitor Nativo (Android)
             if (this.isNative) {
                 try {
                     const Push = window.Capacitor.Plugins.PushNotifications;
@@ -42,7 +34,6 @@
                 return false;
             }
 
-            // 2. Entorno Web PWA / Navegador
             if (this.isWebPushSupported) {
                 try {
                     const result = await Notification.requestPermission();
@@ -93,7 +84,6 @@
                 let subscription = await registration.pushManager.getSubscription();
 
                 if (!subscription) {
-                    // Si existe VAPID público en configuración se suscribe
                     const vapidKey = window.TruckCarConfig.vapidPublicKey;
                     if (vapidKey) {
                         subscription = await registration.pushManager.subscribe({
@@ -118,11 +108,9 @@
             try {
                 await window.TruckCarApi.users.savePushToken(token, platform);
             } catch (e) {
-                // Silencioso si el microservicio de notificaciones aún está en despliegue
             }
         },
 
-        /** Notificación local en la app para eventos críticos */
         notifyLocal(title, body, options = {}) {
             if (this.permissionStatus === 'granted' && 'Notification' in window) {
                 try {

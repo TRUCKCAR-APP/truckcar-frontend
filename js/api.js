@@ -1,9 +1,3 @@
-/**
- * Cliente HTTP de TruckCar: todas las llamadas pasan por el api-gateway.
- * - fetch + async/await, timeout con AbortController.
- * - Cabeceras estándar, JWT (Authorization: Bearer) y X-Correlation-Id por petición.
- * - Errores normalizados en ApiError { status, message, details, correlationId }.
- */
 (function () {
     const config = window.TruckCarConfig;
 
@@ -23,7 +17,6 @@
         get isNetworkError() { return this.status === 0; }
     }
 
-    // ---------------------------------------------------------------- sesión
     const session = {
         get() {
             try {
@@ -51,27 +44,21 @@
             return value;
         },
         clear() {
-            try { localStorage.removeItem(config.storageKeys.session); } catch (e) { /* sin almacenamiento */ }
+            try { localStorage.removeItem(config.storageKeys.session); } catch (e) { }
         },
         isActive() {
             const s = this.get();
             return Boolean(s && s.accessToken && s.expiresAt > Date.now());
         },
-        /** El access token dura 15 min: con refresh token la sesión se puede renovar aunque haya expirado. */
         isRenewable() {
             const s = this.get();
             return Boolean(s && s.refreshToken);
         }
     };
 
-    // Margen antes de la expiración en el que se renueva el token por adelantado.
     const REFRESH_MARGIN_MS = 60 * 1000;
     let refreshInFlight = null;
 
-    /**
-     * Renueva la sesión con el refresh token. User-Identity revoca el refresh usado (rotación), así que las peticiones
-     * concurrentes comparten una sola renovación: dos /auth/refresh con el mismo token cerrarían la sesión.
-     */
     function refreshSession() {
         if (!refreshInFlight) {
             const current = session.get();
@@ -84,7 +71,6 @@
         return refreshInFlight;
     }
 
-    /** Garantiza un access token vigente (lo renueva si vence en menos de un minuto). Lanza si no se puede. */
     async function ensureFreshSession() {
         const current = session.get();
         if (current && current.accessToken && current.expiresAt - REFRESH_MARGIN_MS > Date.now()) {
@@ -149,13 +135,11 @@
         return defaults[status] || ('Error HTTP ' + status);
     }
 
-    // ---------------------------------------------------------------- núcleo
     async function request(method, path, { body, query, auth = true, timeoutMs, headers = {}, retried = false } = {}) {
         if (auth && session.isRenewable()) {
             try {
                 await ensureFreshSession();
             } catch (e) {
-                // Si la renovación falla se envía igual: el 401 del gateway cierra la sesión más abajo.
             }
         }
         const correlationId = newCorrelationId();
@@ -214,7 +198,6 @@
                 path
             });
             if (error.isUnauthorized && auth && !retried && session.isRenewable()) {
-                // Token vencido o revocado entre la comprobación y el envío: una renovación y un reintento.
                 try {
                     await refreshSession();
                 } catch (refreshError) {
@@ -228,7 +211,6 @@
                 session.clear();
                 window.dispatchEvent(new CustomEvent('truckcar:unauthorized', { detail: error }));
             } else if (error.isForbidden && auth) {
-                // El rol del token no permite esta ruta (p. ej. un GENERADOR en la torre de control): la app redirige.
                 window.dispatchEvent(new CustomEvent('truckcar:forbidden', { detail: error }));
             }
             throw error;
@@ -250,7 +232,6 @@
 
     const enc = encodeURIComponent;
 
-    // ---------------------------------------------------------------- endpoints
     window.TruckCarApi = {
         ApiError,
         session,
@@ -258,7 +239,6 @@
         decodeJwt,
         http,
 
-        /** User-Identity: /api/v1/auth, /api/v1/users */
         auth: {
             async login(email, password) {
                 const response = await http.post('/auth/login', { email, password }, { auth: false });
@@ -279,7 +259,6 @@
             getById: (id) => http.get('/users/' + enc(id))
         },
 
-        /** fleets-drivers: estado de conductores y vehículos */
         fleet: {
             listActive: () => http.get('/fleets-drivers/active'),
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
@@ -297,67 +276,51 @@
             })
         },
 
-        /** Load-Allocation: cargas y ciclo comercial de asignación */
         loads: {
             getById: (loadId) => http.get('/loads/' + enc(loadId)),
             listAvailable: (truckType) => http.get('/loads/available', { query: { truckType } }),
             listByCompany: (companyId) => http.get('/loads/company/' + enc(companyId)),
-            /** Envíos del generador autenticado (generatorCompanyId = su id de usuario). */
             published: () => http.get('/loads/published'),
             publish: (load) => http.post('/loads', load),
             accept: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/accept'),
             reject: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/reject'),
-            /** Cargas del conductor autenticado (propuestas, aceptadas y en tránsito). */
             mine: () => http.get('/loads/mine'),
             startTrip: (loadId) => http.patch('/loads/' + enc(loadId) + '/trip/start'),
-            /** pod: { receiverName, receiverDocument, notes, signature?, photo? } (referencias, ver PodEvidence). */
             deliver: (loadId, pod) => http.patch('/loads/' + enc(loadId) + '/trip/deliver', pod),
-            /** files: [{ kind: SIGNATURE|PHOTO, contentType, sizeBytes, sha256 }] -> URLs prefirmadas de subida. */
             podUploadUrls: (loadId, files) =>
                 http.post('/loads/' + enc(loadId) + '/proof-of-delivery/upload-urls', { files }),
             cancel: (loadId, reason) => http.patch('/loads/' + enc(loadId) + '/cancel', { reason }),
-            /** Torre de control (COORDINADOR/ADMIN): cargas de todos los generadores por status. */
             list: (statuses) => http.get('/loads', { query: { status: statuses && statuses.length ? statuses.join(',') : undefined } }),
-            /** POD completo con firma y foto: conductor de la carga o torre de control. */
             proofOfDelivery: (loadId) => http.get('/loads/' + enc(loadId) + '/proof-of-delivery'),
-            /** Enlace firmado de seguimiento público (GENERADOR dueño o torre): { token, url, expiresAt }. */
             publicTrackingLink: (loadId) => http.post('/loads/' + enc(loadId) + '/public-tracking-link'),
-            /** Vista pública anónima del envío: sin JWT (el gateway abre solo este GET). */
             publicTracking: (token) => http.get('/loads/public-tracking/' + enc(token), { auth: false })
         },
 
-        /** AI-powered-fleet-allocation: motor de scoring de conductores */
         allocation: {
             matchLoad: (loadId) => http.post('/fleet-allocation/match/' + enc(loadId)),
             history: (loadId) => http.get('/fleet-allocation/history/' + enc(loadId)),
             optimize: (request) => http.post('/fleet-allocation/optimize', request)
         },
 
-        /** Route-AI-agent: planeación de rutas para carga pesada */
         routes: {
             plan: (request) => http.post('/routes/plan', request, { timeoutMs: 45000 }),
             historyByPlate: (plate) => http.get('/routes/history/' + enc(plate))
         },
 
-        /** Community-Alerts: reportes de vía con PostGIS */
         alerts: {
             listActive: () => http.get('/alerts'),
             nearby: (latitude, longitude, radiusMeters = 50000) =>
                 http.get('/alerts/nearby', { query: { latitude, longitude, radiusMeters } }),
             create: (alert) => http.post('/alerts', alert),
             confirm: (alertId) => http.patch('/alerts/' + enc(alertId) + '/confirm'),
-            /** Botón de pánico del conductor: { latitude, longitude, accuracyMeters, loadId, vehiclePlate, driverName, clientEventId }. */
             sos: (sos) => http.post('/alerts/sos', sos, { timeoutMs: 8000 }),
-            /** Torre de control: SOS sin atender. */
             activeSos: () => http.get('/alerts/sos'),
             acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
         },
 
-        /** Routing-Restrictions: restricciones y cierres viales */
         restrictions: {
             listActive: (query) => http.get('/restrictions', { query }),
             validateCompatibility: (request) => http.post('/restrictions/validate-compatibility', request),
-            /** Restricciones activas a lo largo de la geometría real de la ruta (gálibo, peso, cierres). */
             validateRoute: (request) => http.post('/restrictions/validate-route', request, { timeoutMs: 8000 })
         }
     };

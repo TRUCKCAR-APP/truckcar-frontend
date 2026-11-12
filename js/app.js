@@ -5,21 +5,12 @@ window.ui = {
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
 
-    /**
-     * Notificación flotante (js/ui/toaster.js). options.description añade una segunda línea y options.action un botón
-     * ({ label, onClick }).
-     */
     toast(message, type = 'info', options = {}) {
         if (!window.Toaster) return;
         window.Toaster.show({ title: message, type, ...options });
     },
 
-    /**
-     * Error de una acción del usuario: 401/403/409 se explican en un diálogo (qué pasó y qué hacer); el resto, en un
-     * toast con el detalle técnico como segunda línea.
-     */
     failure(title, error, context) {
-        // 401: el listener global de truckcar:unauthorized ya cerró la sesión y lo explicó.
         if (error && error.status === 401) return;
         if (window.Sheet && window.Sheet.explainError(error, context)) return;
         this.toast(title, 'error', { description: this.errorMessage(error) });
@@ -31,19 +22,12 @@ window.ui = {
         return (error.message || String(error)) + suffix;
     },
 
-    /** Banner con el estado de sincronización con el backend, reutilizado por ambas vistas. */
-    /** Qué no se pudo actualizar, en palabras del conductor (el detalle técnico queda en el título). */
     SYNC_SECTIONS: {
         alerts: 'las alertas', routes: 'la ruta', fleet: 'la flota', user: 'su perfil', profile: 'el perfil',
         driver: 'el perfil', assignment: 'la carga', load: 'la carga', loads: 'las cargas', shipments: 'los envíos',
         deliveries: 'las entregas', evaluation: 'la evaluación de despacho'
     },
 
-    /**
-     * Franja bajo la cabecera mientras se actualizan los datos o si algo falló. Sin colores de fondo: actualizando es
-     * texto gris; un fallo es una advertencia (triángulo y texto, nunca rojo, que es solo del SOS). Una pantalla que ya
-     * explica su propio error (Alertas, Rutas) no lo repite aquí.
-     */
     syncBanner(state) {
         const status = state.dataStatus || {};
         const own = state.activeRole === 'driver'
@@ -69,12 +53,9 @@ window.app = {
     pollTimer: null,
 
     init() {
-        // Enlace público de seguimiento (?track=): sin sesión, sin cola offline ni barra de roles.
         if (window.PublicTracking.maybeStart()) return;
-        // Sin ?demo=1 no hay herramientas de simulación a la vista: una simulación de GPS que quedó activa de una sesión
-        // anterior se apaga, para que no siga corriendo sin un interruptor visible.
         if (!window.TruckCarConfig.demoTools) {
-            try { localStorage.removeItem('truckcar.telemetryMode'); } catch (e) { /* sin almacenamiento */ }
+            try { localStorage.removeItem('truckcar.telemetryMode'); } catch (e) { }
         }
         window.store.subscribe((state) => this.renderCurrentView(state));
         window.Native.init();
@@ -88,7 +69,6 @@ window.app = {
 
             }
         });
-        // 403: la cuenta no tiene permiso para esa vista. Se vuelve a la vista propia del rol, sin franja de error.
         window.addEventListener('truckcar:forbidden', () => {
             const state = window.store.state;
             if (!state.isAuthenticated) return;
@@ -106,7 +86,6 @@ window.app = {
         if (session.isActive()) {
             this.startSession(session.get());
         } else if (session.isRenewable()) {
-            // Access token vencido (dura 15 min) pero con refresh token: se renueva sin pedir login.
             window.TruckCarApi.ensureFreshSession()
                 .then(renewed => this.startSession(renewed))
                 .catch(() => {
@@ -300,21 +279,14 @@ window.app = {
         window.ui.toast('Sesión demo iniciada como ' + (isDriver ? 'Conductor' : 'Torre de Control'), 'success');
     },
 
-    // ------------------------------------------------------------------ vista por dispositivo
-    /** Teléfono: por debajo del breakpoint md (768 px) de Tailwind, el mismo que oculta los textos del selector. */
     isPhone() {
         return typeof window.matchMedia === 'function' && !window.matchMedia('(min-width: 768px)').matches;
     },
 
-    /**
-     * En el teléfono la app del conductor es solo de cuentas CONDUCTOR: su GPS, SOS y telemetría no funcionan con
-     * ADMIN ni COORDINADOR (el backend rechaza el SOS de otros roles). En escritorio la torre conserva la vista previa.
-     */
     canUseDriverView(sessionRole) {
         return sessionRole === 'CONDUCTOR' || !this.isPhone();
     },
 
-    /** Si la ventana pasa a tamaño teléfono con la vista previa del conductor abierta, se vuelve a la torre. */
     watchPhoneLayout() {
         if (typeof window.matchMedia !== 'function') return;
         const query = window.matchMedia('(min-width: 768px)');
@@ -330,8 +302,6 @@ window.app = {
         else if (query.addListener) query.addListener(onChange);
     },
 
-    // ------------------------------------------------------------------ sesión
-    /** CONDUCTOR -> app del conductor; GENERADOR -> solo "Mis envíos"; COORDINADOR/ADMIN -> torre de control. */
     roleToView(role) {
         if (role === 'CONDUCTOR') return 'driver';
         if (role === 'GENERADOR') return 'generator';
@@ -358,11 +328,6 @@ window.app = {
         }
     },
 
-    /**
-     * Renueva el access token (15 min) un minuto antes de que venza, aunque no haya peticiones: la reconexión del
-     * WebSocket y la cola offline siempre encuentran un token válido y la sesión no se interrumpe. Si la renovación
-     * falla por red se reintenta en 30 s; si el refresh token ya no sirve, api.js emite truckcar:unauthorized.
-     */
     scheduleSessionRefresh() {
         clearTimeout(this.sessionRefreshTimer);
         const session = window.TruckCarApi.session.get();
@@ -442,7 +407,6 @@ window.app = {
         try {
             await window.TruckCarApi.auth.logout();
         } catch (error) {
-            // El token puede haber expirado; la sesión local se cierra igual.
         }
         this.endSession();
     },
@@ -455,7 +419,6 @@ window.app = {
             if (!state.isAuthenticated || state.activeRole !== 'coordinator' || typing) return;
             await window.TruckCarService.refreshCoordinator();
         }, window.TruckCarConfig.pollingIntervalMs);
-        // "Mis envíos" se refresca más seguido (solo cargas propias y flota) para seguir los cambios de estado.
         clearInterval(this.shipmentsTimer);
         this.shipmentsTimer = setInterval(async () => {
             const state = window.store.state;
@@ -473,7 +436,6 @@ window.app = {
         await window.TruckCarService.loadAll();
     },
 
-    // ------------------------------------------------------------------ render
     renderCurrentView(state) {
         const mount = document.getElementById('app-mount');
         if (!mount) return;
@@ -490,8 +452,6 @@ window.app = {
             return;
         }
 
-        // El mapa de la torre y el de "Mis envíos" sobreviven al re-render: su contenedor se vuelve a insertar en
-        // lugar del nuevo, así la telemetría mueve los marcadores sin que el mapa se destruya en cada actualización.
         const liveMap = window.mapCtrl.map ? window.mapCtrl.map.getContainer() : null;
         const keepMap = liveMap && this.KEEP_ALIVE_MAPS.includes(liveMap.id) ? liveMap : null;
 
@@ -531,10 +491,6 @@ window.app = {
 
     KEEP_ALIVE_MAPS: ['coordinator-map-container', 'generator-map-container'],
 
-    /**
-     * Suscripciones de telemetría según la vista: la torre sigue toda la flota y "Mis envíos" cada carga aceptada o
-     * en ruta. Las posiciones mueven los marcadores directamente, sin setState ni peticiones HTTP.
-     */
     syncLiveTracking(state) {
         const live = window.LiveTracking;
         if (!state.isAuthenticated) {
@@ -568,10 +524,6 @@ window.app = {
         }
     },
 
-    /**
-     * Barra superior según el rol de la sesión: el selector conductor/torre solo para COORDINADOR y ADMIN; las
-     * herramientas de prueba del conductor (rotar, simular GPS) no aplican a un generador.
-     */
     updateHeader(state) {
         const role = state.isAuthenticated ? state.sessionRole : null;
         const show = (id, visible) => {
@@ -579,11 +531,9 @@ window.app = {
             if (el) el.classList.toggle('hidden', !visible);
         };
         const controlTower = role === 'COORDINADOR' || role === 'ADMIN';
-        // En el teléfono la torre no puede abrir la app del conductor: el selector no tiene a dónde llevar.
         show('role-switcher', controlTower && this.canUseDriverView(role));
         show('rotate-device-btn', role !== 'GENERADOR');
         show('sim-toggle-btn', role !== 'GENERADOR');
-        // La vista activa decide el layout móvil (css/main.css): el conductor usa su propia barra superior.
         document.body.dataset.view = state.isAuthenticated ? state.activeRole : 'login';
         const frame = document.getElementById('phone-mockup-frame');
         if (frame) {
@@ -591,7 +541,7 @@ window.app = {
             frame.classList.toggle('phone-frame', driverLike);
             frame.classList.toggle('landscape-mode', driverLike && state.isLandscape);
             frame.classList.toggle('coordinator-frame', !driverLike);
-            frame.style.position = 'relative'; // ancla del botón SOS
+            frame.style.position = 'relative';
         }
         const active = 'bg-accent-500/15 text-accent-500';
         const idle = 'text-slate-400 hover:text-slate-200';
@@ -615,7 +565,6 @@ window.app = {
             const load = window.GeneratorPanel.selectedLoad(window.store.state);
             const key = load ? load.backendId : null;
             if (window.mapCtrl.isMountedOn('generator-map-container')) {
-                // Mismo mapa: se redibuja el envío y solo se reencuadra si cambió la carga seleccionada.
                 window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load), { fit: window.mapCtrl.shipmentKey !== key });
             } else {
                 window.mapCtrl.initMap('generator-map-container', [4.6097, -74.0817], 6);
@@ -625,7 +574,6 @@ window.app = {
         });
     },
 
-    /** Agrupa montajes de mapa: varios renders seguidos (sincronización) crean el mapa una sola vez. */
     scheduleMapMount(fn) {
         clearTimeout(this.mapMountTimer);
         this.mapMountTimer = setTimeout(fn, 150);
@@ -636,12 +584,10 @@ window.app = {
             if (state.driverScreen === 'route_overview') {
                 if (!document.getElementById('overview-map-container')) return;
                 window.mapCtrl.initMap('overview-map-container', [4.6097, -74.0817], 7);
-                // La hoja inferior de Rutas tapa la parte baja del mapa: atribución y encuadre van por encima de ella.
                 window.mapCtrl.observeBottomSheet(document.querySelector('[data-route-sheet]'));
                 window.mapCtrl.drawOverviewRoutes();
             } else if (state.driverScreen === 'navigation') {
                 if (!document.getElementById('live-nav-map-container')) return;
-                // Centro: la posición de la telemetría (GPS real o simulación de prueba explícita); sin ella, la ruta.
                 const point = window.DriverTelemetry.lastPoint;
                 const fix = point ? point.coords : (window.DeviceLocation.last() || {}).coords;
                 window.mapCtrl.initMap('live-nav-map-container', fix || [4.6097, -74.0817], fix ? 15 : 7);
@@ -656,7 +602,6 @@ window.app = {
         this.scheduleMapMount(() => {
             if (!document.getElementById('coordinator-map-container')) return;
             if (window.mapCtrl.isMountedOn('coordinator-map-container')) {
-                // Mapa reutilizado: se actualizan capas sin reencuadrar (el usuario conserva su zoom).
                 window.mapCtrl.renderAlerts();
                 window.mapCtrl.renderCoordinatorFleetMarkers();
                 return;
@@ -670,7 +615,6 @@ window.app = {
         const sessionRole = window.store.state.sessionRole;
         if (!window.store.state.isAuthenticated) return;
         if (sessionRole === 'GENERADOR') {
-            // Un generador solo tiene "Mis envíos": no entra a la torre ni a la app del conductor.
             if (window.store.state.activeRole !== 'generator') window.store.setState({ activeRole: 'generator' });
             return;
         }
@@ -704,7 +648,6 @@ window.app = {
         }, 350);
     },
 
-    // ------------------------------------------------------------------ conductor
     async handleAcceptTrip() {
         window.store.setState({ busyAction: 'accept' });
         try {
@@ -748,7 +691,6 @@ window.app = {
         window.store.setState({});
     },
 
-    /** Inicia el viaje real (ASSIGNED -> IN_TRANSIT) y abre la navegación; si ya está en tránsito, la reanuda. */
     async startNavigation() {
         const load = window.TruckCarData.activeLoadOrder;
         if (!load || (load.status !== 'ASSIGNED' && load.status !== 'IN_TRANSIT')) {
@@ -768,21 +710,16 @@ window.app = {
         }
         window.store.setState({ busyAction: null, driverScreen: 'navigation' });
         window.DeviceLocation.watch();
-        // La guía paso a paso sale de la ruta real (Route-AI + OSRM); la primera instrucción se anuncia con la
-        // primera posición GPS.
         window.RouteGuidance.prepare(window.TruckCarData.activeLoadOrder);
         window.voiceEngine.speak('Navegación iniciada hacia ' + window.DriverApp.destinationLabel() + '.', true);
     },
 
-    /** Registra la entrega con su prueba (IN_TRANSIT -> DELIVERED). */
     async finishTrip() {
         const load = window.TruckCarData.activeLoadOrder;
         if (!load || load.status !== 'IN_TRANSIT') {
             window.ui.toast('No hay un viaje en tránsito para finalizar.', 'warning');
             return;
         }
-        // Formulario de POD (receptor, firma en lienzo y foto). Si el backend rechaza la entrega, el formulario
-        // sigue abierto con el error para no perder la firma.
         const delivered = await window.PodUI.openDeliveryForm(load, (pod) => window.TruckCarService.deliverLoad(pod));
         if (!delivered) return;
         window.voiceEngine.speak('Entrega registrada. Viaje finalizado.');
@@ -791,7 +728,6 @@ window.app = {
         window.store.setState({ busyAction: null, driverScreen: 'assigned_load' });
     },
 
-    /** Repite en voz la instrucción de navegación actual. */
     repeatInstruction() {
         const s = window.RouteGuidance.snapshot();
         const hud = window.RouteGuidance.hudText(s);
@@ -815,21 +751,14 @@ window.app = {
         } else {
             window.ui.toast('Simulación: conexión restablecida.', 'success');
             window.voiceEngine.speak('Conexión restablecida.');
-            // Igual que el evento online del navegador: se envía lo guardado sin señal.
             window.OfflineQueue.flush();
         }
     },
 
-    /**
-     * PWA offline: Service Worker (app y teselas en caché) y cola durable. La pantalla offline del conductor se
-     * repinta con cada cambio de la cola, y los rechazos del servidor se avisan al conductor.
-     */
     initOffline() {
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(error =>
                 console.warn('[TruckCar] No se pudo registrar el Service Worker', error));
-            // Una versión nueva del Service Worker tomó el control: se recarga una vez para no seguir con el CSS y el JS
-            // que sirvió la anterior. En la primera instalación (sin controlador previo) no hace falta.
             const hadController = !!navigator.serviceWorker.controller;
             let reloading = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -844,8 +773,6 @@ window.app = {
             });
         }
         const data = window.TruckCarData;
-        // Mapa guardado para usar sin señal: lo que dice el índice del Service Worker (js/tileStore.js), con el tamaño y
-        // el vencimiento reales de cada tesela vigente.
         const refreshTileCount = () => {
             if (!window.indexedDB || !window.TileStore) return;
             window.TileStore.summary().then(summary => {
@@ -855,7 +782,6 @@ window.app = {
             }).catch(() => {});
         };
         refreshTileCount();
-        // Al entrar en la pantalla Offline se vuelve a leer el índice: la fecha "guardado hasta" es la real del momento.
         let lastScreen = null;
         window.store.subscribe((state) => {
             if (state.driverScreen === 'offline' && lastScreen !== 'offline' && window.TileStore) {
@@ -884,16 +810,11 @@ window.app = {
         window.addEventListener('offline', () => window.ui.toast('Sin conexión: las acciones se guardan en el teléfono.', 'warning'));
     },
 
-    /**
-     * Posición para el SOS y los reportes viales: solo el GPS real del dispositivo (la última lectura confirmada). Nunca
-     * la guía de navegación, la simulación de prueba ni la posición guardada en el backend.
-     */
     currentPosition(maxAgeMs) {
         const fix = window.DeviceLocation.last(maxAgeMs);
         return fix ? fix.coords : null;
     },
 
-    /** Reporte vial de un toque (hoja con la cuadrícula de tipos, js/views/driverActions.js). */
     openReportModal(presetType) {
         window.DriverActions.openReportSheet(presetType);
     },

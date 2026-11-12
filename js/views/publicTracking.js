@@ -1,11 +1,3 @@
-/**
- * Seguimiento público de un envío (?track=<token>): lo abre el destinatario sin cuenta ni sesión.
- * GET /api/v1/loads/public-tracking/{token} cada 15 s; el backend responde 410 cuando el enlace venció, la carga se
- * canceló o pasaron 6 h desde la entrega. La vista no tiene datos personales: placa enmascarada y sin conductor.
- *
- * Mismo sistema que la app del conductor: mapa oscuro del proveedor de js/config.js (el Service Worker guarda sus
- * teselas), íconos Phosphor neutros, estado como texto con punto y textos de 14 px o más.
- */
 window.PublicTracking = (function () {
     const esc = (value) => window.ui.escape(value);
     const icon = (name, cls = '') => `<svg class="ui-icon ${cls}" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
@@ -67,7 +59,6 @@ window.PublicTracking = (function () {
         const delivered = v.status === 'DELIVERED';
         const lost = offline ? '<span class="status-sub"> · sin conexión, reintentando</span>' : '';
         if (v.position) {
-            // La hora y la velocidad van en su propia línea: en el teléfono no se parten detrás de un "·" suelto.
             const when = [
                 v.position.updatedAt ? 'Actualizada el ' + esc(time(v.position.updatedAt)) : '',
                 v.position.speedKmH != null ? Math.round(v.position.speedKmH) + ' km/h' : ''
@@ -114,7 +105,6 @@ window.PublicTracking = (function () {
             <p class="secondary public-track-foot">Enlace válido hasta el ${esc(time(v.expiresAt))} · TruckCar</p>`);
     }
 
-    /** Centra el camión con el mapa ya medido: así no queda cortado por un borde. */
     function frameTruck() {
         if (!map) return;
         map.invalidateSize({ pan: false });
@@ -124,13 +114,10 @@ window.PublicTracking = (function () {
     function createMap(el) {
         const tiles = window.TruckCarConfig.map;
         map = window.L.map(el, { zoomControl: false, attributionControl: false }).setView([4.6, -74.08], 6);
-        // Atribución obligatoria y legible, como en la app del conductor.
         window.L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
         const theme = window.TruckCarTheme ? window.TruckCarTheme.getTheme() : 'dark';
         tileLayer = window.L.tileLayer(theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl,
             { maxZoom: tiles.maxZoom, attribution: tiles.attribution, crossOrigin: true }).addTo(map);
-        // El contenedor puede cambiar de tamaño después de crearse (fuentes, estilos, giro): se vuelve a medir y a
-        // encuadrar el camión, una vez por cuadro.
         if (typeof ResizeObserver === 'function') {
             let frame = null;
             new ResizeObserver(() => {
@@ -143,7 +130,6 @@ window.PublicTracking = (function () {
     function paintMap(v) {
         const el = document.getElementById('public-track-map');
         if (!el || !window.L) return;
-        // El mapa se crea una vez y se reinserta en cada re-render: así no parpadea cada 15 s.
         if (map) el.replaceWith(map.getContainer());
         else createMap(el);
         if (v.position) {
@@ -194,7 +180,6 @@ window.PublicTracking = (function () {
         timer = null;
     }
 
-    /** Si la URL trae ?track=, monta la vista pública (sin login ni barra de roles) y devuelve true. */
     function maybeStart() {
         const hasParam = new URLSearchParams(window.location.search).has('track');
         if (!hasParam) return false;

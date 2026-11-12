@@ -1,7 +1,3 @@
-/**
- * Inicio de sesión y registro (prototipo B): título grande, campos con su rótulo y "Entrar" en ámbar plano. Sin
- * degradado, halo ni fondo con tinte. Los nombres de los campos y los manejadores no cambian.
- */
 window.LoginView = {
     render(state) {
         const isRegister = state.authMode === 'register';

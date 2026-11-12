@@ -1,4 +1,3 @@
-// Pantallas del conductor: textos que dependen de los datos del backend.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

@@ -1,4 +1,3 @@
-// Navegación paso a paso sobre la ruta real (Route-AI + OSRM) y telemetría con el GPS del dispositivo por defecto.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -6,7 +5,6 @@ import { JSDOM } from "jsdom";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Ruta de prueba: 1,1 km al norte por la Calle 13, giro a la derecha y 1,1 km al oriente por la Avenida Boyacá.
 const OSRM = {
   routes: [{
     duration: 240,
@@ -129,7 +127,6 @@ test("la línea gris del HUD muestra la calle actual solo si no repite la de la 
 test("el gálibo y el peso de la ruta real llegan de Routing-Restrictions y se avisan antes de llegar", async () => {
   const { w, spoken } = browser();
   const requests = [];
-  // Un puente de 3,80 m a 1,4 km del inicio (sobre la Avenida Boyacá) y un vehículo de 4,10 m.
   w.TruckCarData.currentDriver = { vehicle: { plate: "TDK-410", height: 4.1, grossWeight: 40 } };
   w.TruckCarApi.restrictions = { validateRoute: async (request) => {
     requests.push(request);
@@ -154,7 +151,6 @@ test("el gálibo y el peso de la ruta real llegan de Routing-Restrictions y se a
   assert.equal(doc.querySelector("[data-nav-clearance-sub]").textContent, "· su vehículo mide 4,10 m");
   assert.ok(spoken.some((t) => /Atención: .*gálibo de 3,80 metros; su vehículo mide 4,10/.test(t)), "se anuncia una vez a 3 km o menos");
 
-  // Pasado el puente, el aviso desaparece.
   w.RouteGuidance.update({ coords: [4.61, -73.995], speed: 40, source: "gps" });
   assert.equal(doc.querySelector("[data-nav-clearance]").hidden, true);
 });

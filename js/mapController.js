@@ -1,10 +1,8 @@
-/** Color de un token de css/tokens.css (ya resuelto), para las capas SVG de Leaflet. */
 function mapToken(name, fallback) {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return value || fallback;
 }
 
-/** Marcadores de la ruta, distintos por forma: origen = anillo hueco; destino = pin con bandera. */
 const ROUTE_PINS = {
     origin: () => L.divIcon({ html: '<span class="map-pin-origin"></span>', className: 'map-pin', iconSize: [20, 20], iconAnchor: [10, 10] }),
     stop: () => L.divIcon({ html: '<span class="map-pin-stop"></span>', className: 'map-pin', iconSize: [12, 12], iconAnchor: [6, 6] }),
@@ -32,7 +30,6 @@ class MapController {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
         this.isFetchingRoute = false;
-        // Distancia y duración por carretera de la misma línea que se dibuja (OSRM, perfil de auto).
         this.routeSummary = null;
         this.routeSummaryFailed = false;
         this.bottomInset = 0;
@@ -52,7 +49,6 @@ class MapController {
         this.navGuidanceFramed = false;
         if (this.map) {
             try {
-                // Detener animaciones pendientes evita el error "_leaflet_pos" al destruir el mapa.
                 this.map.stop();
                 this.map.off();
                 this.map.remove();
@@ -77,11 +73,8 @@ class MapController {
             zoomControl: true,
             attributionControl: false
         });
-        // Atribución obligatoria y siempre legible: abajo a la izquierda, por encima de los controles de cada pantalla.
         L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(this.map);
 
-        // Teselas oscuras del proveedor configurado en js/config.js (Stadia Maps; CARTO como plan B). crossOrigin hace
-        // legibles sus cabeceras: el Service Worker guarda cada tesela con el vencimiento que estas indican.
         const tiles = window.TruckCarConfig.map;
         const theme = window.TruckCarTheme ? window.TruckCarTheme.getTheme() : 'dark';
         this.baseTileLayer = L.tileLayer(theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl, {
@@ -96,9 +89,6 @@ class MapController {
         this.shipmentTruckMarker = null;
         this.mountKey = containerId;
 
-        // Leaflet mide el contenedor una sola vez al crearse. Si después cambia de tamaño (la pestaña termina de
-        // aparecer, cargan las fuentes, rota el teléfono, se abre una hoja), las teselas quedan desalineadas y con
-        // huecos: se vuelve a medir cada vez que el contenedor cambia, una vez por cuadro.
         if (typeof ResizeObserver === 'function') {
             let frame = null;
             this.resizeObserver = new ResizeObserver(() => {
@@ -111,7 +101,6 @@ class MapController {
         }
     }
 
-    /** Invalida la geometría cacheada cuando cambia la carga o el plan de ruta. */
     resetRouteCache() {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
@@ -119,10 +108,6 @@ class MapController {
         this.routeSummaryFailed = false;
     }
 
-    /**
-     * Una hoja inferior tapa la parte baja del mapa: la atribución y los controles de abajo suben por encima de ella y
-     * el encuadre de la ruta la descuenta. Se vuelve a medir cuando la hoja cambia de alto.
-     */
     observeBottomSheet(sheet) {
         if (!this.map || !sheet) return;
         const container = this.map.getContainer();
@@ -137,7 +122,6 @@ class MapController {
         }
     }
 
-    /** Cifras de la hoja de Rutas: kilómetros y tiempo de la línea dibujada, o "Sin información" si no se pudo calcular. */
     routeFiguresHtml() {
         const s = this.routeSummary;
         if (s) {
@@ -169,10 +153,8 @@ class MapController {
         this.fitAllRoute();
     }
 
-    /** Navegación: ruta, alertas, la línea de la guía paso a paso y el camión en la posición actual (si la hay). */
     drawLiveNavigation(position) {
         if (!this.map) return;
-        // Sin botones de zoom en navegación: chocan con la tarjeta del HUD y se puede pellizcar el mapa.
         if (this.map.zoomControl) this.map.removeControl(this.map.zoomControl);
         this.renderRoutes();
         this.renderAlerts();
@@ -188,7 +170,6 @@ class MapController {
         }
     }
 
-    /** Lo que tapa el HUD de navegación: arriba la tarjeta, a la derecha el panel vertical. */
     navInsets() {
         const card = document.querySelector('.nav-screen .hud-card');
         const panel = document.querySelector('.nav-screen .hud-panel');
@@ -200,10 +181,6 @@ class MapController {
         };
     }
 
-    /**
-     * Encuadre inicial de la navegación: la posición y la próxima maniobra, fuera de lo que tapa el HUD. El zoom se
-     * limita a 14: más cerca, el mapa se llena de nombres de calles que no se leen de reojo.
-     */
     frameNextLeg(position) {
         if (!this.map || !position) return;
         const snapshot = window.RouteGuidance ? window.RouteGuidance.snapshot() : {};
@@ -221,7 +198,6 @@ class MapController {
         this.navFramed = true;
     }
 
-    /** "Centrar en mi posición": la última lectura real del GPS (o la de la telemetría); sin ninguna, lo dice. */
     centerOnPosition() {
         if (!this.map) return;
         const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
@@ -237,11 +213,10 @@ class MapController {
         else this.map.setView(position, Math.max(this.map.getZoom(), 12), { animate: true });
     }
 
-    /** Línea de la ruta que sigue la guía (la del plan o la recalculada desde la posición actual). */
     drawGuidanceLine(geometry) {
         if (!this.map || !geometry || geometry.length < 2 || !document.getElementById('live-nav-map-container')) return;
         if (this.guidanceLayer) {
-            try { this.map.removeLayer(this.guidanceLayer); } catch (e) { /* capa ya removida */ }
+            try { this.map.removeLayer(this.guidanceLayer); } catch (e) { }
         }
         this.guidanceLines = this.routeLines(geometry);
         this.guidanceLayer = L.layerGroup(this.guidanceLines.layers).addTo(this.map);
@@ -251,17 +226,12 @@ class MapController {
         }
     }
 
-    /** Posición del conductor para separar lo recorrido de lo que falta (solo en la app del conductor). */
     driverPosition() {
         const state = window.store && window.store.state;
         const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
         return state && state.activeRole === 'driver' && point && point.coords ? point.coords : null;
     }
 
-    /**
-     * Divide la ruta en la posición: lo recorrido en grafito, lo que falta en azul con borde del color del fondo. Una
-     * posición a más de 250 m de la línea no cuenta (fuera de ruta o sin GPS): toda la ruta queda por recorrer.
-     */
     splitRoute(coords, position) {
         if (!position) return { done: [], ahead: coords };
         const cos = Math.cos(position[0] * Math.PI / 180);
@@ -288,7 +258,6 @@ class MapController {
         return lines;
     }
 
-    /** Con cada posición nueva, lo recorrido crece y lo que falta se acorta. */
     refreshRouteProgress() {
         const position = this.driverPosition();
         [this.routeProgressLines, this.guidanceLines].forEach(lines => {
@@ -311,7 +280,7 @@ class MapController {
     renderRoutes() {
         if (!this.map) return;
         if (this.optimalRouteLayer) {
-            try { this.map.removeLayer(this.optimalRouteLayer); } catch (e) { /* capa ya removida */ }
+            try { this.map.removeLayer(this.optimalRouteLayer); } catch (e) { }
             this.optimalRouteLayer = null;
         }
 
@@ -342,7 +311,6 @@ class MapController {
         }
     }
 
-    /** Geometría vial real entre los puntos de la ruta (OSRM público); si falla se mantienen tramos rectos. */
     async fetchRealRoadGeometry(waypoints, routeKey) {
         try {
             this.isFetchingRoute = true;
@@ -365,7 +333,6 @@ class MapController {
                 this.renderRouteFigures();
             }
         } catch (err) {
-            // Sin conexión a OSRM: se conservan los tramos rectos y la hoja dice "Sin información".
             this.routeSummaryFailed = true;
             this.renderRouteFigures();
         } finally {
@@ -379,7 +346,6 @@ class MapController {
 
         const alerts = window.TruckCarData.communityAlerts || [];
         alerts.filter(alert => alert.coords).forEach(alert => {
-            // El tipo lo dice el ícono; el color solo separa lo que es un peligro (advertencia) de lo que no (parador).
             const icon = { scale: 'fa-weight-hanging', bridge: 'fa-ruler-vertical', police: 'fa-shield-alt', rest: 'fa-mug-hot',
                 workshop: 'fa-wrench', danger: 'fa-car-burst' }[alert.type] || 'fa-triangle-exclamation';
             const tone = alert.type === 'rest' ? '' : ' is-warn';
@@ -398,10 +364,6 @@ class MapController {
         });
     }
 
-    /**
-     * Marcadores de la flota: se actualizan en sitio (uno por conductor) para que la telemetría en tiempo real
-     * pueda moverlos sin recrearlos.
-     */
     renderCoordinatorFleetMarkers() {
         if (!this.map || !this.fleetMarkersLayer) return;
         const fleet = (window.TruckCarData.fleetVehicles || []).filter(truck => truck.coords);
@@ -418,7 +380,6 @@ class MapController {
     fleetTruckIcon(truck) {
         const statusClass = truck.status === 'EN_TRANSITO' ? ' is-transit' : truck.status === 'DESCANSO' ? ' is-rest' : '';
         const heading = typeof truck.heading === 'number' ? truck.heading : null;
-        // fa-location-arrow apunta al noreste (45°): se compensa para que 0° sea el norte.
         const arrow = heading == null ? '' : `
             <i class="fas fa-location-arrow truck-heading fleet-heading"
                style="transform: rotate(${Math.round(heading - 45)}deg)"></i>`;
@@ -442,7 +403,6 @@ class MapController {
             + truck.speed + ' km/h' + (typeof truck.heading === 'number' ? ' | Rumbo: ' + Math.round(truck.heading) + '°' : '');
     }
 
-    /** Crea o actualiza el marcador de un camión; con animate, se desliza hasta la nueva posición. */
     placeFleetMarker(truck, animate) {
         if (!this.map || !this.fleetMarkersLayer || !truck.coords) return;
         let marker = this.fleetMarkers.get(truck.id);
@@ -458,17 +418,15 @@ class MapController {
         else marker.setLatLng(truck.coords);
     }
 
-    /** Telemetría en tiempo real (torre de control). */
     moveFleetMarker(truck) {
         this.placeFleetMarker(truck, true);
     }
 
-    /** Interpola la posición del marcador (ease-in-out) durante ~2,5 s, menos que el intervalo de envío (3 s). */
     animateMarker(marker, target, durationMs = 2500) {
         if (marker._truckcarAnimation) cancelAnimationFrame(marker._truckcarAnimation);
         const from = marker.getLatLng();
         const to = L.latLng(target);
-        if (from.distanceTo(to) > 50000) {      // salto grande (p. ej. primer dato real): sin animación
+        if (from.distanceTo(to) > 50000) {
             marker.setLatLng(to);
             return;
         }
@@ -482,7 +440,6 @@ class MapController {
         marker._truckcarAnimation = requestAnimationFrame(step);
     }
 
-    /** Rumbo real del camión (GPS o el calculado entre dos lecturas); null si no se conoce. */
     truckHeading() {
         const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
         return point && typeof point.heading === 'number' ? point.heading : null;
@@ -499,7 +456,7 @@ class MapController {
     createTruckMarker(coords = this.currentCoords) {
         if (!this.map) return;
         if (this.truckMarker) {
-            try { this.map.removeLayer(this.truckMarker); } catch(e) { /* capa ya removida */ }
+            try { this.map.removeLayer(this.truckMarker); } catch(e) { }
         }
 
         const latLng = Array.isArray(coords) ? coords : [coords.lat, coords.lng];
@@ -508,7 +465,6 @@ class MapController {
         this.truckMarker = L.marker(latLng, { icon: this.truckIcon(this.truckMarkerHeading), zIndexOffset: 1000, keyboard: false }).addTo(this.map);
     }
 
-    /** Gira la flecha con el rumbo nuevo sin recrear el marcador (o cambia entre punto y flecha). */
     updateTruckHeading() {
         if (!this.truckMarker) return;
         const heading = this.truckHeading();
@@ -544,14 +500,12 @@ class MapController {
         this.refreshRouteProgress();
 
         if (this.map) {
-            // En navegación, la posición queda bajo el centro: se ve más vía por delante, por debajo de la tarjeta.
             const inset = document.getElementById('live-nav-map-container') ? this.navInsets() : { top: 0, left: 0 };
             const target = this.map.project([lat, lng]).subtract([inset.left / 2, inset.top / 2]);
             this.map.panTo(this.map.unproject(target), { animate: true, duration: 0.8 });
         }
     }
 
-    /** Encuadra la ruta activa; sin ruta, encuadra la flota y las alertas visibles. */
     fitAllRoute() {
         if (!this.map) return;
         const optimal = this.currentRoute();
@@ -570,11 +524,10 @@ class MapController {
         }
     }
 
-    /** Panel del generador: origen, destino y, si la carga está asignada o en ruta, la posición del camión. */
     drawShipment(load, truck, { fit = true } = {}) {
         if (!this.map) return;
         if (this.shipmentLayer) {
-            try { this.map.removeLayer(this.shipmentLayer); } catch (e) { /* capa ya removida */ }
+            try { this.map.removeLayer(this.shipmentLayer); } catch (e) { }
             this.shipmentLayer = null;
         }
         this.shipmentTruckMarker = null;
@@ -627,7 +580,6 @@ class MapController {
             + truck.speed + ' km/h · ' + esc(truck.lastCheckin);
     }
 
-    /** Telemetría en tiempo real ("Mis envíos"): desliza el camión del envío visible hacia su nueva posición. */
     moveShipmentTruck(truck) {
         if (!this.map || !this.shipmentLayer || !truck || !truck.coords) return;
         if (!this.shipmentTruckMarker) {
@@ -641,7 +593,6 @@ class MapController {
         this.animateMarker(this.shipmentTruckMarker, truck.coords);
     }
 
-    /** true si el contenedor del mapa actual sigue en el DOM con ese id (el mapa se puede reutilizar). */
     isMountedOn(containerId) {
         return !!(this.map && document.getElementById(containerId) === this.map.getContainer());
     }

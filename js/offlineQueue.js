@@ -1,16 +1,3 @@
-/**
- * Cola durable de eventos offline del conductor (IndexedDB "truckcar-offline").
- *
- * En carretera sin señal, cada acción (posición GPS, inicio de viaje, entrega con su firma y foto, alertas) se guarda
- * aquí como un evento { clientEventId, kind, occurredAt, seq, tripId, payload } y se envía al recuperar la conexión:
- *   - clientEventId (UUID v4): el backend deduplica por (conductor, clientEventId), así que reenviar es seguro.
- *   - occurredAt: hora del dispositivo; el backend aplica el lote en orden (occurredAt, seq).
- *   - seq: secuencia creciente por viaje, guardada en la misma transacción que el evento.
- *
- * Almacenes: outbox (eventos pendientes), media (Blobs de firma y foto, sin Base64) y meta (secuencias y estado).
- * flush() vacía la cola por lotes hacia el /sync/batch de cada servicio con backoff exponencial y jitter; corre al
- * volver la conexión (evento online), periódicamente mientras haya pendientes y al encolar con conexión.
- */
 (function () {
     const DB_NAME = 'truckcar-offline';
     const DB_VERSION = 1;
@@ -18,7 +5,6 @@
     const BASE_DELAY_MS = 2000;
     const MAX_DELAY_MS = 5 * 60 * 1000;
     const PERIODIC_MS = 30 * 1000;
-    /** Servicio que recibe cada tipo de evento (ruta del gateway). */
     const ENDPOINTS = {
         'position': '/fleets-drivers/sync/batch',
         'trip.started': '/loads/sync/batch',
@@ -35,7 +21,6 @@
     const listeners = new Set();
     const status = { pending: 0, byKind: {}, lastSyncAt: null, lastError: null, rejected: [], nextRetryAt: null };
 
-    // ------------------------------------------------------------------ IndexedDB
     function openDb() {
         if (!dbPromise) {
             dbPromise = new Promise((resolve, reject) => {
@@ -78,28 +63,19 @@
         return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
     }
 
-    // ------------------------------------------------------------------ estado de red
-    /** Sin red real o con la simulación de pérdida de señal de la app activa. */
     function isOffline() {
         return !navigator.onLine || !!(window.store && window.store.state && window.store.state.isOffline);
     }
 
-    /** Errores que justifican guardar en la cola en vez de fallar: sin conexión o el servicio no responde. */
     function isConnectivityError(error) {
         return !!error && (error.status === 0 || error.status === 502 || error.status === 503 || error.status === 504);
     }
 
-    /** 4xx de negocio: el evento no se aceptará nunca. 401 (sesión), 408 y 429 sí se reintentan. */
     function isPermanent(error) {
         const s = error && error.status;
         return s >= 400 && s < 500 && s !== 401 && s !== 408 && s !== 429;
     }
 
-    // ------------------------------------------------------------------ encolar
-    /**
-     * Guarda un evento. options.tripId agrupa la secuencia (loadId del viaje); options.media son Blobs que se suben
-     * al almacenamiento antes de enviar el evento (firma y foto de la entrega).
-     */
     async function enqueue(kind, payload, options = {}) {
         if (!ENDPOINTS[kind]) throw new Error('Tipo de evento offline desconocido: ' + kind);
         const db = await openDb();
@@ -139,8 +115,6 @@
         return event;
     }
 
-    // ------------------------------------------------------------------ vaciado
-    /** Envía lo pendiente. Un solo vaciado a la vez (también entre pestañas, con Web Locks si existen). */
     function flush() {
         if (flushing) return flushing;
         const run = () => doFlush().finally(() => { flushing = null; });
@@ -153,7 +127,7 @@
     async function doFlush() {
         if (isOffline()) return;
         const api = window.TruckCarApi;
-        if (!api || !api.session.isRenewable()) return; // sin sesión no hay a quién atribuir los eventos
+        if (!api || !api.session.isRenewable()) return;
         clearTimeout(retryTimer);
         status.nextRetryAt = null;
         try {
@@ -167,7 +141,6 @@
                         try {
                             await uploadDeliveryEvidence(event);
                         } catch (error) {
-                            // La carga ya no admite evidencias (otro estado, otro conductor): reintentar no cambia nada.
                             if (!isPermanent(error)) throw error;
                             dropped.push({ clientEventId: event.clientEventId, reason: error.message });
                         }
@@ -189,7 +162,6 @@
                             }))
                         });
                     } catch (error) {
-                        // Un lote mal formado (400) se volvería a rechazar siempre: sale de la cola como rechazado.
                         if (error.status !== 400) throw error;
                         response = { rejected: batch.map(e => ({ clientEventId: e.clientEventId, reason: error.message })) };
                     }
@@ -200,7 +172,6 @@
             status.lastSyncAt = new Date().toISOString();
             status.lastError = null;
         } catch (error) {
-            // Red caída, servicio sin responder o almacenamiento de evidencias fallando: se reintenta con backoff.
             attempt += 1;
             status.lastError = (error && error.message) || String(error);
             scheduleFlush(backoffDelay(attempt));
@@ -209,7 +180,6 @@
         }
     }
 
-    /** Backoff exponencial con jitter ("equal jitter"): entre la mitad y el total del retardo exponencial. */
     function backoffDelay(n) {
         const exponential = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * Math.pow(2, n - 1));
         return Math.round(exponential / 2 + Math.random() * exponential / 2);
@@ -228,10 +198,6 @@
         return events.sort((a, b) => (a.occurredAt < b.occurredAt ? -1 : a.occurredAt > b.occurredAt ? 1 : a.seq - b.seq));
     }
 
-    /**
-     * Agrupa por servicio conservando el orden. Los SOS van primero en su propio lote (no esperan a cientos de
-     * posiciones); después Load-Allocation (inicio de viaje antes que la entrega).
-     */
     function groupByEndpoint(events) {
         const sos = events.filter(event => event.kind === 'alert.sos');
         const groups = new Map();
@@ -240,7 +206,6 @@
         return [['/alerts/sync/batch', sos], ...groups.entries()].filter(([, group]) => group.length);
     }
 
-    /** Aceptados, duplicados y rechazados salen de la cola; lo demás queda para el siguiente intento. */
     async function settle(batch, response) {
         const done_ = new Set([...(response.accepted || []), ...(response.duplicates || [])]);
         const rejected = new Map((response.rejected || []).map(r => [r.clientEventId, r.reason]));
@@ -262,10 +227,6 @@
         }
     }
 
-    /**
-     * Antes de enviar una entrega registrada sin señal: sube la firma y la foto con URLs prefirmadas y reemplaza
-     * las referencias locales por las del almacenamiento. Si la subida falla, el evento sigue en la cola.
-     */
     async function uploadDeliveryEvidence(event) {
         const db = await openDb();
         const blobs = {};
@@ -276,22 +237,19 @@
         const references = await window.PodEvidence.upload(event.payload.loadId, blobs);
         event.payload = { ...event.payload, ...references };
         event.media = null;
-        // La referencia queda guardada: un reintento posterior no vuelve a subir los archivos.
         const tx = db.transaction(['outbox', 'media'], 'readwrite');
         tx.objectStore('outbox').put(event);
         await done(tx);
     }
 
-    // ------------------------------------------------------------------ estado para la interfaz
     async function refreshStatus() {
         try {
             const events = await pendingEvents();
             status.pending = events.length;
             status.byKind = events.reduce((acc, e) => { acc[e.kind] = (acc[e.kind] || 0) + 1; return acc; }, {});
         } catch (e) {
-            // IndexedDB no disponible (modo privado estricto): la cola queda vacía.
         }
-        listeners.forEach(fn => { try { fn({ ...status }); } catch (e) { /* oyente roto */ } });
+        listeners.forEach(fn => { try { fn({ ...status }); } catch (e) { } });
     }
 
     function onChange(fn) {
@@ -300,7 +258,6 @@
         return () => listeners.delete(fn);
     }
 
-    // ------------------------------------------------------------------ disparadores
     window.addEventListener('online', () => { attempt = 0; scheduleFlush(0); });
     setInterval(() => { if (status.pending > 0 && !flushing && !isOffline()) flush(); }, PERIODIC_MS);
     refreshStatus().then(() => { if (status.pending > 0) scheduleFlush(1000); });

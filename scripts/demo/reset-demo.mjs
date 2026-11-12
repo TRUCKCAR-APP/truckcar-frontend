@@ -1,17 +1,3 @@
-// Deja la demo LOCAL de TruckCar en un estado conocido (scripts/demo/demo-state.json):
-//   - Carlos en tránsito con la carga 88, Diana sin carga, Ana con su placa propia, cada uno en su posición inicial.
-//   - Sin los conductores de prueba "Mock drv-e2e-1..3".
-//   - Los tres conductores en ACTIVO, el único estado que el motor de asignación considera (la Torre lo muestra como
-//     "Disponible" o "En tránsito").
-//   - La carga 8 en espera, sin propuesta ni descartados: el motor la reintenta solo (cada 2 min) y se la propone a Ana.
-//   - Sin assignment_status PROPOSED/NOTIFIED en las cargas de demo canceladas (1, 14, 26, 45, 50).
-//
-// Uso:  TRUCKCAR_DEMO_PASSWORD=… node scripts/demo/reset-demo.mjs            (dry-run: solo muestra qué cambiaría)
-//       TRUCKCAR_DEMO_PASSWORD=… node scripts/demo/reset-demo.mjs --apply    (respalda, aplica y verifica)
-//
-// Seguridad: solo corre contra el gateway de localhost y los contenedores del compose local; toca únicamente los ids de
-// demo (por clave o WHERE exacto, SQL en una transacción); sin FLUSHALL, DROP ni borrados masivos; antes de modificar
-// respalda Redis y SQL en scripts/demo/backups/. Modifica datos locales directamente: no es para producción.
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -19,23 +5,19 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const COMPOSE_ROOT = resolve(HERE, "../../..");          // carpeta del docker-compose (padre de truckcar-frontend)
+const COMPOSE_ROOT = resolve(HERE, "../../..");
 const COMPOSE_PROJECT = "truckcar";
 const CONTAINERS = { redis: "truckcar-redis", postgres: "truckcar-postgis", loads: "truckcar-load-allocation", kafka: "truckcar-kafka" };
 const LOAD_EVENTS_TOPIC = "truckcar.events.load-allocation";
 const REDIS_PREFIX = "driver_vehicle_state";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
-// ------------------------------------------------------------------ comprobaciones (puras, con pruebas)
-
-/** El gateway debe ser local: el script nunca corre contra un despliegue. */
 export function assertLocalGateway(url) {
   let host;
   try { host = new URL(url).hostname; } catch (e) { throw new Error("URL del gateway no válida: " + url); }
   if (!LOCAL_HOSTS.has(host)) throw new Error("Solo para la demo local: el gateway debe ser localhost (es " + host + ")");
 }
 
-/** Los contenedores deben ser los del compose local de esta carpeta (etiquetas de Docker Compose). */
 export function assertLocalContainer(name, labels, composeRoot) {
   const project = labels["com.docker.compose.project"];
   const workdir = labels["com.docker.compose.project.working_dir"];
@@ -49,10 +31,8 @@ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MOCK_ID = /^drv-e2e-[1-3]$/;
 const PLATE = /^[A-Z0-9]{2,4}-?[0-9A-Z]{2,4}$/;
 const NAME = /^[\p{L} ]{2,60}$/u;
-/** Estados que fleets-drivers y el motor de asignación reconocen (FleetDriverStateDto.isAvailableForAllocation). */
 const DRIVER_STATUS = new Set(["ACTIVO", "INACTIVO"]);
 
-/** El estado canónico solo puede nombrar ids de demo con formato estricto (también protege el SQL). */
 export function validateState(state) {
   if (!Number.isInteger(state.load.id)) throw new Error("load.id debe ser un entero");
   if (!ID.test(state.load.driverId) || !PLATE.test(state.load.vehiclePlate) || !NAME.test(state.load.driverName)) {
@@ -81,7 +61,6 @@ export function validateState(state) {
   return state;
 }
 
-/** Campos del estado canónico que difieren del actual (los que la API devuelve). */
 export function driverDiff(canonical, current) {
   if (!current) return ["(no registrado)"];
   const same = (a, b) => (a == null && b == null) || JSON.stringify(a) === JSON.stringify(b)
@@ -89,11 +68,9 @@ export function driverDiff(canonical, current) {
   return Object.keys(canonical).filter((k) => !same(canonical[k], current[k]));
 }
 
-/** La carga está como la demo la necesita: en tránsito con el conductor y sin datos de entrega. */
 export function loadDiff(target, row, podRows, nowLocal = null) {
   if (!row) return ["(la carga no existe)"];
   const diff = [];
-  // Load-Allocation guarda horas locales sin zona: una salida "en el futuro" es un dato roto que hay que rehacer.
   if (nowLocal && row.trip_started_at && row.trip_started_at > nowLocal) diff.push("hora de salida en el futuro → hace 1 h");
   else if (!chronologyOk(row)) diff.push("cronología incoherente → publicado hace 4 h o antes, asignado hace 3 h, en ruta hace 1 h");
   if (row.status !== target.status) diff.push(`status ${row.status} → ${target.status}`);
@@ -105,18 +82,12 @@ export function loadDiff(target, row, podRows, nowLocal = null) {
   return diff;
 }
 
-/**
- * El seguimiento público muestra las horas en orden: publicado ≤ asignado ≤ en ruta. Las horas llegan de Postgres como
- * texto ISO local del mismo formato, así que se comparan como texto. Sin hora de asignación o de salida no hay orden
- * que revisar (loadSql las completa).
- */
 export function chronologyOk(row) {
   const { published_at: p, assigned_at: a, trip_started_at: t } = row;
   if (!p || !a || !t) return true;
   return p <= a && a <= t;
 }
 
-/** La carga pendiente está lista para que el motor la reintente: disponible, sin propuesta en curso ni descartados. */
 export function pendingLoadDiff(row, discarded) {
   if (!row) return ["(la carga no existe)"];
   const diff = [];
@@ -129,7 +100,6 @@ export function pendingLoadDiff(row, discarded) {
   return diff;
 }
 
-/** SQL de la carga pendiente: por id exacto (UPDATE y dos DELETE). Sin transacción propia: va en la de transactionSql. */
 export function pendingLoadSql(id) {
   if (!Number.isInteger(id)) throw new Error("id de carga no válido");
   return `UPDATE load_allocation.freight_loads SET
@@ -144,7 +114,6 @@ DELETE FROM load_allocation.freight_load_pod_media WHERE load_id = ${id};
 `;
 }
 
-/** Cargas de demo canceladas que conservan una propuesta: solo esos ids, canceladas y con PROPOSED/NOTIFIED. */
 export function staleCancelledSql(ids) {
   if (!ids.length) return "";
   if (!ids.every(Number.isInteger)) throw new Error("ids de cargas no válidos");
@@ -154,12 +123,6 @@ WHERE id IN (${ids.join(", ")}) AND status = 'CANCELLED' AND assignment_status I
 `;
 }
 
-/**
- * Evento trip.started de la carga en tránsito, con el contrato de Load-Allocation (sobre con payload). Hace falta porque
- * el script deja la carga en tránsito por SQL, sin evento: fleets-drivers no sabría que el conductor va en ruta y la Torre
- * lo mostraría "Disponible". De los consumidores del tópico solo fleets-drivers usa trip.started (AI-fleet y
- * Notifications lo ignoran).
- */
 export function tripStartedEvent(load, eventId, occurredAt) {
   return {
     eventId, eventType: "trip.started", occurredAt, version: 1, producer: "demo-reset",
@@ -170,10 +133,6 @@ export function tripStartedEvent(load, eventId, occurredAt) {
 
 const TIME_ZONE = /^[A-Za-z]+(\/[A-Za-z_]+)+$/;
 
-/**
- * Corrección de placa en lo guardado: decisiones del motor de asignación (fleet_allocation) y cargas asignadas
- * (load_allocation). Por id exacto del conductor y la placa vieja exacta, para no tocar a nadie más.
- */
 export function plateSql(corrections) {
   const q = (v) => "'" + String(v).replace(/'/g, "''") + "'";
   return corrections.map((c) => `UPDATE fleet_allocation.allocation_decisions SET selected_vehicle_plate = ${q(c.to)}
@@ -183,23 +142,16 @@ WHERE assigned_driver_id = ${q(c.driverId)} AND assigned_vehicle_plate = ${q(c.f
 `).join("");
 }
 
-/** Una sola transacción con lo que haga falta: la carga en tránsito, la pendiente, las canceladas y las placas. */
 export function transactionSql({ load = null, timeZone = "America/Bogota", corrections = [], pendingLoadId = null, staleIds = [] }) {
   const body = (load ? loadSql(load, timeZone).replace(/^BEGIN;\n/, "").replace(/COMMIT;\n$/, "") : "")
     + (pendingLoadId != null ? pendingLoadSql(pendingLoadId) : "") + staleCancelledSql(staleIds) + plateSql(corrections);
   return `BEGIN;\n${body}COMMIT;\n`;
 }
 
-/**
- * SQL de la carga: un UPDATE y un DELETE por id exacto, en una transacción. Las horas van en la zona horaria de
- * Load-Allocation (guarda horas locales sin zona), no en la de Postgres (UTC).
- */
 export function loadSql(target, timeZone = "America/Bogota") {
   if (!TIME_ZONE.test(timeZone)) throw new Error("Zona horaria no válida: " + timeZone);
   const q = (v) => "'" + String(v).replace(/'/g, "''") + "'";
   const local = `(now() AT TIME ZONE ${q(timeZone)})`;
-  // Se conservan las horas si ya están en orden (publicado ≤ asignado ≤ en ruta ≤ ahora); si no, se rehacen las tres
-  // contando desde ahora. La publicación solo se adelanta, nunca se mueve hacia después.
   const keep = `(status = 'IN_TRANSIT' AND assigned_at IS NOT NULL AND trip_started_at IS NOT NULL
          AND published_at <= assigned_at AND assigned_at <= trip_started_at AND trip_started_at <= ${local})`;
   return `BEGIN;
@@ -218,8 +170,6 @@ DELETE FROM load_allocation.freight_load_pod_media WHERE load_id = ${target.id};
 COMMIT;
 `;
 }
-
-// ------------------------------------------------------------------ acceso a Docker y a la API
 
 const docker = (args, input) => execFileSync("docker", args, { encoding: "utf8", input, stdio: ["pipe", "pipe", "pipe"] });
 
@@ -256,8 +206,6 @@ async function api(gateway, path, { token, method = "GET", body } = {}) {
 
 const login = async (gateway, email, password) => (await api(gateway, "/auth/login", { method: "POST", body: { email, password } })).accessToken;
 
-// ------------------------------------------------------------------ programa
-
 async function main() {
   const apply = process.argv.includes("--apply");
   const gateway = (process.env.TRUCKCAR_GATEWAY_URL || "http://localhost:8000").replace(/\/+$/, "");
@@ -271,12 +219,10 @@ async function main() {
     user: docker(["exec", CONTAINERS.postgres, "printenv", "POSTGRES_USER"]).trim(),
     db: docker(["exec", CONTAINERS.postgres, "printenv", "POSTGRES_DB"]).trim()
   };
-  // Zona horaria con la que Load-Allocation guarda sus horas (sin zona en la base): la de su contenedor.
   let timeZone = "America/Bogota";
-  try { timeZone = docker(["exec", CONTAINERS.loads, "printenv", "TZ"]).trim() || timeZone; } catch (e) { /* sin TZ: la del compose */ }
+  try { timeZone = docker(["exec", CONTAINERS.loads, "printenv", "TZ"]).trim() || timeZone; } catch (e) { }
   const nowLocal = sqlJson(pg, `SELECT to_json(now() AT TIME ZONE '${timeZone.replace(/'/g, "")}')`);
 
-  // Estado actual.
   const token = await login(gateway, state.coordinatorEmail, password);
   const mocks = state.mockDriverIds.map((id) => {
     const hash = redisHash(`${REDIS_PREFIX}:${id}`);
@@ -285,7 +231,6 @@ async function main() {
   });
   const loadRow = sqlJson(pg, `SELECT row_to_json(f) FROM load_allocation.freight_loads f WHERE id = ${state.load.id}`);
   const podRows = sqlJson(pg, `SELECT COALESCE(json_agg(p), '[]'::json) FROM load_allocation.freight_load_pod_media p WHERE load_id = ${state.load.id}`) || [];
-  // Lo guardado con la placa vieja de cada corrección (para el plan y el respaldo).
   const plateRows = (state.plateCorrections || []).map((c) => ({
     ...c,
     decisions: sqlJson(pg, `SELECT COALESCE(json_agg(d), '[]'::json) FROM fleet_allocation.allocation_decisions d WHERE selected_driver_id = '${c.driverId}' AND selected_vehicle_plate = '${c.from}'`) || [],
@@ -300,11 +245,10 @@ async function main() {
   const drivers = [];
   for (const d of state.drivers) {
     let current = null;
-    try { current = await api(gateway, "/fleets-drivers/drivers/" + d.state.driverId, { token }); } catch (e) { /* no registrado */ }
+    try { current = await api(gateway, "/fleets-drivers/drivers/" + d.state.driverId, { token }); } catch (e) { }
     drivers.push({ ...d, current, diff: driverDiff(d.state, current) });
   }
 
-  // Plan.
   const plan = [];
   mocks.filter((m) => m.present).forEach((m) => plan.push(`Redis: borrar ${m.id} (placa ${m.hash.vehiclePlate || "—"}) y sus índices`));
   const ld = loadDiff(state.load, loadRow, podRows, nowLocal);
@@ -327,7 +271,6 @@ async function main() {
   }
 
   if (plan.length) {
-    // Respaldo de lo que se va a tocar, antes de tocarlo.
     const dir = join(HERE, "backups", new Date().toISOString().replace(/[:.]/g, "-"));
     mkdirSync(dir, { recursive: true });
     const plateSets = {};
@@ -344,23 +287,19 @@ async function main() {
       pendingLoad: pendingRow, pendingLoadDiscardedDrivers: pendingDiscarded, staleCancelledLoads: staleRows }, null, 2));
     console.log("\nRespaldo: " + dir);
 
-    // Redis: solo las claves exactas de los Mock (como lo haría el repositorio de Spring Data al borrar).
     for (const m of mocks.filter((x) => x.present)) {
       redis("DEL", `${REDIS_PREFIX}:${m.id}`, `${REDIS_PREFIX}:${m.id}:idx`);
       redis("SREM", REDIS_PREFIX, m.id);
       if (m.hash.vehiclePlate) redis("SREM", `${REDIS_PREFIX}:vehiclePlate:${m.hash.vehiclePlate}`, m.id);
     }
-    // SQL: la carga por id exacto y las correcciones de placa, en una sola transacción.
     if (ld.length || plateFixes.length || pd.length || staleRows.length) {
       docker(["exec", "-i", CONTAINERS.postgres, "psql", "-U", pg.user, "-d", pg.db, "-v", "ON_ERROR_STOP=1", "-q"],
         transactionSql({ load: ld.length ? state.load : null, timeZone, corrections: plateFixes,
           pendingLoadId: pd.length ? pending.id : null, staleIds: staleRows.map((r) => r.id) }));
     }
-    // Conductores: por la API (mantiene el índice de placas de fleets-drivers).
     for (const d of drivers.filter((x) => x.diff.length)) {
       await api(gateway, "/fleets-drivers/state", { token, method: "POST", body: d.state });
     }
-    // fleets-drivers: el viaje de la carga en tránsito, por el mismo tópico y contrato que usa Load-Allocation.
     if (!fleetKnowsTrip) {
       const event = tripStartedEvent(state.load, randomUUID(), new Date().toISOString());
       docker(["exec", "-i", CONTAINERS.kafka, "/opt/kafka/bin/kafka-console-producer.sh", "--bootstrap-server", "localhost:9092",
@@ -374,7 +313,6 @@ async function main() {
     }
   }
 
-  // Verificación.
   const checks = [];
   const active = await api(gateway, "/fleets-drivers/active", { token });
   const mockLeft = active.filter((d) => /^drv-e2e-/.test(d.driverId)).length;
@@ -406,7 +344,6 @@ async function main() {
   if (pending) {
     const row = sqlJson(pg, `SELECT row_to_json(f) FROM (SELECT status, assignment_status, assigned_driver_id FROM load_allocation.freight_loads WHERE id = ${pending.id}) f`);
     const discardedLeft = sqlJson(pg, `SELECT to_json(count(*)) FROM load_allocation.freight_load_discarded_drivers WHERE load_id = ${pending.id}`);
-    // El reintento programado puede proponerla en cuanto termina el reset: sin propuesta, o propuesta al conductor esperado.
     const ok = row && row.status === "AVAILABLE" && Number(discardedLeft) === 0
       && (!row.assignment_status || row.assignment_status === "UNASSIGNED_NO_DRIVERS" || row.assigned_driver_id === pending.expectDriverId);
     checks.push([ok, `Carga ${pending.id} en espera para el motor: ${row && row.status}, ${(row && row.assignment_status) || "sin propuesta"}, ${discardedLeft} descartado(s)`]);

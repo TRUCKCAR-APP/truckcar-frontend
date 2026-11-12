@@ -1,4 +1,3 @@
-// Selector conductor / torre: en el teléfono ADMIN y COORDINADOR solo ven la torre de control.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -11,7 +10,6 @@ function app({ phone, sessionRole, activeRole }) {
   const w = new JSDOM(`<!doctype html><body>${HEADER}</body>`, { runScripts: "outside-only" }).window;
   const listeners = [];
   w.matchMedia = (query) => ({
-    // El breakpoint md de Tailwind: en el teléfono (min-width: 768px) no se cumple.
     get matches() { return query === "(min-width: 768px)" ? !w.__phone : false; },
     addEventListener: (_, fn) => listeners.push(fn)
   });

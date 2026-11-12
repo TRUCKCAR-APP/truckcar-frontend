@@ -1,10 +1,3 @@
-/**
- * SOS en la torre de control (COORDINADOR/ADMIN): consulta GET /api/v1/alerts/sos cada 5 s y muestra una franja roja
- * fija con cada SOS sin atender. Un SOS nuevo vibra, habla y lanza un toast; "Atender" lo marca como atendido
- * (PATCH /alerts/sos/{id}/acknowledge) y desaparece para el resto de coordinadores en su siguiente consulta.
- *
- * Como el botón SOS del conductor, la franja vive fuera de #app-mount: el panel se re-renderiza en cada setState.
- */
 window.SosMonitor = (function () {
     const esc = (value) => window.ui.escape(value);
     const POLL_MS = 5000;
@@ -83,7 +76,6 @@ window.SosMonitor = (function () {
         try {
             list = await window.TruckCarService.loadActiveSos();
         } catch (error) {
-            // Se conserva la última lista: un SOS no debe desaparecer de la pantalla por un fallo de red.
             return;
         }
         if (!timer) return;
@@ -134,7 +126,6 @@ window.SosMonitor = (function () {
         if (host) { host.hidden = true; host.innerHTML = ''; }
     }
 
-    /** Activo solo para la torre de control autenticada (un GENERADOR o CONDUCTOR recibiría 403). */
     function sync(state) {
         const tower = state.isAuthenticated && state.activeRole === 'coordinator' && TOWER.includes(state.sessionRole);
         if (tower) start();

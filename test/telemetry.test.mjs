@@ -1,4 +1,3 @@
-// Telemetría del conductor: GPS real del dispositivo por defecto; la simulación solo como herramienta de prueba.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -6,7 +5,6 @@ import { JSDOM } from "jsdom";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Ruta de prueba: 1,1 km al norte por la Calle 13, giro a la derecha y 1,1 km al oriente por la Avenida Boyacá.
 const OSRM = {
   routes: [{
     duration: 240,
@@ -65,7 +63,7 @@ test("la telemetría usa el GPS real por defecto: sin señal no transmite posici
   assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /Sin posición/);
 
   emit(4.6012, -74.0001);
-  await sleep(3100);   // siguiente envío (cada 3 s)
+  await sleep(3100);
   w.DriverTelemetry.stop();
 
   assert.equal(queued.length, 1);
@@ -94,7 +92,7 @@ test("la simulación solo existe si se activa en las herramientas de prueba y nu
 test("con el camión detenido la última lectura sigue siendo la posición: velocidad 0 y se pide confirmarla", async () => {
   const { w, queued, emit } = browser();
   await w.DriverTelemetry.start(LOAD, "driver-ana");
-  emit(4.6012, -74.0001, { speed: 0 }, 40 * 1000);    // el GPS la midió detenida y no repite lecturas sin movimiento
+  emit(4.6012, -74.0001, { speed: 0 }, 40 * 1000);
   await sleep(3100);
   w.DriverTelemetry.stop();
 
@@ -175,7 +173,6 @@ test("el WebSocket se abre con un ticket de un solo uso: el JWT nunca va en la U
   assert.equal(sockets[0].url, "ws://localhost:8000/ws-telemetry?ticket=" + tickets[0]);
   assert.ok(!sockets[0].url.includes("jwt-secreto") && !sockets[0].url.includes("access_token"));
 
-  // Al caerse la conexión se pide un ticket nuevo: el anterior ya se usó.
   sockets[0].onclose();
   await sleep(2100);
   assert.deepEqual(requests, ["/telemetry/ws-ticket", "/telemetry/ws-ticket"]);

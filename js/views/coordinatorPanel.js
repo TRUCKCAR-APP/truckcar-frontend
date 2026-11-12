@@ -21,7 +21,6 @@ window.CoordinatorPanel = {
                         <div class="w-10 h-10 shrink-0 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100">
                             <i class="fas fa-tower-broadcast text-lg"></i>
                         </div>
-                        <!-- min-w-0: en 390 px la columna se encoge y sus filas se apilan en lugar de montarse una sobre otra. -->
                         <div class="min-w-0 flex-1">
                             <h1 class="text-base font-bold text-white tracking-tight leading-tight flex items-center gap-x-2 gap-y-0.5 flex-wrap">
                                 <span>Central de monitoreo de flota</span>
@@ -386,7 +385,6 @@ window.CoordinatorPanel = {
         `;
     },
 
-    /** Pestañas del rol COORDINADOR: torre de control (toda la flota) y panel del generador (sus envíos). */
     renderTabs(state) {
         const tab = state.coordinatorTab === 'shipments' ? 'shipments' : 'fleet';
         const item = (key, icon, text) => `
@@ -406,12 +404,10 @@ window.CoordinatorPanel = {
         return ((user.firstName || ' ')[0] + (user.lastName || ' ')[0]).toUpperCase();
     },
 
-    /** Rol de la sesión en palabras (no el código del backend). */
     roleLabel(role) {
         return { COORDINADOR: 'Coordinador', ADMIN: 'Administrador', GENERADOR: 'Generador de carga', CONDUCTOR: 'Conductor' }[role] || role || '';
     },
 
-    /** Rechazo, vencimiento y "sin conductores" piden atención: van con triángulo además del color. */
     assignmentWarn(status) {
         return ['REJECTED', 'TIMEOUT', 'UNASSIGNED_NO_DRIVERS'].includes(status);
     },
@@ -451,7 +447,6 @@ window.CoordinatorPanel = {
 };
 
 window.coordinatorCtrl = {
-    /** Alertas descartadas por este coordinador: solo se ocultan de su vista (Community-Alerts no tiene descarte). */
     dismissedAlerts() {
         try {
             return new Set(JSON.parse(sessionStorage.getItem('truckcar.dismissedAlerts') || '[]'));
@@ -463,7 +458,7 @@ window.coordinatorCtrl = {
     dismissAlert(alertId) {
         const dismissed = this.dismissedAlerts();
         dismissed.add(alertId);
-        try { sessionStorage.setItem('truckcar.dismissedAlerts', JSON.stringify([...dismissed])); } catch (e) { /* sin almacenamiento */ }
+        try { sessionStorage.setItem('truckcar.dismissedAlerts', JSON.stringify([...dismissed])); } catch (e) { }
         window.store.setState({});
         window.ui.toast('Alerta ocultada de su vista', 'info', {
             description: 'Sigue activa para los conductores hasta que venza.',
@@ -474,7 +469,7 @@ window.coordinatorCtrl = {
     restoreAlert(alertId) {
         const dismissed = this.dismissedAlerts();
         dismissed.delete(alertId);
-        try { sessionStorage.setItem('truckcar.dismissedAlerts', JSON.stringify([...dismissed])); } catch (e) { /* sin almacenamiento */ }
+        try { sessionStorage.setItem('truckcar.dismissedAlerts', JSON.stringify([...dismissed])); } catch (e) { }
         window.store.setState({});
     },
 
@@ -501,7 +496,6 @@ window.coordinatorCtrl = {
         modal.classList.remove('hidden');
     },
 
-    /** Recibo firmado (receptor, documento, notas, firma y foto) de una carga DELIVERED. */
     showProofOfDelivery(loadId) {
         const load = (window.TruckCarData.deliveredLoads || []).find(l => l.backendId === loadId);
         window.PodUI.showProofOfDelivery(loadId, load);
@@ -523,7 +517,6 @@ window.coordinatorCtrl = {
         window.store.setState({});
     },
 
-    /** AVAILABLE | ASSIGNED -> CANCELLED (solo COORDINADOR o ADMIN; el backend lo valida con el rol del token). */
     async cancelLoad(loadId) {
         const reason = prompt('Motivo de la cancelación de la carga #' + loadId + ' (obligatorio):');
         if (reason === null) return;

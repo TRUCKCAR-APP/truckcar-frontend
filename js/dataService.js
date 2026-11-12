@@ -1,8 +1,3 @@
-/**
- * Capa de datos: consume window.TruckCarApi y adapta las respuestas del backend al modelo
- * que usan las vistas (window.TruckCarData). Las secciones sin backend equivalente
- * (pasos de navegación turn-by-turn y regiones offline) siguen siendo simulación local.
- */
 (function () {
     const api = window.TruckCarApi;
     const data = window.TruckCarData;
@@ -25,7 +20,6 @@
         landslide: 'DERRUMBE',
         workshop: 'OBRA_EN_VIA'
     };
-    /** Severidad inicial del reporte de un conductor: lo que bloquea o pone en riesgo la vía va como ALTA. */
     const REPORT_SEVERITY = { danger: 'ALTA', landslide: 'ALTA', bridge: 'ALTA' };
     const ALERT_BADGES = {
         BASCULA: 'Báscula Activa',
@@ -38,7 +32,6 @@
     };
     const ALERT_VALIDATION_THRESHOLD = 3;
 
-    // ------------------------------------------------------------- utilidades
     function timeAgo(isoDate) {
         if (!isoDate) return '';
         const diffMs = Date.now() - new Date(isoDate).getTime();
@@ -81,7 +74,6 @@
         window.store.setState({ dataStatus: { ...window.store.state.dataStatus, ...partial } });
     }
 
-    /** El conductor transmite su posición mientras su carga activa está IN_TRANSIT (también al recargar la app). */
     function syncDriverTelemetry() {
         const load = data.activeLoadOrder;
         const driver = data.currentDriver;
@@ -95,8 +87,6 @@
     }
 
     function recordError(section, error) {
-        // 403: la vista no corresponde al rol; app.js redirige a la vista propia (evento truckcar:forbidden).
-        // 401: sesión vencida; app.js vuelve al login (evento truckcar:unauthorized). Ninguno es un fallo de datos.
         if (error && (error.status === 403 || error.status === 401)) return;
         console.error('[TruckCar] Error cargando ' + section, error);
         const errors = { ...window.store.state.dataStatus.errors, [section]: error.message || String(error) };
@@ -110,7 +100,6 @@
         setStatus({ errors });
     }
 
-    // ------------------------------------------------------------- mapeadores
     function mapDriver(user, state) {
         const fullName = user ? [user.firstName, user.lastName].filter(Boolean).join(' ') : '';
         return {
@@ -133,12 +122,9 @@
                 brand: state.vehicleModel || '—',
                 category: state.vehicleType || '—',
                 height: state.maxHeightMeters,
-                // fleets-drivers calcula grossWeightTons = tara + carga a bordo: es el peso bruto actual, no la capacidad
-                // del vehículo (esa es maxPayloadTons).
                 grossWeight: state.grossWeightTons != null ? state.grossWeightTons
                     : (state.tareWeightTons || 0) + (state.netCargoWeightTons || 0),
                 netCargoWeight: state.netCargoWeightTons,
-                // Capacidad de carga registrada (licencia de tránsito): la usa el motor de asignación.
                 maxPayload: state.maxPayloadTons,
                 tareWeight: state.tareWeightTons,
                 hazmatAuthorized: Boolean(state.hazmatAuthorized),
@@ -156,7 +142,6 @@
         if (state.restRequiredAlert) {
             status = 'DESCANSO';
         } else if (status === 'ACTIVO') {
-            // Con un viaje IN_TRANSIT (fleets-drivers) el camión está en ruta aunque reporte velocidad 0.
             status = (state.currentSpeedKmH || 0) > 0 || state.currentLoadStatus === 'IN_TRANSIT' ? 'EN_TRANSITO' : 'DISPONIBLE';
         }
         return {
@@ -197,15 +182,10 @@
             coords: coordsOrNull(alert.latitude, alert.longitude),
             corridor: alert.roadCorridor,
             verified: confirmations >= ALERT_VALIDATION_THRESHOLD,
-            // Reportada sin señal: vive en la cola offline hasta que el servidor la acepte.
             pendingSync: Boolean(alert.pendingSync)
         };
     }
 
-    /**
-     * Ejecuta la acción en línea; sin señal (o si el servicio no responde) ejecuta offlineFn, que guarda el evento
-     * en la cola durable y devuelve el resultado optimista para la interfaz.
-     */
     async function offlineCapable(onlineFn, offlineFn) {
         if (window.OfflineQueue.isOffline()) return offlineFn();
         try {
@@ -258,7 +238,6 @@
             deliveredAtLabel: formatDateTime(load.deliveredAt),
             cancellationReason: load.cancellationReason,
             cancelledAt: load.cancelledAt,
-            // Se completan con el plan de ruta cuando está disponible.
             estimatedDuration: '—',
             totalDistance: '—',
             tollsCount: '—',
@@ -327,7 +306,6 @@
         };
     }
 
-    // ------------------------------------------------------------- cargas de datos
     const service = {
         mapLoad,
 
@@ -359,15 +337,12 @@
             const driver = data.currentDriver;
             if (!driver || !driver.id) return;
             try {
-                // GET /loads/mine: propuestas vigentes, aceptadas y en tránsito del conductor autenticado.
-                // Prioridad: el viaje en curso, luego el aceptado, luego la propuesta pendiente.
                 const mine = (await api.loads.mine()) || [];
                 const rank = load => load.status === 'IN_TRANSIT' ? 0 : load.status === 'ASSIGNED' ? 1 : 2;
                 const current = mine.slice().sort((a, b) => rank(a) - rank(b))[0];
                 const previous = data.activeLoadOrder;
                 data.activeLoadOrder = current ? mapLoad(current) : null;
                 if (data.activeLoadOrder && previous && previous.backendId === data.activeLoadOrder.backendId) {
-                    // Conserva distancia y duración ya calculadas por Route-AI para la misma carga.
                     data.activeLoadOrder.totalDistance = previous.totalDistance;
                     data.activeLoadOrder.estimatedDuration = previous.estimatedDuration;
                 }
@@ -394,7 +369,6 @@
             await this.loadEvaluation();
         },
 
-        /** Historial de entregas de la torre de control (las firmas y fotos se piden al abrir cada POD). */
         async loadDeliveredLoads() {
             try {
                 const delivered = (await api.loads.list(['DELIVERED'])) || [];
@@ -405,7 +379,6 @@
             }
         },
 
-        /** Panel del generador: sus envíos (todas las cargas que publicó, en cualquier status). */
         async loadPublishedLoads() {
             try {
                 const published = (await api.loads.published()) || [];
@@ -416,7 +389,6 @@
             }
         },
 
-        /** Posición actual de los conductores de los envíos aceptados o en ruta (fleets-drivers, por conductor). */
         async loadShipmentTrucks() {
             const drivers = [...new Set((data.publishedLoads || [])
                 .filter(l => (l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT') && l.assignedDriverId)
@@ -426,30 +398,25 @@
                 try {
                     trucks[driverId] = mapFleetVehicle(await api.fleet.getDriver(driverId));
                 } catch (error) {
-                    // Sin estado en fleets-drivers: el envío se muestra sin posición del camión.
                 }
             }));
             data.shipmentTrucks = trucks;
         },
 
-        /** "Mis envíos": cargas propias y luego la posición de sus camiones. */
         async refreshShipments() {
             await this.loadPublishedLoads();
-            // Con la telemetría en vivo solo se consulta por HTTP la posición de camiones que aún no han transmitido.
             const trucks = data.shipmentTrucks || {};
             const missing = (data.publishedLoads || []).some(l => (l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT')
                 && l.assignedDriverId && !trucks[l.assignedDriverId]);
             if (!window.TruckCarTelemetry.isOnline || missing) await this.loadShipmentTrucks();
         },
 
-        /** POST /loads: la empresa generadora la fija el backend con el usuario autenticado. */
         async publishLoad(request) {
             const created = await api.loads.publish(request);
             await this.loadPublishedLoads();
             return mapLoad(created);
         },
 
-        /** POD completo (receptor, documento, notas, firma y foto) de una carga entregada. */
         getProofOfDelivery(loadId) {
             return api.loads.proofOfDelivery(loadId);
         },
@@ -491,7 +458,6 @@
             }
         },
 
-        /** Planea la ruta de la carga activa con Route-AI (una vez por carga para no generar planes duplicados). */
         async loadRoutePlan({ force = false } = {}) {
             const load = data.activeLoadOrder;
             const driver = data.currentDriver;
@@ -523,7 +489,6 @@
             }
         },
 
-        /** Carga inicial según el rol de la sesión. */
         async loadAll() {
             setStatus({ loading: true });
             try {
@@ -533,7 +498,6 @@
             }
             const role = window.store.state.activeRole;
             if (role === 'generator') {
-                // Generador: solo sus envíos y la posición de los conductores asignados a ellos (no la flota completa).
                 await this.refreshShipments();
             } else if (role === 'coordinator') {
                 await Promise.all([this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(), this.loadDeliveredLoads(), this.loadPublishedLoads()]);
@@ -546,14 +510,12 @@
         },
 
         async refreshCoordinator() {
-            // Con la telemetría en vivo las posiciones llegan por WebSocket: no se vuelve a pedir la flota por HTTP.
             const livePositions = window.TruckCarTelemetry.isOnline && (data.fleetVehicles || []).length > 0;
             await Promise.all([livePositions ? null : this.loadFleet(), this.loadAlerts(), this.loadCoordinatorLoad(),
                 this.loadDeliveredLoads(), this.loadPublishedLoads()]);
             setStatus({ lastSync: new Date().toISOString() });
         },
 
-        // --------------------------------------------------------- acciones
         async acceptAssignment() {
             const load = data.activeLoadOrder;
             if (!load) throw new Error('No hay una carga asignada');
@@ -570,28 +532,20 @@
             data.routes = null;
         },
 
-        /** ASSIGNED -> IN_TRANSIT. */
         async startTrip() {
             const load = data.activeLoadOrder;
             if (!load) throw new Error('No hay una carga asignada');
             const updated = await offlineCapable(
                 () => api.loads.startTrip(load.backendId),
                 async () => {
-                    // Sin señal: el inicio queda en la cola con la hora real y la app sigue en IN_TRANSIT.
                     await window.OfflineQueue.enqueue('trip.started', { loadId: load.backendId }, { tripId: load.backendId });
                     return { ...load.raw, status: 'IN_TRANSIT', tripStartedAt: new Date().toISOString(), pendingSync: true };
                 });
             data.activeLoadOrder = { ...mapLoad(updated), totalDistance: load.totalDistance, estimatedDuration: load.estimatedDuration };
-            // IN_TRANSIT: empieza la transmisión de la posición en tiempo real.
             syncDriverTelemetry();
             return data.activeLoadOrder;
         },
 
-        /**
-         * IN_TRANSIT -> DELIVERED con la prueba de entrega. pod = { receiverName, receiverDocument, notes,
-         * signatureBlob, photoBlob }: la firma y la foto se suben al almacenamiento (URL prefirmada) y la API recibe
-         * solo sus referencias. Sin señal, todo queda en la cola offline (Blobs incluidos) y se envía al reconectar.
-         */
         async deliverLoad(pod) {
             const load = data.activeLoadOrder;
             if (!load) throw new Error('No hay una carga en tránsito');
@@ -609,7 +563,6 @@
             window.DriverTelemetry.stop();
             data.activeLoadOrder = null;
             data.routes = null;
-            // Recibo local de la última entrega: la firma y la foto se muestran desde los Blobs en memoria.
             data.lastDelivery = {
                 load: mapLoad(updated),
                 pendingSync: !!updated.pendingSync,
@@ -626,7 +579,6 @@
 
         async cancelLoad(loadId, reason) {
             const updated = await api.loads.cancel(loadId, reason);
-            // La bolsa de cargas de la torre solo se recarga en la torre (un GENERADOR no tiene acceso a ella).
             if (window.store.state.activeRole === 'coordinator') {
                 await this.loadCoordinatorLoad();
             }
@@ -658,7 +610,6 @@
                     clientAlertId: (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : String(Date.now())
                 }),
                 async () => {
-                    // Sin señal: la alerta se reporta al reconectar con la hora y posición en que se vio.
                     await window.OfflineQueue.enqueue('alert.reported', alert, { tripId });
                     return { ...alert, id: null, confirmationsCount: 1, reportedAt: new Date().toISOString(), pendingSync: true };
                 });
@@ -676,11 +627,6 @@
             if (!queued) await this.loadAlerts();
         },
 
-        /**
-         * SOS del conductor (Community-Alerts publica alert.sos.triggered a la torre y a Notifications). Sin señal se
-         * guarda en la cola durable con la hora del dispositivo y sale primero al reconectar; el id del evento (o
-         * clientEventId en línea) hace idempotente el reintento.
-         */
         async triggerSos(coords, accuracyMeters) {
             const driver = data.currentDriver || {};
             const load = data.activeLoadOrder;

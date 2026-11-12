@@ -1,36 +1,22 @@
-/**
- * Navegación paso a paso sobre la ruta real de la carga en tránsito.
- *
- *  - Ruta: los puntos del plan de Route-AI (o el origen y destino de la carga si el plan no llegó) se envían a OSRM con
- *    steps=true; cada maniobra (giro, glorieta, incorporación, llegada) se traduce a una instrucción en español.
- *  - Progreso: cada posición de la telemetría se proyecta sobre la geometría de la ruta. Con eso se sabe la maniobra
- *    siguiente, la distancia hasta ella y lo que falta hasta el destino.
- *  - Fuera de ruta (> 250 m de la línea) se recalcula desde la posición actual hasta el destino (máx. 1 cada 30 s).
- *
- * La vista no se re-renderiza en cada posición (destruiría el mapa): renderHud() actualiza el HUD en sitio.
- */
 window.RouteGuidance = (function () {
     const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
     const OFF_ROUTE_M = 250;
     const REROUTE_COOLDOWN_MS = 30000;
-    // Restricciones de la ruta (Routing-Restrictions): se anuncian una vez al quedar a 3 km o menos.
     const CLEARANCE_ANNOUNCE_M = 3000;
     const CLEARANCE_MAX_POINTS = 400;
     const ARRIVED_M = 60;
     const NEAR_ANNOUNCE_M = 300;
 
-    let route = null;          // { key, source, geometry, cumulative, steps, totalM, durationS }
-    let status = 'idle';       // idle | loading | ready | unavailable
-    let progress = null;       // { stepIndex, toNextM, remainingM, offRoute, arrived, position }
+    let route = null;
+    let status = 'idle';
+    let progress = null;
     let pendingKey = null;
     let lastReroute = 0;
     const announced = new Set();
     const listeners = new Set();
-    // { key, status: checking | ok | found | unavailable | no-vehicle, items: [{ id, kind, alongM, text, sub, spoken }] }
     let clearance = null;
     let wakeLock = null;
 
-    // ------------------------------------------------------------------ geometría
     const toRad = (deg) => deg * Math.PI / 180;
 
     function distanceM(a, b) {
@@ -40,14 +26,12 @@ window.RouteGuidance = (function () {
         return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
     }
 
-    /** Proyección del punto sobre la polilínea: distancia recorrida a lo largo de ella y separación de la línea. */
     function project(geometry, cumulative, point) {
         const cos = Math.cos(toRad(point[0]));
         let best = { alongM: 0, offM: Infinity };
         for (let i = 1; i < geometry.length; i++) {
             const a = geometry[i - 1];
             const b = geometry[i];
-            // Plano local equirectangular: suficiente para tramos de pocos km.
             const ax = a[1] * cos, ay = a[0], bx = b[1] * cos, by = b[0], px = point[1] * cos, py = point[0];
             const dx = bx - ax, dy = by - ay;
             const len2 = dx * dx + dy * dy;
@@ -61,7 +45,6 @@ window.RouteGuidance = (function () {
         return best;
     }
 
-    // ------------------------------------------------------------------ instrucciones
     const MODIFIERS = {
         right: 'a la derecha', left: 'a la izquierda', 'slight right': 'ligeramente a la derecha',
         'slight left': 'ligeramente a la izquierda', 'sharp right': 'cerrado a la derecha',
@@ -79,7 +62,6 @@ window.RouteGuidance = (function () {
         const road = street(step);
         const via = road ? ' por ' + road : '';
         const toward = road ? ' hacia ' + road : '';
-        // OSRM marca los retornos como turn, continue o new name con modificador uturn.
         if (m.modifier === 'uturn' && m.type !== 'arrive' && m.type !== 'depart') return 'Haga un giro en U' + via;
         switch (m.type) {
             case 'depart': return 'Inicie el recorrido' + via;
@@ -109,7 +91,6 @@ window.RouteGuidance = (function () {
         return 'fa-arrow-up';
     }
 
-    /** Ícono de Phosphor (assets/icons.svg) de la maniobra, para el HUD. Distingue giro, giro leve, retorno y glorieta. */
     function glyph(step) {
         const m = step.maneuver || {};
         const mod = m.modifier || '';
@@ -124,7 +105,6 @@ window.RouteGuidance = (function () {
         return 'arrow-up';
     }
 
-    /** Tiempo restante en texto ("2 h 16 min"). */
     function formatDuration(seconds) {
         if (seconds == null || !Number.isFinite(seconds)) return '—';
         const minutes = Math.max(1, Math.round(seconds / 60));
@@ -141,7 +121,6 @@ window.RouteGuidance = (function () {
         return m < 1000 ? 'En ' + Math.max(50, Math.round(m / 50) * 50) + ' metros, ' : 'En ' + formatDistance(m).replace(' km', ' kilómetros') + ', ';
     }
 
-    // ------------------------------------------------------------------ ruta
     function waypointsFor(load) {
         const routes = window.TruckCarData.routes;
         const plan = routes && routes.optimal && routes.optimal.waypoints && routes.optimal.waypoints.length >= 2
@@ -169,7 +148,6 @@ window.RouteGuidance = (function () {
             return acc;
         }, []);
         const raw = osrm.legs.flatMap(leg => leg.steps || []);
-        // Las llegadas intermedias (fin de cada tramo) no son maniobras para el conductor: solo cuenta la final.
         const kept = raw.filter((s, i) => !(s.maneuver && s.maneuver.type === 'arrive' && i < raw.length - 1));
         let start = 0;
         const steps = kept.map((s, i) => {
@@ -189,11 +167,10 @@ window.RouteGuidance = (function () {
     }
 
     function notify() {
-        listeners.forEach(listener => { try { listener(snapshot()); } catch (e) { /* listener roto */ } });
+        listeners.forEach(listener => { try { listener(snapshot()); } catch (e) { } });
         renderHud();
     }
 
-    /** Prepara la ruta de la carga activa (una vez por plan). Idempotente mientras la carga y el plan no cambien. */
     async function prepare(load) {
         if (!load) return;
         const target = waypointsFor(load);
@@ -229,7 +206,6 @@ window.RouteGuidance = (function () {
         }
     }
 
-    /** Recalcula desde la posición actual hasta el destino cuando el conductor se sale de la ruta. */
     async function reroute(position) {
         if (!route || Date.now() - lastReroute < REROUTE_COOLDOWN_MS) return;
         lastReroute = Date.now();
@@ -245,11 +221,9 @@ window.RouteGuidance = (function () {
             if (window.voiceEngine) window.voiceEngine.speak('Ruta recalculada.', false);
             update({ coords: position });
         } catch (e) {
-            // Sin OSRM se sigue mostrando la ruta anterior con el aviso de fuera de ruta.
         }
     }
 
-    /** Nueva posición (GPS real, o la simulación si se activó en las herramientas de prueba). */
     function update(point) {
         if (!point || !point.coords) return;
         if (!route) {
@@ -284,7 +258,6 @@ window.RouteGuidance = (function () {
         notify();
     }
 
-    /** Hasta CLEARANCE_MAX_POINTS puntos de la geometría, siempre con el primero y el último. */
     function samplePath(geometry) {
         if (geometry.length <= CLEARANCE_MAX_POINTS) return geometry.slice();
         const step = (geometry.length - 1) / (CLEARANCE_MAX_POINTS - 1);
@@ -294,7 +267,6 @@ window.RouteGuidance = (function () {
     const metres = (value) => Number(value).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const tons = (value) => Number(value).toLocaleString('es-CO', { maximumFractionDigits: 1 });
 
-    /** Texto de una restricción de la ruta, con lo que mide o pesa este vehículo. */
     function clearanceItem(item, vehicle, warning) {
         const r = item.restriction || {};
         const base = { id: r.id, kind: item.kind, alongM: item.alongRouteMeters, warning };
@@ -314,10 +286,6 @@ window.RouteGuidance = (function () {
         return { ...base, text: 'Precaución', sub: title, spoken: 'precaución: ' + title };
     }
 
-    /**
-     * Pide a Routing-Restrictions las restricciones activas a lo largo de la geometría real (la de OSRM), con la altura y
-     * el peso del vehículo registrado. Sin vehículo o sin respuesta no se inventa nada: el HUD no muestra el aviso.
-     */
     async function checkClearance(target) {
         const driver = window.TruckCarData && window.TruckCarData.currentDriver;
         const vehicle = driver && driver.vehicle;
@@ -348,7 +316,6 @@ window.RouteGuidance = (function () {
         notify();
     }
 
-    /** La próxima restricción de la ruta desde la posición actual (las ya pasadas no cuentan); primero las que bloquean. */
     function nextClearance(alongM) {
         if (!route || !clearance || clearance.key !== route.key || !clearance.items.length) return null;
         const from = alongM == null ? 0 : alongM - 50;
@@ -386,7 +353,6 @@ window.RouteGuidance = (function () {
             arrived: !!(p && p.arrived),
             icon: p && p.arrived ? 'fa-flag-checkered' : next ? next.icon : 'fa-route',
             glyph: p && p.arrived ? 'flag-checkered-fill' : next ? next.glyph : 'path',
-            // Ubicación de la próxima maniobra: la navegación encuadra la posición y ese punto.
             nextLocation: next && next.location ? next.location : null,
             distance: p && p.toNextM != null ? formatDistance(p.toNextM) : next ? formatDistance(next.startM) : '—',
             instruction: p && p.arrived ? 'Llegó al destino de la carga' : next ? next.text : '',
@@ -394,7 +360,6 @@ window.RouteGuidance = (function () {
             stepNumber: p && p.nextIndex != null ? p.nextIndex + 1 : route ? 1 : 0,
             stepCount: route ? route.steps.length : 0,
             remaining: route ? formatDistance(p && p.remainingM != null ? p.remainingM : route.totalM) : '—',
-            // Tiempo restante proporcional a la distancia que falta (OSRM, perfil de auto).
             remainingTime: route && route.durationS && route.totalM
                 ? formatDuration(route.durationS * (p && p.remainingM != null ? p.remainingM : route.totalM) / route.totalM) : '—',
             speed,
@@ -410,11 +375,6 @@ window.RouteGuidance = (function () {
         return { text: item.text + ' en ' + formatDistance(away), sub: item.sub, warning: item.warning };
     }
 
-    /** Textos del HUD según el estado (el mismo marcado sirve para el render inicial y para las actualizaciones). */
-    /**
-     * Calle por la que va el camión, bajo la instrucción. Si no se conoce o es la misma que ya nombra la instrucción
-     * ("…hacia Avenida Calle 59 Sur"), no se muestra nada: repetirla no informa.
-     */
     function currentStreet(s) {
         const street = (s.street || '').trim();
         if (!street) return '';
@@ -426,7 +386,6 @@ window.RouteGuidance = (function () {
         if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: 'Ruta por carretera de OSRM' };
         if (s.status === 'unavailable') return { distance: '—', instruction: 'Guía paso a paso no disponible', street: 'Sin conexión con el servicio de rutas: siga el mapa.' };
         if (s.status === 'idle') return { distance: '—', instruction: 'Preparando la navegación…', street: '' };
-        // Sin GPS o fuera de ruta, el aviso ya está dentro de la tarjeta (triángulo y texto): la línea gris no lo repite.
         if (!s.hasPosition || s.offRoute) return { distance: s.distance, instruction: s.instruction, street: '' };
         return { distance: s.distance, instruction: s.instruction, street: currentStreet(s) };
     }
@@ -468,7 +427,7 @@ window.RouteGuidance = (function () {
                     wakeLock = await navigator.wakeLock.request('screen');
                     wakeLock.addEventListener('release', () => { wakeLock = null; });
                 }
-            } catch (err) { /* no-op si la batería baja impide el bloqueo */ }
+            } catch (err) { }
         }
     }
 
@@ -493,7 +452,6 @@ window.RouteGuidance = (function () {
         get route() { return route; },
         get clearance() { return clearance; },
         get hasWakeLock() { return Boolean(wakeLock); }, requestWakeLock: acquireWakeLock, releaseWakeLock,
-        // Expuestos para pruebas.
         instruction, formatDistance, formatDuration, glyph, project, samplePath, checkClearance
     };
 })();

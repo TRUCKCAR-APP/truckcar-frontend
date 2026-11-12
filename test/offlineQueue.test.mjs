@@ -1,4 +1,3 @@
-// Cola durable offline (js/offlineQueue.js) sobre una IndexedDB real en memoria (fake-indexeddb).
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -13,7 +12,6 @@ let posts;
 let online;
 let respond;
 
-/** Carga el script como en el navegador, con un api-gateway simulado que registra cada lote enviado. */
 function load() {
   posts = [];
   online = false;
@@ -105,7 +103,6 @@ test("los duplicados y rechazados salen de la cola; lo que el servidor no confir
   await queue.flush();
 
   assert.equal(queue.status().pending, 1);
-  // Array.from: el arreglo viene del contexto vm (otro realm) y deepEqual compara prototipos.
   assert.deepEqual(Array.from(queue.status().rejected, (r) => r.reason), ["Coordenadas inválidas"]);
 
   respond = (endpoint, body) => ({ accepted: [], duplicates: body.events.map((e) => e.clientEventId), rejected: [] });

@@ -1,9 +1,4 @@
-/**
- * Panel del generador de carga (rol COORDINADOR): publicar cargas y seguir sus envíos.
- * La empresa generadora es el usuario autenticado: el backend fija generatorCompanyId = X-Auth-User.
- */
 window.GeneratorPanel = (function () {
-    /** Ciudades con su departamento y coordenadas: el backend exige latitud y longitud de origen y destino. */
     const CITIES = [
         ['Bogotá', 'Cundinamarca', 4.6097, -74.0817], ['Medellín', 'Antioquia', 6.2442, -75.5812],
         ['Cali', 'Valle del Cauca', 3.4516, -76.5320], ['Barranquilla', 'Atlántico', 10.9685, -74.7813],
@@ -22,7 +17,6 @@ window.GeneratorPanel = (function () {
         ['CUATRO_MANOS', 'Cuatro manos'], ['SENCILLO', 'Sencillo'], ['TURBO', 'Turbo'], ['REFRIGERADO', 'Refrigerado']
     ];
 
-    /** Status visible para el generador: mientras la carga está AVAILABLE manda el estado de la asignación. */
     const STATUS = {
         AVAILABLE: { label: 'Disponible', text: 'Buscando conductor', tone: '' },
         PROPOSED: { label: 'Propuesta', text: 'Propuesta a conductor', tone: '' },
@@ -43,16 +37,11 @@ window.GeneratorPanel = (function () {
         return 'AVAILABLE';
     }
 
-    /** Los filtros agrupan "sin conductor" con AVAILABLE: ambos siguen esperando asignación. */
     function filterKey(load) {
         const key = statusKey(load);
         return key === 'NO_DRIVERS' ? 'AVAILABLE' : key;
     }
 
-    /**
-     * Conductor vigente: el de una propuesta activa o el que aceptó la carga. Tras un rechazo o vencimiento
-     * la carga conserva el último conductor propuesto, que ya no corresponde mostrar.
-     */
     function currentDriver(load) {
         const key = statusKey(load);
         const relevant = ['PROPOSED', 'NOTIFIED', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED'].includes(key)
@@ -62,7 +51,6 @@ window.GeneratorPanel = (function () {
             : null;
     }
 
-    /** Estado como texto con un punto; "sin conductor" es una advertencia: triángulo y texto. Sin chips teñidos. */
     function badge(load) {
         const status = STATUS[statusKey(load)];
         const mark = status.tone === 'warn'
@@ -81,13 +69,11 @@ window.GeneratorPanel = (function () {
         { title: 'Precio', icon: 'fa-coins', fields: ['offeredBudget'] }
     ];
 
-    /** Ciudad del catálogo por nombre, sin importar mayúsculas ni tildes (lo que se escribe en el autocompletado). */
     function findCity(name) {
         const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
         return CITIES.find(c => norm(c.city) === norm(name)) || null;
     }
 
-    /** Errores por campo (validación en vivo y al avanzar de paso). */
     function validate(d) {
         const errors = {};
         if (!String(d.cargoDescription || '').trim()) errors.cargoDescription = 'Describa la carga.';
@@ -305,7 +291,6 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    /** Estado del camión del envío; se actualiza por DOM con cada posición en vivo (sin re-render). */
     function truckLine(truck) {
         const esc = window.ui.escape;
         if (!truck || !truck.coords) return '<i class="fas fa-satellite-dish"></i> Esperando la posición del camión…';
@@ -323,7 +308,6 @@ window.GeneratorPanel = (function () {
         return loads.find(l => l.backendId === state.selectedShipmentId) || null;
     }
 
-    /** Camión a seguir en el mapa: solo mientras la carga está aceptada o en ruta. */
     function truckFor(load) {
         if (!load || !load.assignedDriverId || !['ASSIGNED', 'IN_TRANSIT'].includes(load.status)) return null;
         const tracked = (window.TruckCarData.shipmentTrucks || {})[load.assignedDriverId];
@@ -386,7 +370,7 @@ window.generatorCtrl = (function () {
     function defaultDraft() {
         const user = window.store.state.currentUser;
         let company = '';
-        try { company = localStorage.getItem('truckcar.generatorCompanyName') || ''; } catch (e) { /* sin almacenamiento */ }
+        try { company = localStorage.getItem('truckcar.generatorCompanyName') || ''; } catch (e) { }
         return {
             generatorCompanyName: company || (user ? (user.firstName + ' ' + user.lastName).trim() : ''),
             cargoDescription: '', weightTons: '', volumeM3: '', requiredTruckType: 'TRACTOMULA_3S3',
@@ -397,10 +381,8 @@ window.generatorCtrl = (function () {
     const city = (name) => window.GeneratorPanel.findCity(name);
 
     return {
-        /** Borrador del formulario: sobrevive a los re-render del refresco automático. */
         draft() {
             if (!draft) draft = defaultDraft();
-            // El perfil puede llegar después del primer render (p. ej. justo tras registrarse).
             if (!draft.generatorCompanyName && !companyEdited) {
                 draft.generatorCompanyName = defaultDraft().generatorCompanyName;
             }
@@ -410,10 +392,6 @@ window.generatorCtrl = (function () {
         step() { return step; },
         touched() { return touched; },
 
-        /**
-         * Guarda lo escrito sin re-renderizar (el foco y el teclado no se pierden) y valida en vivo el campo que el
-         * usuario ya tocó: el mensaje se escribe directamente en su pista.
-         */
         updateDraft(event) {
             const target = event.target;
             if (target && target.name && Object.hasOwn(this.draft(), target.name)) {
@@ -430,7 +408,7 @@ window.generatorCtrl = (function () {
             touched.add(target.name);
             const city = (target.name === 'originCity' || target.name === 'destinationCity') && window.GeneratorPanel.findCity(target.value);
             if (city && city.city !== target.value) {
-                target.value = city.city; // normaliza "bogota" -> "Bogotá"
+                target.value = city.city;
                 draft[target.name] = city.city;
             }
             this.showFieldErrors(target.form);
@@ -452,14 +430,12 @@ window.generatorCtrl = (function () {
             if (index > step && !this.validateStep()) return;
             step = Math.max(0, Math.min(2, index));
             window.store.setState({ generatorFormError: null });
-            // Solo el cambio de paso se anima (no los re-render del refresco automático).
             const panel = document.querySelector('[data-form-step]');
             if (panel) panel.classList.add('screen-enter');
         },
         nextStep() { this.goToStep(step + 1); },
         prevStep() { this.goToStep(step - 1); },
 
-        /** Avanza solo si los campos del paso actual son válidos; si no, los marca y enfoca el primero. */
         validateStep() {
             const errors = window.GeneratorPanel.validate(this.draft());
             const fields = window.GeneratorPanel.FORM_STEPS[step].fields;
@@ -473,10 +449,6 @@ window.generatorCtrl = (function () {
             return false;
         },
 
-        /**
-         * Enlace de seguimiento público: Load-Allocation firma un token (vence a las 48 h o 6 h después de la entrega)
-         * y devuelve la URL de la PWA que lo abre sin sesión. La hoja muestra la URL real y su vencimiento.
-         */
         async shareTracking(loadId) {
             if (sharing) return;
             sharing = true;
@@ -545,7 +517,6 @@ window.generatorCtrl = (function () {
             window.store.setState({ busyAction: 'publish', generatorFormError: null });
             try {
                 const created = await window.TruckCarService.publishLoad({
-                    // El backend reemplaza este valor por el id del usuario autenticado (X-Auth-User).
                     generatorCompanyId: user ? user.id : undefined,
                     generatorCompanyName: companyName,
                     cargoDescription: d.cargoDescription.trim(),
@@ -558,14 +529,13 @@ window.generatorCtrl = (function () {
                     destinationLatitude: destination.latitude, destinationLongitude: destination.longitude,
                     offeredBudget: budget
                 });
-                try { localStorage.setItem('truckcar.generatorCompanyName', companyName); } catch (e) { /* sin almacenamiento */ }
+                try { localStorage.setItem('truckcar.generatorCompanyName', companyName); } catch (e) { }
                 draft = { ...defaultDraft(), requiredTruckType: d.requiredTruckType, originCity: d.originCity, destinationCity: d.destinationCity };
                 step = 0;
                 touched = new Set();
                 window.Native.haptic('success');
                 window.store.setState({ busyAction: null, selectedShipmentId: created.backendId, shipmentFilter: 'ALL' });
                 window.ui.toast(created.id + ' publicada. El motor de asignación ya busca conductor.', 'success');
-                // El matching es asíncrono: a los pocos segundos la carga suele pasar a PROPOSED/NOTIFIED.
                 setTimeout(() => this.refresh(true), 4000);
             } catch (err) {
                 window.store.setState({ busyAction: null, generatorFormError: 'No se pudo publicar: ' + window.ui.errorMessage(err) });
@@ -581,7 +551,6 @@ window.generatorCtrl = (function () {
         },
 
         async refresh(silent) {
-            // Un refresco programado (p. ej. tras publicar) puede dispararse después de cerrar la sesión.
             if (!window.store.state.isAuthenticated) return;
             await window.TruckCarService.refreshShipments();
             window.store.setState({ dataStatus: { ...window.store.state.dataStatus, lastSync: new Date().toISOString() } });

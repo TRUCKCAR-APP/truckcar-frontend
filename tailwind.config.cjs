@@ -1,9 +1,3 @@
-/**
- * Tailwind se compila en el despliegue (npm run build:css → css/tailwind.css), no en el navegador con el CDN.
- * Es la misma configuración que antes vivía en index.html: los colores y la tipografía son los tokens de
- * css/tokens.css (fuente única) y los matices del diseño anterior apuntan al token con su significado.
- * Versión fija (package.json): la misma 3.4.17 que servía cdn.tailwindcss.com.
- */
 module.exports = {
     content: ["./index.html", "./js/**/*.js"],
     "future": {

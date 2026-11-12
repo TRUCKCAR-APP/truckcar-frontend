@@ -1,7 +1,3 @@
-# Imagen de la PWA para Kubernetes (Deployment-Infrastructure/k8s/base/apps/frontend.yaml): nginx sin root en :8080.
-# La configuración de nginx la monta el clúster (ConfigMap frontend-nginx); en docker-compose se sirve la carpeta.
-
-# Paso de construcción: el CSS de Tailwind se compila aquí (versión fija en package.json), no en el navegador.
 FROM node:20-alpine AS css
 WORKDIR /app
 COPY package.json package-lock.json ./
