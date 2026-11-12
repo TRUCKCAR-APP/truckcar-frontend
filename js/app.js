@@ -531,7 +531,7 @@ window.app = {
             if (el) el.classList.toggle('hidden', !visible);
         };
         const controlTower = role === 'COORDINADOR' || role === 'ADMIN';
-        show('role-switcher', controlTower && this.canUseDriverView(role));
+        show('role-switcher', !!(window.TruckCarConfig && window.TruckCarConfig.demoTools) && controlTower && this.canUseDriverView(role));
         show('rotate-device-btn', role !== 'GENERADOR');
         show('sim-toggle-btn', role !== 'GENERADOR');
         document.body.dataset.view = state.isAuthenticated ? state.activeRole : 'login';

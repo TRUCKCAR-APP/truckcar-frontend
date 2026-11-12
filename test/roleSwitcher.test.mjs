@@ -6,7 +6,7 @@ import { JSDOM } from "jsdom";
 const HEADER = `<div id="role-switcher" class="hidden"><button id="role-btn-driver"></button><button id="role-btn-coordinator"></button></div>
   <button id="rotate-device-btn"></button><button id="sim-toggle-btn"></button>`;
 
-function app({ phone, sessionRole, activeRole }) {
+function app({ phone, sessionRole, activeRole, demo = false }) {
   const w = new JSDOM(`<!doctype html><body>${HEADER}</body>`, { runScripts: "outside-only" }).window;
   const listeners = [];
   w.matchMedia = (query) => ({
@@ -17,6 +17,7 @@ function app({ phone, sessionRole, activeRole }) {
   const state = { isAuthenticated: true, sessionRole, activeRole };
   w.store = { get state() { return state; }, setState: (patch) => Object.assign(state, patch) };
   w.TruckCarService = { loadAll: async () => {} };
+  w.TruckCarConfig = { demoTools: demo };
   w.eval(readFileSync("js/app.js", "utf8"));
   return { w, state, resize(toPhone) { w.__phone = toPhone; listeners.forEach(fn => fn()); } };
 }
@@ -34,7 +35,7 @@ test("en el teléfono ADMIN y COORDINADOR no ven el selector y no pueden abrir l
 });
 
 test("en escritorio la torre conserva el selector y la vista previa del conductor", async () => {
-  const { w, state } = app({ phone: false, sessionRole: "ADMIN", activeRole: "coordinator" });
+  const { w, state } = app({ phone: false, sessionRole: "ADMIN", activeRole: "coordinator", demo: true });
   w.app.updateHeader(state);
   assert.equal(switcherVisible(w), true);
   await w.app.setRole("driver");
@@ -49,7 +50,7 @@ test("el conductor no tiene selector y sigue en su app en el teléfono", async (
 });
 
 test("si la ventana pasa a tamaño teléfono con la vista previa abierta, vuelve a la torre", async () => {
-  const { w, state, resize } = app({ phone: false, sessionRole: "COORDINADOR", activeRole: "driver" });
+  const { w, state, resize } = app({ phone: false, sessionRole: "COORDINADOR", activeRole: "driver", demo: true });
   w.app.watchPhoneLayout();
   resize(true);
   await Promise.resolve();
@@ -66,4 +67,36 @@ test("el encabezado de la torre se apila en 390 px: columna encogible y textos s
   assert.match(src, /<p class="[^"]*flex-wrap[^"]*"><span data-network-status class="tower-net/, "el estado de red y la hora se apilan");
   const css = readFileSync("css/main.css", "utf8");
   assert.ok(css.includes('.tower-net:has(.net-status[data-state="online"]) { display: none; }'), "no repite En línea: el título ya lo dice");
+});
+
+const ROLES = ["ADMIN", "COORDINADOR", "CONDUCTOR", "GENERADOR"];
+const homeView = (role) => (role === "CONDUCTOR" ? "driver" : role === "GENERADOR" ? "generator" : "coordinator");
+
+test("sin ?demo=1 nadie ve el selector de rol, ni en escritorio ni en el teléfono", () => {
+  for (const phone of [false, true]) {
+    for (const sessionRole of ROLES) {
+      const { w, state } = app({ phone, sessionRole, activeRole: homeView(sessionRole) });
+      w.app.updateHeader(state);
+      assert.equal(switcherVisible(w), false, sessionRole + (phone ? " en teléfono" : " en escritorio"));
+    }
+  }
+});
+
+test("con ?demo=1 la torre ve el selector en escritorio y el conductor y el generador no", () => {
+  const expected = { ADMIN: true, COORDINADOR: true, CONDUCTOR: false, GENERADOR: false };
+  for (const sessionRole of ROLES) {
+    const { w, state } = app({ phone: false, sessionRole, activeRole: homeView(sessionRole), demo: true });
+    w.app.updateHeader(state);
+    assert.equal(switcherVisible(w), expected[sessionRole], sessionRole);
+  }
+});
+
+test("el rol real de la sesión sigue mandando la pantalla, con o sin demo", async () => {
+  for (const demo of [false, true]) {
+    const { w } = app({ phone: false, sessionRole: "ADMIN", activeRole: "coordinator", demo });
+    for (const role of ROLES) assert.equal(w.app.roleToView(role), homeView(role), role);
+    const phone = app({ phone: true, sessionRole: "COORDINADOR", activeRole: "coordinator", demo });
+    await phone.w.app.setRole("driver");
+    assert.equal(phone.state.activeRole, "coordinator", "en el teléfono la torre no abre la app del conductor" + (demo ? " (demo)" : ""));
+  }
 });
