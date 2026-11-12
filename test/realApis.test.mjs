@@ -237,3 +237,128 @@ test("la hoja de reportar muestra los 7 tipos en una cuadrícula, con íconos ne
   assert.doesNotMatch(w.document.querySelector(".sheet").innerHTML, /text-(rose|amber|sky|emerald)-/);
   assert.match(w.document.querySelector(".sheet-title").textContent, /Reportar en la vía/);
 });
+
+function sosFab(w) {
+  w.DriverActions.syncSos({ isAuthenticated: true, activeRole: "driver" });
+  const fab = w.document.querySelector(".sos-fab");
+  fab.setPointerCapture = () => {};
+  return fab;
+}
+
+test("un clic en SOS no envía: abre una confirmación accesible que atrapa el foco y se cancela sin enviar", async () => {
+  const calls = [];
+  const { w } = browser({ service: { triggerSos: async (coords) => { calls.push(coords); return { id: 9 }; } } });
+  const fab = sosFab(w);
+  fab.click();
+  await sleep(20);
+  const dialog = w.document.querySelector(".sos-confirm");
+  assert.ok(dialog, "abre la confirmación");
+  assert.equal(calls.length, 0);
+  assert.equal(dialog.getAttribute("role"), "alertdialog");
+  assert.equal(dialog.getAttribute("aria-labelledby"), "sos-confirm-title");
+  assert.equal(w.document.activeElement.id, "sos-confirm-title");
+  assert.equal(w.document.activeElement.getAttribute("tabindex"), "-1");
+  const [yes, no] = dialog.querySelectorAll("button");
+  assert.match(yes.textContent, /Sí, enviar SOS/);
+  assert.equal(no.textContent.trim(), "Cancelar");
+
+  const tab = (shiftKey) => w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true }));
+  tab(false); assert.equal(w.document.activeElement, yes);
+  tab(false); assert.equal(w.document.activeElement, no);
+  tab(false); assert.equal(w.document.activeElement, yes);
+  tab(true); assert.equal(w.document.activeElement, no);
+
+  fab.click();
+  assert.equal(w.document.querySelectorAll(".sos-confirm").length, 1, "un segundo clic no abre otra");
+  no.click();
+  assert.equal(w.document.querySelector(".sos-confirm"), null);
+  assert.equal(w.document.activeElement, fab, "el foco vuelve al botón SOS");
+
+  fab.click();
+  w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(w.document.querySelector(".sos-confirm"), null, "Escape cancela");
+  await sleep(30);
+  assert.equal(calls.length, 0);
+  assert.equal(w.document.querySelector(".sos-modal"), null);
+});
+
+test("confirmar envía el SOS una sola vez aunque se toque dos veces", async () => {
+  const calls = [];
+  const { w } = browser({ service: { triggerSos: async (coords) => { calls.push(coords); return { id: 10, receivedAt: new Date().toISOString() }; } } });
+  const fab = sosFab(w);
+  fab.click();
+  const yes = w.document.querySelector("[data-sos-confirm='send']");
+  const no = w.document.querySelector("[data-sos-confirm='cancel']");
+  yes.click();
+  assert.ok(yes.disabled && no.disabled, "ambos botones quedan desactivados");
+  yes.click();
+  await sleep(40);
+  assert.equal(calls.length, 1);
+  assert.equal(w.document.querySelectorAll(".sos-modal:not(.sos-confirm)").length, 1);
+  assert.match(w.document.querySelector("[data-sos-status]").textContent, /Torre de control avisada/);
+  w.document.querySelector("[data-sos-action='close']").click();
+  await sleep(10);
+});
+
+test("un toque corto con teclado abre la confirmación; el clic que sigue a mantener pulsado no la abre", async () => {
+  const calls = [];
+  const { w } = browser({ service: { triggerSos: async (coords) => { calls.push(coords); return { id: 11 }; } } });
+  const fab = sosFab(w);
+  fab.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  fab.dispatchEvent(new w.KeyboardEvent("keyup", { key: "Enter", bubbles: true }));
+  assert.ok(w.document.querySelector(".sos-confirm"), "Enter breve abre la confirmación");
+  w.document.querySelector("[data-sos-confirm='cancel']").click();
+
+  fab.dispatchEvent(new w.Event("pointerdown", { bubbles: true }));
+  await sleep(1700);
+  fab.dispatchEvent(new w.Event("pointerup", { bubbles: true }));
+  fab.click();
+  assert.equal(w.document.querySelector(".sos-confirm"), null, "el clic de la pulsación larga se ignora");
+  await sleep(30);
+  assert.equal(calls.length, 1, "mantener pulsado envía directo");
+  w.document.querySelector("[data-sos-action='close']").click();
+  await sleep(10);
+});
+
+test("cancelar antes del envío no manda nada; después avisa que ya salió y pide llamar al 123", async () => {
+  const calls = [];
+  const early = browser({ service: { triggerSos: async (coords) => { calls.push(coords); return { id: 12 }; } } });
+  const done = early.w.DriverActions.activate();
+  early.w.document.querySelector("[data-sos-action='cancel']").click();
+  await done;
+  await sleep(30);
+  assert.equal(calls.length, 0, "cancelado mientras se obtenía el GPS");
+  assert.equal(early.w.document.querySelector(".sos-modal"), null);
+  assert.ok(early.toasts.some((t) => t.title === "SOS cancelado" && /No se envió ninguna alerta/.test(t.description)));
+
+  let answer;
+  const flying = browser({ service: { triggerSos: () => new Promise((r) => { answer = r; }) } });
+  const flight = flying.w.DriverActions.activate();
+  await sleep(30);
+  flying.w.document.querySelector("[data-sos-action='cancel']").click();
+  assert.match(flying.w.document.querySelector("[data-sos-status]").textContent,
+    /ya se está enviando y no se puede cancelar desde la app\. Llame al 123 para avisar del error\./);
+  answer({ id: 13, receivedAt: new Date().toISOString() });
+  await sleep(10);
+  assert.match(flying.w.document.querySelector("[data-sos-status]").textContent,
+    /Torre de control avisada.*La alerta ya se envió y no se puede cancelar desde la app\. Llame al 123 para avisar del error\./s);
+  assert.ok(flying.w.document.querySelector(".sos-modal"), "el modal sigue abierto");
+  flying.w.document.querySelector("[data-sos-action='close']").click();
+  await flight;
+
+  const queued = browser({ service: { triggerSos: async () => ({ id: null, pendingSync: true }) } });
+  const later = queued.w.DriverActions.activate();
+  await sleep(30);
+  queued.w.document.querySelector("[data-sos-action='cancel']").click();
+  assert.match(queued.w.document.querySelector("[data-sos-status]").textContent,
+    /ya quedó guardada y se enviará al recuperar la señal; no se puede cancelar desde la app\. Llame al 123 para avisar del error\./);
+  queued.w.document.querySelector("[data-sos-action='close']").click();
+  await later;
+
+  const none = browser({ gps: null, service: { triggerSos: async () => ({}) } });
+  const nothing = none.w.DriverActions.activate();
+  await sleep(60);
+  assert.equal(none.w.document.querySelector("[data-sos-action='cancel']").hidden, true, "sin envío no se ofrece cancelar");
+  none.w.document.querySelector("[data-sos-action='close']").click();
+  await nothing;
+});

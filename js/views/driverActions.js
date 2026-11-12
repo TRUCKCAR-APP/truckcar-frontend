@@ -126,6 +126,7 @@ window.DriverActions = (function () {
         let raf = null;
         let startedAt = 0;
         let hintTimer = null;
+        let holdFired = false;
 
         const setProgress = (p) => { button.style.setProperty('--hold', String(p)); };
         const showHint = (visible) => {
@@ -148,6 +149,7 @@ window.DriverActions = (function () {
                 return;
             }
             raf = null;
+            holdFired = true;
             button.classList.remove('is-holding');
             showHint(false);
             window.Native.haptic('sos');
@@ -156,6 +158,7 @@ window.DriverActions = (function () {
 
         button.addEventListener('pointerdown', (event) => {
             button.setPointerCapture(event.pointerId);
+            holdFired = false;
             startedAt = performance.now();
             button.classList.remove('is-releasing');
             button.classList.add('is-holding');
@@ -163,19 +166,34 @@ window.DriverActions = (function () {
             window.Native.haptic('tap');
             raf = requestAnimationFrame(tick);
         });
-        const release = () => { if (raf) reset(true); };
+        const release = () => {
+            if (raf) reset(true);
+            if (holdFired) setTimeout(() => { holdFired = false; }, 0);
+        };
         button.addEventListener('pointerup', release);
         button.addEventListener('pointercancel', release);
         button.addEventListener('lostpointercapture', release);
         button.addEventListener('keydown', (event) => {
             if ((event.key === 'Enter' || event.key === ' ') && !raf && !event.repeat) {
                 event.preventDefault();
+                holdFired = false;
                 startedAt = performance.now();
                 button.classList.add('is-holding');
                 raf = requestAnimationFrame(tick);
             }
         });
-        button.addEventListener('keyup', release);
+        button.addEventListener('keyup', (event) => {
+            const short = !!raf && (event.key === 'Enter' || event.key === ' ');
+            release();
+            if (short) openSosConfirm(button);
+        });
+        button.addEventListener('click', () => {
+            if (holdFired) {
+                holdFired = false;
+                return;
+            }
+            if (!raf) openSosConfirm(button);
+        });
         button.addEventListener('contextmenu', (event) => event.preventDefault());
         return { hint, button };
     }
@@ -211,12 +229,18 @@ window.DriverActions = (function () {
             case 'queued': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>Sin señal: el aviso se enviará al recuperar la señal.${call}</span></div>`;
             case 'no-gps': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>La alerta NO se envió: no hay posición GPS (${esc(detail)}). Sin ubicación la torre no puede ubicarlo.${call}</span></div>`;
             case 'not-saved': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>La alerta NO se envió ni quedó guardada: ${esc(detail)}.${call}</span></div>`;
+            case 'late-cancel': return `<div class="sos-line">${icon('warning-fill')}<span>${esc(detail)} <b>Llame al 123 para avisar del error.</b></span></div>`;
             case 'old-position': return `<div class="sos-line is-pending">${icon('warning-fill')}<span>La posición enviada es la ${esc(detail)}: puede no ser exacta.${call}</span></div>`;
             default: return `<div class="sos-line is-pending">${icon('warning-fill')}<span>La alerta NO se envió: ${esc(detail)}.${call}</span></div>`;
         }
     }
 
     const NOT_SENT = ['no-gps', 'failed', 'not-saved'];
+    const LATE_CANCEL = {
+        'in-flight': 'La alerta ya se está enviando y no se puede cancelar desde la app.',
+        sent: 'La alerta ya se envió y no se puede cancelar desde la app.',
+        queued: 'La alerta ya quedó guardada y se enviará al recuperar la señal; no se puede cancelar desde la app.'
+    };
 
     function openSosModal({ plate, load, onMount }) {
         return new Promise((resolve) => {
@@ -241,6 +265,7 @@ window.DriverActions = (function () {
                 </dl>
                 <span class="spacer"></span>
                 <button type="button" class="sos-call" data-sos-action="call">${icon('phone')}Llamar al 123</button>
+                <button type="button" class="sos-close" data-sos-action="cancel">Cancelar: fue un error</button>
                 <button type="button" class="sos-close" data-sos-action="close">Cerrar</button>`;
             let ticker = null;
             document.body.classList.add('sos-open');
@@ -254,13 +279,13 @@ window.DriverActions = (function () {
             };
             const onKey = (event) => { if (event.key === 'Escape') close('close'); };
             document.addEventListener('keydown', onKey);
-            modal.querySelectorAll('[data-sos-action]').forEach(button =>
+            modal.querySelectorAll('[data-sos-action]:not([data-sos-action="cancel"])').forEach(button =>
                 button.addEventListener('click', () => close(button.dataset.sosAction)));
             host.appendChild(modal);
             modal.tabIndex = -1;
             modal.focus({ preventScroll: true });
             const tick = (fn) => { clearInterval(ticker); fn(); ticker = setInterval(fn, 1000); };
-            onMount(modal, tick);
+            onMount(modal, tick, close);
         });
     }
 
@@ -272,18 +297,38 @@ window.DriverActions = (function () {
         const result = openSosModal({
             plate: driver.vehicle && driver.vehicle.plate,
             load,
-            onMount(modal, tick) {
+            onMount(modal, tick, close) {
                 const status = modal.querySelector('[data-sos-status]');
                 const calm = modal.querySelector('[data-sos-calm]');
+                const cancel = modal.querySelector('[data-sos-action="cancel"]');
                 let oldPosition = '';
+                let requested = false;
+                let cancelled = false;
+                let lateCancel = false;
+                let current = ['sending'];
                 const show = (kind, detail) => {
+                    current = [kind, detail];
                     const sent = kind === 'sent' || kind === 'queued';
-                    status.innerHTML = sosStatusHtml(kind, detail) + (sent && oldPosition ? sosStatusHtml('old-position', oldPosition) : '');
+                    const late = lateCancel && LATE_CANCEL[requested && kind === 'sending' ? 'in-flight' : kind];
+                    status.innerHTML = sosStatusHtml(kind, detail)
+                        + (sent && oldPosition ? sosStatusHtml('old-position', oldPosition) : '')
+                        + (late ? sosStatusHtml('late-cancel', late) : '');
                     calm.hidden = kind !== 'sending' && kind !== 'sent';
+                    cancel.hidden = NOT_SENT.includes(kind);
                     if (NOT_SENT.includes(kind)) modal.querySelector('#sos-modal-title').textContent = 'SOS no enviado';
                 };
+                cancel.addEventListener('click', () => {
+                    if (!requested) {
+                        cancelled = true;
+                        close('cancel');
+                        return;
+                    }
+                    lateCancel = true;
+                    show(...current);
+                });
                 send = (async () => {
                     const position = await sosPosition();
+                    if (cancelled) return;
                     modal.querySelector('[data-sos-position]').textContent = positionLabel(position);
                     tick(() => { modal.querySelector('[data-sos-reading]').textContent = readingLabel(position); });
                     if (!position) {
@@ -294,6 +339,8 @@ window.DriverActions = (function () {
                     if (position.stale && Date.now() - position.fix.time > OLD_POSITION_MS) {
                         oldPosition = readingLabel(position);
                     }
+                    if (cancelled) return;
+                    requested = true;
                     try {
                         const sos = await window.TruckCarService.triggerSos(position.fix.coords, position.fix.accuracy);
                         if (sos.pendingSync) {
@@ -313,8 +360,66 @@ window.DriverActions = (function () {
                 })();
             }
         });
-        if (await result === 'call') window.location.href = 'tel:123';
+        const outcome = await result;
+        if (outcome === 'call') window.location.href = 'tel:123';
+        if (outcome === 'cancel') window.ui.toast('SOS cancelado', 'success', { description: 'No se envió ninguna alerta.' });
         await send;
+    }
+
+    let confirming = false;
+
+    function openSosConfirm(trigger) {
+        if (confirming || document.body.classList.contains('sos-open')) return;
+        confirming = true;
+        const host = document.getElementById('phone-mockup-frame') || document.body;
+        const previousFocus = trigger || document.activeElement;
+        const dialog = document.createElement('div');
+        dialog.className = 'sos-modal sos-confirm';
+        dialog.setAttribute('role', 'alertdialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-labelledby', 'sos-confirm-title');
+        dialog.setAttribute('aria-describedby', 'sos-confirm-desc');
+        dialog.innerHTML = `
+            <svg class="sos-modal-icon" aria-hidden="true"><use href="assets/icons.svg#siren"></use></svg>
+            <h2 id="sos-confirm-title" tabindex="-1">¿Enviar SOS a la torre de control?</h2>
+            <p id="sos-confirm-desc">La torre recibirá su posición GPS, su vehículo y su carga.</p>
+            <span class="spacer"></span>
+            <button type="button" class="sos-call" data-sos-confirm="send">${icon('siren')}Sí, enviar SOS</button>
+            <button type="button" class="sos-close" data-sos-confirm="cancel">Cancelar</button>`;
+        const buttons = [...dialog.querySelectorAll('[data-sos-confirm]')];
+        let sending = false;
+        const close = () => {
+            document.removeEventListener('keydown', onKey);
+            document.body.classList.remove('sos-open');
+            dialog.remove();
+            confirming = false;
+            if (previousFocus && previousFocus.focus) previousFocus.focus({ preventScroll: true });
+        };
+        const onKey = (event) => {
+            if (event.key === 'Escape' && !sending) {
+                event.preventDefault();
+                close();
+            } else if (event.key === 'Tab') {
+                event.preventDefault();
+                const index = buttons.indexOf(document.activeElement);
+                const last = buttons.length - 1;
+                const next = event.shiftKey ? (index <= 0 ? last : index - 1) : (index === -1 || index === last ? 0 : index + 1);
+                buttons[next].focus();
+            }
+        };
+        buttons[0].addEventListener('click', () => {
+            if (sending) return;
+            sending = true;
+            buttons.forEach(button => { button.disabled = true; });
+            close();
+            window.Native.haptic('sos');
+            activate();
+        });
+        buttons[1].addEventListener('click', () => { if (!sending) close(); });
+        document.addEventListener('keydown', onKey);
+        document.body.classList.add('sos-open');
+        host.appendChild(dialog);
+        dialog.querySelector('#sos-confirm-title').focus({ preventScroll: true });
     }
 
     function syncSos(state) {

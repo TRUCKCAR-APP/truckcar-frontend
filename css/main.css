@@ -627,6 +627,14 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
     touch-action: manipulation;
 }
 .sos-call:active, .sos-close:active { transform: scale(var(--press-scale)); }
+.sos-call:disabled, .sos-close:disabled { opacity: 0.6; }
+.sos-confirm .sos-close { margin-top: var(--space-3); }
+.sos-modal h2:focus { outline: none; }
+.sos-close[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+    .sos-call, .sos-close { transition: none; }
+    .sos-call:active, .sos-close:active { transform: none; }
+}
 .sos-modal:focus { outline: none; }
 body.sos-open .toaster { display: none; }
 .sos-modal :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 3px; }
