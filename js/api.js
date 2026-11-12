@@ -232,6 +232,39 @@
 
     const enc = encodeURIComponent;
 
+    const DRIVER_STATE_FIELDS = ['driverName', 'licenseCategory', 'rating', 'totalTrips', 'netCargoWeightTons',
+        'drivingHoursToday', 'mandatoryRestLocation', 'hazmatAuthorized', 'coldChainCertified', 'runtValid',
+        'electronicTollTagActive', 'activeBadges', 'currentLatitude', 'currentLongitude', 'currentSpeedKmH', 'status'];
+
+    function finiteOrUndefined(value) {
+        if (value === null || value === undefined || value === '') return undefined;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : undefined;
+    }
+
+    async function registerVehicle(driverId, vehicleData) {
+        let current = null;
+        try {
+            current = await http.get('/fleets-drivers/drivers/' + enc(driverId));
+        } catch (error) {
+            if (!error.isNotFound) throw error;
+        }
+        const kept = {};
+        DRIVER_STATE_FIELDS.forEach(field => {
+            if (current && current[field] !== null && current[field] !== undefined) kept[field] = current[field];
+        });
+        return http.post('/fleets-drivers/state', {
+            ...kept,
+            driverId,
+            vehiclePlate: vehicleData.plate ? String(vehicleData.plate).toUpperCase().trim() : undefined,
+            vehicleModel: vehicleData.model ? String(vehicleData.model).trim() : undefined,
+            vehicleType: vehicleData.type || undefined,
+            maxHeightMeters: finiteOrUndefined(vehicleData.height),
+            maxPayloadTons: finiteOrUndefined(vehicleData.maxPayload),
+            tareWeightTons: finiteOrUndefined(vehicleData.tareWeight)
+        });
+    }
+
     window.TruckCarApi = {
         ApiError,
         session,
@@ -264,16 +297,7 @@
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
             getVehicle: (plate) => http.get('/fleets-drivers/vehicles/' + enc(plate)),
             updateState: (state) => http.post('/fleets-drivers/state', state),
-            registerVehicle: (driverId, vehicleData) => http.post('/fleets-drivers/state', {
-                driverId,
-                vehiclePlate: vehicleData.plate ? String(vehicleData.plate).toUpperCase().trim() : undefined,
-                vehicleModel: vehicleData.model ? String(vehicleData.model).trim() : undefined,
-                vehicleType: vehicleData.type || 'TRACTOMULA_3S3',
-                maxHeightMeters: Number(vehicleData.height) || 4.1,
-                maxPayloadTons: Number(vehicleData.maxPayload) || 34.0,
-                tareWeightTons: Number(vehicleData.tareWeight) || 16.0,
-                status: 'ACTIVO'
-            })
+            registerVehicle
         },
 
         loads: {

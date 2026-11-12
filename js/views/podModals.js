@@ -210,7 +210,7 @@ window.PodUI = (function () {
                             </div>
                             <figure id="pod-photo-figure" class="pod-photo hidden">
                                 <img id="pod-photo-preview" alt="Vista previa de la foto de entrega">
-                                <figcaption><span data-hash="photo" class="pod-hash" title=""></span></figcaption>
+                                <figcaption><span data-hash="photo" class="pod-hash" title=""></span><span data-photo-simulated class="field-help hidden">Foto simulada para la presentación: no se envía como evidencia.</span></figcaption>
                             </figure>
                         </div>
                         <p class="field-help">La firma y la foto se envían cifradas. Sin señal se guardan en el teléfono y se envían al reconectar.</p>
@@ -245,6 +245,8 @@ window.PodUI = (function () {
             const errorBox = overlay.querySelector('#pod-error');
             const submitBtn = form.querySelector('button[type="submit"]');
             let photoDataUrl = null;
+            let photoSimulated = false;
+            const simulatedNote = overlay.querySelector('[data-photo-simulated]');
 
             const showError = (message, title = 'Falta un dato obligatorio') => {
                 errorBox.querySelector('[data-error-title]').textContent = title;
@@ -252,12 +254,14 @@ window.PodUI = (function () {
                 errorBox.classList.toggle('hidden', !message);
                 if (message) errorBox.scrollIntoView({ block: 'nearest' });
             };
-            const setPhoto = (dataUrl) => {
+            const setPhoto = (dataUrl, simulated = false) => {
                 photoDataUrl = dataUrl;
+                photoSimulated = Boolean(dataUrl) && simulated;
+                simulatedNote.classList.toggle('hidden', !photoSimulated);
                 preview.src = dataUrl || '';
                 figure.classList.toggle('hidden', !dataUrl);
                 removeBtn.classList.toggle('hidden', !dataUrl);
-                showHash('photo', dataUrl);
+                showHash('photo', photoSimulated ? null : dataUrl);
             };
             const finish = (result) => {
                 document.removeEventListener('keydown', onKey);
@@ -272,7 +276,7 @@ window.PodUI = (function () {
                 pad.clear();
                 showHash('signature', null);
             });
-            overlay.querySelector('[data-action="simulate-photo"]').addEventListener('click', () => setPhoto(simulatedPhoto(load)));
+            overlay.querySelector('[data-action="simulate-photo"]').addEventListener('click', () => setPhoto(simulatedPhoto(load), true));
             removeBtn.addEventListener('click', () => { setPhoto(null); form.elements.photoFile.value = ''; });
             form.elements.photoFile.addEventListener('change', async () => {
                 const file = form.elements.photoFile.files[0];
@@ -299,7 +303,7 @@ window.PodUI = (function () {
                         receiverDocument: form.elements.receiverDocument.value.trim() || null,
                         notes: form.elements.notes.value.trim() || null,
                         signatureBlob: await window.PodEvidence.dataUrlToBlob(pad.toDataUrl()),
-                        photoBlob: photoDataUrl ? await window.PodEvidence.dataUrlToBlob(photoDataUrl) : null
+                        photoBlob: photoDataUrl && !photoSimulated ? await window.PodEvidence.dataUrlToBlob(photoDataUrl) : null
                     });
                     finish(true);
                 } catch (error) {

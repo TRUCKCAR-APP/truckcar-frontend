@@ -73,16 +73,19 @@ test("la telemetría usa el GPS real por defecto: sin señal no transmite posici
   assert.equal(w.DeviceLocation.last().coords[0], 4.6012);
 });
 
-test("la simulación solo existe si se activa en las herramientas de prueba y nunca llega a la ubicación del dispositivo", async () => {
+test("la simulación solo existe si se activa en las herramientas de prueba y nunca llega al backend ni a la ubicación del dispositivo", async () => {
   const { w, queued } = browser();
+  const sent = [];
+  w.TruckCarTelemetry.send = (destination, payload) => { sent.push({ destination, payload }); return true; };
   await w.DriverTelemetry.toggleSimulation();
   assert.equal(w.DriverTelemetry.simulating, true);
 
   await w.DriverTelemetry.start(LOAD, "driver-ana");
   w.DriverTelemetry.stop();
 
-  assert.equal(queued.length, 1);
-  assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /Simulación de prueba/);
+  assert.equal(sent.length, 0, "la posición simulada no se envía por el WebSocket");
+  assert.equal(queued.length, 0, "la posición simulada no se encola para sincronizar después");
+  assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /Sin transmitir[\s\S]*Simulación de prueba[\s\S]*no se envía a la torre/);
   assert.equal(w.DeviceLocation.last(), null, "la posición simulada no se guarda como GPS real");
 
   await w.DriverTelemetry.toggleSimulation();

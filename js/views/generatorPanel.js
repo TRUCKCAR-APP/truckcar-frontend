@@ -517,7 +517,6 @@ window.generatorCtrl = (function () {
             window.store.setState({ busyAction: 'publish', generatorFormError: null });
             try {
                 const created = await window.TruckCarService.publishLoad({
-                    generatorCompanyId: user ? user.id : undefined,
                     generatorCompanyName: companyName,
                     cargoDescription: d.cargoDescription.trim(),
                     weightTons: weight,

@@ -346,6 +346,7 @@ window.CoordinatorPanel = {
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Tipo de camión</label>
                                     <select id="veh-type" class="login-input w-full text-xs" required>
+                                        <option value="" disabled>Seleccione el tipo</option>
                                         <option value="TRACTOMULA_3S3">Tractomula 3S3</option>
                                         <option value="MINIMULA">Minimula</option>
                                         <option value="DOBLETROQUE">Doble troque</option>
@@ -623,11 +624,11 @@ window.coordinatorCtrl = {
         if (truck && (truck.rawType || (truck.vehicle && truck.vehicle.category))) {
             typeSelect.value = truck.rawType || truck.vehicle.category;
         } else {
-            typeSelect.value = 'TRACTOMULA_3S3';
+            typeSelect.value = '';
         }
-        heightInput.value = (truck && (truck.height || (truck.vehicle && truck.vehicle.height))) || '4.1';
-        tareInput.value = (truck && (truck.tareWeight || (truck.vehicle && truck.vehicle.tareWeight))) || '16.0';
-        payloadInput.value = (truck && (truck.maxPayload || (truck.vehicle && truck.vehicle.maxPayload))) || '34.0';
+        heightInput.value = (truck && (truck.height || (truck.vehicle && truck.vehicle.height))) || '';
+        tareInput.value = (truck && (truck.tareWeight || (truck.vehicle && truck.vehicle.tareWeight))) || '';
+        payloadInput.value = (truck && (truck.maxPayload || (truck.vehicle && truck.vehicle.maxPayload))) || '';
 
         select.onchange = () => {
             const selDriver = driverMap.get(select.value);
@@ -674,7 +675,7 @@ window.coordinatorCtrl = {
             window.ui.toast('Placa inválida: debe tener formato colombiano (3 letras y 3 números, Ej: TDK-410).', 'warning');
             return;
         }
-        if (!plate || !model || isNaN(height) || isNaN(tare) || isNaN(payload)) {
+        if (!plate || !model || !type || isNaN(height) || isNaN(tare) || isNaN(payload)) {
             window.ui.toast('Complete todos los campos del vehículo.', 'warning');
             return;
         }
@@ -697,9 +698,7 @@ window.coordinatorCtrl = {
             });
 
             if (window.TruckCarData.currentDriver && (window.TruckCarData.currentDriver.id === driverId || window.TruckCarData.currentDriver.userId === driverId)) {
-                const cd = window.TruckCarData.currentDriver;
-                cd.hasVehicle = true;
-                cd.vehicle = { plate, brand: model, category: type, height, tareWeight: tare, maxPayload: payload, grossWeight: tare, badges: ['Verificado'] };
+                await window.TruckCarService.loadDriverProfile();
             }
 
             await window.TruckCarService.loadFleet();

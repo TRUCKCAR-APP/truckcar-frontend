@@ -321,8 +321,9 @@
             return;
         }
         driver.lastPoint = point;
+        const simulated = point.source === 'simulation';
         const offline = window.OfflineQueue && window.OfflineQueue.isOffline();
-        const sent = !offline && TruckCarTelemetry.send('/app/telemetry', {
+        const sent = !simulated && !offline && TruckCarTelemetry.send('/app/telemetry', {
             driverId: driver.driverId,
             latitude: Math.round(point.coords[0] * 1e6) / 1e6,
             longitude: Math.round(point.coords[1] * 1e6) / 1e6,
@@ -332,7 +333,7 @@
         });
         if (sent) {
             driver.lastSent = Date.now();
-        } else {
+        } else if (!simulated) {
             queueOfflinePosition(point);
         }
         if (window.RouteGuidance) window.RouteGuidance.update(point);
@@ -369,9 +370,13 @@
                 <span class="telemetry-sub">· ${window.ui.escape(reason)}</span>`;
             return;
         }
-        const source = driver.mode === 'gps'
-            ? 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '')
-            : '<b>Simulación de prueba</b>';
+        if (driver.mode === 'simulation') {
+            el.dataset.state = 'warn';
+            el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Sin transmitir</span>
+                <span class="telemetry-sub">· <b>Simulación de prueba</b> · no se envía a la torre${p ? ' · ' + p.speed + ' km/h' : ''}</span>`;
+            return;
+        }
+        const source = 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '');
         el.dataset.state = live ? 'ok' : 'warn';
         el.innerHTML = `
             ${live ? '<span class="dot ok" aria-hidden="true"></span><span class="telemetry-main">Transmitiendo</span>'
@@ -431,7 +436,7 @@
             window.ui.toast(next ? 'Simulación de GPS activada (herramienta de prueba)' : 'GPS real del dispositivo',
                 next ? 'warning' : 'success', {
                     description: next
-                        ? 'La telemetría y la guía avanzan sobre la ruta. El SOS y los reportes siguen usando solo el GPS real.'
+                        ? 'La guía avanza sobre la ruta solo en este dispositivo: la posición simulada no se envía a la torre. El SOS y los reportes siguen usando solo el GPS real.'
                         : 'La telemetría y la guía usan la ubicación del teléfono.'
                 });
             if (next) await prepareSimulation();
