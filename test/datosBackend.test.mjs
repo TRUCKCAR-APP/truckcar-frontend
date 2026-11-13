@@ -325,3 +325,37 @@ test("la ruta por carretera se pide en un solo punto del front, con la URL de la
     assert.doesNotMatch(readFileSync(file, "utf8"), /router\.project-osrm|fetch\(/, file + " no llama al servicio de rutas por su cuenta");
   }
 });
+
+test("los tipos de camión son exactamente los del enum TruckTypeRequired de Load-Allocation, en un solo catálogo", () => {
+  const { w, service: s } = service();
+  const backendEnum = ["TURBO", "SENCILLO", "DOBLETROQUE", "CUATRO_MANOS", "MINIMULA", "TRACTOMULA_3S3", "REFRIGERADO"];
+  assert.deepEqual(Array.from(s.truckTypes(), (t) => t.code).sort(), [...backendEnum].sort());
+  assert.equal(s.truckTypeLabel("TRACTOMULA_3S2"), null, "el 3S2 no existe en el backend");
+  assert.equal(driverScreens(w).truckTypeLabel("DOBLETROQUE"), "Doble troque");
+  for (const file of ["js/views/driverApp.js", "js/views/generatorPanel.js", "js/views/coordinatorPanel.js"]) {
+    assert.doesNotMatch(readFileSync(file, "utf8"), /TRACTOMULA_3S|MINIMULA|CUATRO_MANOS/, file + " no repite el catálogo");
+  }
+});
+
+test("las ciudades con coordenadas viven en un solo punto del front y el formulario no trae un trayecto de ejemplo", () => {
+  const { w, service: s } = service();
+  assert.equal(s.cityCatalog().length, 20);
+  assert.deepEqual({ ...s.cityCatalog().find((c) => c.city === "Ibagué") }, { city: "Ibagué", department: "Tolima", latitude: 4.4389, longitude: -75.2322 });
+  const panel = readFileSync("js/views/generatorPanel.js", "utf8");
+  assert.doesNotMatch(panel, /-7\d\.\d{3,}|Cundinamarca/, "el panel no guarda coordenadas ni departamentos");
+  w.PodUI = { formatDate: () => "" };
+  w.eval(panel);
+  const draft = w.generatorCtrl.draft();
+  assert.equal(draft.originCity, "");
+  assert.equal(draft.destinationCity, "");
+});
+
+test("el chat local y el registro de push se quitaron: el backend no tiene esos endpoints", () => {
+  for (const file of ["js/messagingService.js", "js/notifications.js"]) {
+    assert.throws(() => readFileSync(file), /ENOENT/, file);
+  }
+  const sources = ["index.html", "sw.js", "js/app.js", "js/state.js", "js/api.js", "js/views/driverApp.js", "js/views/coordinatorPanel.js"]
+    .map((file) => readFileSync(file, "utf8")).join("\n");
+  assert.doesNotMatch(sources, /TruckCarMessaging|TruckCarNotifications|chatMessages|savePushToken|messagingService|notifications\.js/);
+  assert.doesNotMatch(readFileSync("sw.js", "utf8"), /addEventListener\('push'/);
+});

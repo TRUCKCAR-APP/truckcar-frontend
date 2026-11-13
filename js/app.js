@@ -139,11 +139,6 @@ window.app = {
         this.schedulePolling();
         window.Native.applyShortcut();
         window.Native.Install.maybeOffer();
-        if (window.TruckCarMessaging) {
-            const load = window.TruckCarData.activeLoadOrder;
-            const driver = window.TruckCarData.currentDriver;
-            window.TruckCarMessaging.initContext(load ? load.backendId : null, driver ? driver.id : null);
-        }
     },
 
     scheduleSessionRefresh() {

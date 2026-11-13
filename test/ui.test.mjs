@@ -19,6 +19,7 @@ function browser({ online = true, pending = 0, telemetry = "online", isOffline =
   w.store = { state: { isAuthenticated: true, isOffline }, subscribe() {} };
   w.OfflineQueue = { status: () => ({ pending, lastError: null, nextRetryAt: null, lastSyncAt: null }), onChange() {} };
   w.TruckCarTelemetry = { status: telemetry, onStatusChange() {} };
+  w.eval(readFileSync("js/dataService.js", "utf8"));
   SCRIPTS.forEach((file) => w.eval(readFileSync(file, "utf8")));
   return w;
 }

@@ -216,7 +216,7 @@ window.CoordinatorPanel = {
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-3 md:h-48 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 md:h-48 gap-4">
                             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
@@ -266,30 +266,6 @@ window.CoordinatorPanel = {
                                 </div>
                             </div>
 
-                            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
-                                        <i class="fas fa-comments text-slate-400"></i> Canal directo de despacho
-                                    </h3>
-                                    <span class="text-[10px] text-slate-500 font-mono">local · sin backend</span>
-                                </div>
-
-                                <div id="coordinator-chat-box" class="flex-1 overflow-y-auto space-y-1.5 text-xs p-1">
-                                    ${(state.chatMessages || []).map(m => `
-                                        <div class="${m.sender === 'coordinator' ? 'bg-slate-700 text-white ml-auto' : 'bg-slate-800/80 text-slate-200'} p-2 rounded-xl max-w-[85%]">
-                                            <span class="text-[9px] block font-mono text-slate-400">${m.sender === 'coordinator' ? 'Central' : 'Conductor'} • ${esc(m.time)}</span>
-                                            ${esc(m.text)}
-                                        </div>
-                                    `).join('')}
-                                </div>
-
-                                <div class="mt-2 flex gap-2">
-                                    <input id="coord-msg-input" type="text" placeholder="Escribir instrucción al conductor..." class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-slate-400">
-                                    <button onclick="window.coordinatorCtrl.sendDispatchMessage()" class="w-10 h-9 grid place-items-center bg-accent-500 hover:bg-accent-600 text-graphite-950 rounded-xl text-xs font-bold transition" aria-label="Enviar instrucción">
-                                        <i class="fas fa-paper-plane"></i>
-                                    </button>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -346,13 +322,7 @@ window.CoordinatorPanel = {
                                     <label class="block font-bold text-slate-300 mb-1">Tipo de camión</label>
                                     <select id="veh-type" class="login-input w-full text-xs" required>
                                         <option value="" disabled>Seleccione el tipo</option>
-                                        <option value="TRACTOMULA_3S3">Tractomula 3S3</option>
-                                        <option value="MINIMULA">Minimula</option>
-                                        <option value="DOBLETROQUE">Doble troque</option>
-                                        <option value="CUATRO_MANOS">Cuatro manos</option>
-                                        <option value="SENCILLO">Sencillo</option>
-                                        <option value="TURBO">Turbo</option>
-                                        <option value="REFRIGERADO">Refrigerado</option>
+                                        ${window.TruckCarService.truckTypes().map(t => `<option value="${t.code}">${esc(t.label)}</option>`).join('')}
                                     </select>
                                 </div>
                             </div>
@@ -595,20 +565,6 @@ window.coordinatorCtrl = {
         if (!truck) return;
         if (truck.coords) window.mapCtrl.focusOn(truck.coords, 12);
         window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + window.ui.statusLabel(truck.status) + ' · ' + window.ui.speedText(truck.speed) + ' · conducción ' + truck.hoursActive, 'info');
-    },
-
-    async sendDispatchMessage() {
-        const input = document.getElementById('coord-msg-input');
-        if (!input || !input.value.trim()) return;
-        const text = input.value.trim();
-        input.value = '';
-        if (window.TruckCarMessaging) {
-            try {
-                await window.TruckCarMessaging.sendMessage(text);
-            } catch (error) {
-                window.ui.failure('No se pudo enviar el mensaje', error, 'contactar al conductor');
-            }
-        }
     },
 
     async openVehicleModal(selectedDriverId) {

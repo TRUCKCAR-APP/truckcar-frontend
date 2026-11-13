@@ -1,22 +1,4 @@
 window.GeneratorPanel = (function () {
-    const CITIES = [
-        ['Bogotá', 'Cundinamarca', 4.6097, -74.0817], ['Medellín', 'Antioquia', 6.2442, -75.5812],
-        ['Cali', 'Valle del Cauca', 3.4516, -76.5320], ['Barranquilla', 'Atlántico', 10.9685, -74.7813],
-        ['Cartagena', 'Bolívar', 10.3910, -75.4794], ['Bucaramanga', 'Santander', 7.1193, -73.1227],
-        ['Cúcuta', 'Norte de Santander', 7.8939, -72.5078], ['Pereira', 'Risaralda', 4.8133, -75.6961],
-        ['Manizales', 'Caldas', 5.0703, -75.5138], ['Armenia', 'Quindío', 4.5339, -75.6811],
-        ['Ibagué', 'Tolima', 4.4389, -75.2322], ['Villavicencio', 'Meta', 4.1420, -73.6266],
-        ['Tunja', 'Boyacá', 5.5353, -73.3678], ['Sogamoso', 'Boyacá', 5.7146, -72.9339],
-        ['Neiva', 'Huila', 2.9273, -75.2819], ['Santa Marta', 'Magdalena', 11.2408, -74.1990],
-        ['Buenaventura', 'Valle del Cauca', 3.8801, -77.0312], ['Pasto', 'Nariño', 1.2136, -77.2811],
-        ['Montería', 'Córdoba', 8.7479, -75.8814], ['Valledupar', 'Cesar', 10.4631, -73.2532]
-    ].map(([city, department, latitude, longitude]) => ({ city, department, latitude, longitude }));
-
-    const TRUCK_TYPES = [
-        ['TRACTOMULA_3S3', 'Tractomula 3S3'], ['MINIMULA', 'Minimula'], ['DOBLETROQUE', 'Doble troque'],
-        ['CUATRO_MANOS', 'Cuatro manos'], ['SENCILLO', 'Sencillo'], ['TURBO', 'Turbo'], ['REFRIGERADO', 'Refrigerado']
-    ];
-
     const STATUS = {
         AVAILABLE: { label: 'Disponible', text: 'Buscando conductor', tone: '' },
         PROPOSED: { label: 'Propuesta', text: 'Propuesta a conductor', tone: '' },
@@ -27,7 +9,8 @@ window.GeneratorPanel = (function () {
         DELIVERED: { label: 'Entregada', text: 'Entregada', tone: 'ok' },
         CANCELLED: { label: 'Cancelada', text: 'Cancelada', tone: '' }
     };
-    const truckTypeLabel = (code) => (TRUCK_TYPES.find(([key]) => key === code) || [code, code || '—'])[1];
+    const truckTypeLabel = (code) => window.TruckCarService.truckTypeLabel(code) || window.ui.orNotAvailable(code);
+    const cities = () => window.TruckCarService.cityCatalog();
     const FILTERS = ['ALL', 'AVAILABLE', 'PROPOSED', 'NOTIFIED', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'];
 
     function statusKey(load) {
@@ -71,7 +54,7 @@ window.GeneratorPanel = (function () {
 
     function findCity(name) {
         const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-        return CITIES.find(c => norm(c.city) === norm(name)) || null;
+        return cities().find(c => norm(c.city) === norm(name)) || null;
     }
 
     function validate(d) {
@@ -80,9 +63,11 @@ window.GeneratorPanel = (function () {
         const weight = Number(d.weightTons);
         if (!(weight > 0)) errors.weightTons = 'Debe ser mayor a 0 t.';
         if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) >= 0)) errors.volumeM3 = 'Volumen inválido.';
-        if (!findCity(d.originCity)) errors.originCity = 'Elija una ciudad de la lista.';
-        if (!findCity(d.destinationCity)) errors.destinationCity = 'Elija una ciudad de la lista.';
-        else if (findCity(d.originCity) === findCity(d.destinationCity)) errors.destinationCity = 'Debe ser distinto del origen.';
+        const from = findCity(d.originCity);
+        const to = findCity(d.destinationCity);
+        if (!from) errors.originCity = 'Elija una ciudad de la lista.';
+        if (!to) errors.destinationCity = 'Elija una ciudad de la lista.';
+        else if (from && from.city === to.city) errors.destinationCity = 'Debe ser distinto del origen.';
         if (!(Number(d.offeredBudget) >= 1000)) errors.offeredBudget = 'Mínimo 1.000 COP.';
         return errors;
     }
@@ -121,11 +106,11 @@ window.GeneratorPanel = (function () {
                 ${field('weightTons', 'Peso (t)', `<input name="weightTons" type="number" inputmode="decimal" min="0.1" step="0.1" value="${esc(d.weightTons)}" class="login-input w-full text-xs" placeholder="30">`, { ...opts, required: true })}
                 ${field('volumeM3', 'Volumen (m³)', `<input name="volumeM3" type="number" inputmode="decimal" min="0" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">`, opts)}
              </div>
-             ${field('requiredTruckType', 'Tipo de camión requerido', `<select name="requiredTruckType" class="login-input w-full text-xs">${TRUCK_TYPES.map(([value, text]) => `<option value="${value}" ${value === d.requiredTruckType ? 'selected' : ''}>${text}</option>`).join('')}</select>`, { ...opts, required: true })}`,
-            `<datalist id="truckcar-cities">${CITIES.map(c => `<option value="${c.city}">${c.department}</option>`).join('')}</datalist>
+             ${field('requiredTruckType', 'Tipo de camión requerido', `<select name="requiredTruckType" class="login-input w-full text-xs">${window.TruckCarService.truckTypes().map(t => `<option value="${t.code}" ${t.code === d.requiredTruckType ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`, { ...opts, required: true })}`,
+            `<datalist id="truckcar-cities">${cities().map(c => `<option value="${esc(c.city)}">${esc(c.department)}</option>`).join('')}</datalist>
              ${field('originCity', 'Origen', `<input name="originCity" list="truckcar-cities" value="${esc(d.originCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
              ${field('destinationCity', 'Destino', `<input name="destinationCity" list="truckcar-cities" value="${esc(d.destinationCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
-             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot"></i> ${origin && destination && origin !== destination
+             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot"></i> ${origin && destination && origin.city !== destination.city
                 ? esc(origin.city + ', ' + origin.department + ' → ' + destination.city + ', ' + destination.department)
                 : 'Las coordenadas del trayecto salen del catálogo de ciudades.'}</p>`,
             `${field('offeredBudget', 'Presupuesto ofrecido (COP)', `<input name="offeredBudget" type="number" inputmode="numeric" min="1000" step="1000" value="${esc(d.offeredBudget)}" class="login-input w-full text-xs" placeholder="5000000" enterkeyhint="done">`, { ...opts, required: true })}
@@ -357,7 +342,7 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    return { render, selectedLoad, truckFor, updateTruckLine, CITIES, FORM_STEPS, findCity, validate };
+    return { render, selectedLoad, truckFor, updateTruckLine, FORM_STEPS, findCity, validate };
 })();
 
 window.generatorCtrl = (function () {
@@ -373,8 +358,8 @@ window.generatorCtrl = (function () {
         try { company = localStorage.getItem('truckcar.generatorCompanyName') || ''; } catch (e) { }
         return {
             generatorCompanyName: company || (user ? (user.firstName + ' ' + user.lastName).trim() : ''),
-            cargoDescription: '', weightTons: '', volumeM3: '', requiredTruckType: 'TRACTOMULA_3S3',
-            originCity: 'Bogotá', destinationCity: 'Cali', offeredBudget: ''
+            cargoDescription: '', weightTons: '', volumeM3: '', requiredTruckType: window.TruckCarService.truckTypes()[0].code,
+            originCity: '', destinationCity: '', offeredBudget: ''
         };
     }
 

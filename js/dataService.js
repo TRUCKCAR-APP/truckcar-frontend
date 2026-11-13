@@ -30,6 +30,38 @@
         OBRA_EN_VIA: 'Obra en Vía'
     };
 
+    function truckTypes() {
+        return [
+            { code: 'TRACTOMULA_3S3', label: 'Tractomula 3S3' },
+            { code: 'MINIMULA', label: 'Minimula' },
+            { code: 'DOBLETROQUE', label: 'Doble troque' },
+            { code: 'CUATRO_MANOS', label: 'Cuatro manos' },
+            { code: 'SENCILLO', label: 'Sencillo' },
+            { code: 'TURBO', label: 'Turbo' },
+            { code: 'REFRIGERADO', label: 'Refrigerado' }
+        ];
+    }
+
+    function truckTypeLabel(code) {
+        const type = truckTypes().find(t => t.code === code);
+        return type ? type.label : null;
+    }
+
+    function cityCatalog() {
+        return [
+            ['Bogotá', 'Cundinamarca', 4.6097, -74.0817], ['Medellín', 'Antioquia', 6.2442, -75.5812],
+            ['Cali', 'Valle del Cauca', 3.4516, -76.5320], ['Barranquilla', 'Atlántico', 10.9685, -74.7813],
+            ['Cartagena', 'Bolívar', 10.3910, -75.4794], ['Bucaramanga', 'Santander', 7.1193, -73.1227],
+            ['Cúcuta', 'Norte de Santander', 7.8939, -72.5078], ['Pereira', 'Risaralda', 4.8133, -75.6961],
+            ['Manizales', 'Caldas', 5.0703, -75.5138], ['Armenia', 'Quindío', 4.5339, -75.6811],
+            ['Ibagué', 'Tolima', 4.4389, -75.2322], ['Villavicencio', 'Meta', 4.1420, -73.6266],
+            ['Tunja', 'Boyacá', 5.5353, -73.3678], ['Sogamoso', 'Boyacá', 5.7146, -72.9339],
+            ['Neiva', 'Huila', 2.9273, -75.2819], ['Santa Marta', 'Magdalena', 11.2408, -74.1990],
+            ['Buenaventura', 'Valle del Cauca', 3.8801, -77.0312], ['Pasto', 'Nariño', 1.2136, -77.2811],
+            ['Montería', 'Córdoba', 8.7479, -75.8814], ['Valledupar', 'Cesar', 10.4631, -73.2532]
+        ].map(([city, department, latitude, longitude]) => ({ city, department, latitude, longitude }));
+    }
+
     function alertReportFields(uiType) {
         const alertType = UI_TO_ALERT_TYPE[uiType] || 'ACCIDENTE';
         const highSeverity = uiType === 'danger' || uiType === 'landslide' || uiType === 'bridge';
@@ -412,6 +444,9 @@
         mapLoad,
         loadActions,
         roleAccess,
+        truckTypes,
+        truckTypeLabel,
+        cityCatalog,
         fleetStatus,
         towerHighlightsAlert,
         timeAgo,

@@ -18,8 +18,6 @@ export const SURFACES = {
     "js/views/loginView.js",
     "js/views/podModals.js",
     "js/views/publicTracking.js",
-    "js/notifications.js",
-    "js/messagingService.js",
     "js/app.js",
   ],
   driver: [

@@ -153,13 +153,13 @@ test("una API en el mismo origen tampoco se responde ni se guarda: /api/ queda f
   for (const cache of cacheStores.values()) {
     assert.ok(![...cache.entries.keys()].some((key) => String(key).includes("/api/")), "ninguna respuesta de /api/ queda guardada");
   }
-  assert.match(readFileSync("sw.js", "utf8"), /const VERSION = 'v22'/, "la versión sube para descartar las cachés que sí guardaron la API");
+  assert.match(readFileSync("sw.js", "utf8"), /const VERSION = 'v23'/, "la versión sube para descartar las cachés que sí guardaron la API");
 });
 
 test("panel.html y seguimiento.html van solo por red: ni se responden ni se guardan", async () => {
   const { handlers, cacheStores } = loadServiceWorker();
   await install(handlers);
-  const before = [...cacheStores.get("truckcar-shell-v22").entries.keys()].length;
+  const before = [...cacheStores.get("truckcar-shell-v23").entries.keys()].length;
   for (const url of [`${ORIGIN}/panel.html`, `${ORIGIN}/seguimiento.html`, `${ORIGIN}/seguimiento.html?track=abc.def`]) {
     for (const mode of ["navigate", "cors"]) {
       const event = fetchEvent(url, { mode });
@@ -167,13 +167,13 @@ test("panel.html y seguimiento.html van solo por red: ni se responden ni se guar
       assert.equal(event.responded, null, url + " (" + mode + ") no pasa por el Service Worker");
     }
   }
-  assert.equal([...cacheStores.get("truckcar-shell-v22").entries.keys()].length, before);
+  assert.equal([...cacheStores.get("truckcar-shell-v23").entries.keys()].length, before);
 });
 
 test("la navegación se guarda por ruta: otra página no sobrescribe la app del conductor ni se cruza sin red", async () => {
   const { handlers, context, cacheStores } = loadServiceWorker();
   await install(handlers);
-  const shell = cacheStores.get("truckcar-shell-v22").entries;
+  const shell = cacheStores.get("truckcar-shell-v23").entries;
   const page = (body, ok = true) => async () => ({ ok, body, clone() { return this; } });
   const navigate = async (path) => {
     const event = fetchEvent(ORIGIN + path, { mode: "navigate" });
@@ -206,12 +206,12 @@ test("la navegación se guarda por ruta: otra página no sobrescribe la app del 
 test("al cerrar sesión se limpia la caché: solo quedan los archivos estáticos de la app y las teselas", async () => {
   const { handlers, cacheStores, context } = loadServiceWorker();
   await install(handlers);
-  const shell = cacheStores.get("truckcar-shell-v22");
+  const shell = cacheStores.get("truckcar-shell-v23");
   await shell.put(`${ORIGIN}/api/v1/loads/mine`, "carga privada");
   await shell.put(`${ORIGIN}/reporte-privado.json`, "datos de la sesión");
   await shell.put("otra.html", "otra página");
   await shell.put(`${ORIGIN}/assets/vendor/leaflet/images/marker-icon.png`, "estático");
-  const runtime = await context.caches.open("truckcar-runtime-v22");
+  const runtime = await context.caches.open("truckcar-runtime-v23");
   await runtime.put("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css", "cdn");
   const tiles = await context.caches.open("truckcar-tiles-v2");
   await tiles.put(TILE, "tesela");
