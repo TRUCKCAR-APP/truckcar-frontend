@@ -194,7 +194,7 @@ test("renderCurrentView, endSession y loadAll no llaman a globales del conductor
   };
   const bodies = {
     renderCurrentView: method(appSrc, "    renderCurrentView(state) {", "    syncLiveTracking(state) {"),
-    endSession: method(appSrc, "    endSession() {", "    async submitLogin"),
+    endSession: method(appSrc, "    endSession({ keepStoredSession = false } = {}) {", "    async submitLogin"),
     loadAll: method(readFileSync("js/dataService.js", "utf8"), "        async loadAll() {", "        async refreshCoordinator() {")
   };
   const forbidden = new RegExp("\\b(" + SURFACE_GLOBALS.join("|") + ")\\b");

@@ -237,7 +237,7 @@ test("al cerrar sesión se limpia la caché: solo quedan los archivos estáticos
 
 test("la app avisa al Service Worker en cada fin de sesión, también cuando la sesión vence", () => {
   const app = readFileSync("js/app.js", "utf8");
-  const endSession = app.slice(app.indexOf("    endSession() {"), app.indexOf("    async submitLogin"));
+  const endSession = app.slice(app.indexOf("    endSession({ keepStoredSession = false } = {}) {"), app.indexOf("    async submitLogin"));
   assert.match(endSession, /this\.clearSessionCaches\(\)/);
   assert.match(app, /postMessage\(\{ type: 'TRUCKCAR_SESSION_ENDED' \}\)/);
   assert.match(readFileSync("sw.js", "utf8"), /const SESSION_ENDED = 'TRUCKCAR_SESSION_ENDED'/);

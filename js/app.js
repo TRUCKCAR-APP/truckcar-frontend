@@ -51,6 +51,8 @@ window.app = {
             }
         });
 
+        window.addEventListener('storage', (event) => this.onSessionStorageChange(event));
+
         const session = window.TruckCarApi.session;
         if (session.isActive()) {
             this.startSession(session.get());
@@ -67,6 +69,28 @@ window.app = {
         }
     },
 
+
+    onSessionStorageChange(event) {
+        if (event.key !== null && event.key !== window.TruckCarConfig.storageKeys.session) return;
+        const stored = window.TruckCarApi.session.get();
+        const state = window.store.state;
+        const user = state.currentUser;
+        if (!state.isAuthenticated) {
+            if (stored && window.TruckCarApi.session.isActive()) this.startSession(stored);
+            return;
+        }
+        if (!stored) {
+            this.endSession();
+            return;
+        }
+        const otherAccount = stored.role !== state.sessionRole || (user && stored.userId && user.id !== stored.userId);
+        if (otherAccount) {
+            this.endSession({ keepStoredSession: true });
+            this.startSession(stored);
+        } else {
+            this.scheduleSessionRefresh();
+        }
+    },
 
     loadDemoSession() {
         if (window.DemoSession) return Promise.resolve(window.DemoSession);
@@ -167,7 +191,7 @@ window.app = {
             .catch(() => { });
     },
 
-    endSession() {
+    endSession({ keepStoredSession = false } = {}) {
         this.clearSessionCaches();
         clearTimeout(this.sessionRefreshTimer);
         clearInterval(this.pollTimer);
@@ -175,7 +199,7 @@ window.app = {
         this.sessionEndHooks.forEach(hook => hook());
         window.TruckCarTelemetry.disconnect();
         window.TruckCarService.reset();
-        window.TruckCarApi.session.clear();
+        if (!keepStoredSession) window.TruckCarApi.session.clear();
         window.store.setState({
             isAuthenticated: false,
             currentUser: null,

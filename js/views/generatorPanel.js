@@ -62,7 +62,7 @@ window.GeneratorPanel = (function () {
         if (!String(d.cargoDescription || '').trim()) errors.cargoDescription = 'Describa la carga.';
         const weight = Number(d.weightTons);
         if (!(weight > 0)) errors.weightTons = 'Debe ser mayor a 0 t.';
-        if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) >= 0)) errors.volumeM3 = 'Volumen inválido.';
+        if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) > 0)) errors.volumeM3 = 'Debe ser mayor a 0 m³ o quedar vacío.';
         const from = findCity(d.originCity);
         const to = findCity(d.destinationCity);
         if (!from) errors.originCity = 'Elija una ciudad de la lista.';
@@ -104,7 +104,7 @@ window.GeneratorPanel = (function () {
              ${field('cargoDescription', 'Descripción de la carga', `<input name="cargoDescription" value="${esc(d.cargoDescription)}" maxlength="255" class="login-input w-full text-xs" placeholder="Ej. Cemento ensacado, 600 bultos" enterkeyhint="next">`, { ...opts, required: true })}
              <div class="grid grid-cols-2 gap-2">
                 ${field('weightTons', 'Peso (t)', `<input name="weightTons" type="number" inputmode="decimal" min="0.1" step="0.1" value="${esc(d.weightTons)}" class="login-input w-full text-xs" placeholder="30">`, { ...opts, required: true })}
-                ${field('volumeM3', 'Volumen (m³)', `<input name="volumeM3" type="number" inputmode="decimal" min="0" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">`, opts)}
+                ${field('volumeM3', 'Volumen (m³)', `<input name="volumeM3" type="number" inputmode="decimal" min="0.1" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">`, opts)}
              </div>
              ${field('requiredTruckType', 'Tipo de camión requerido', `<select name="requiredTruckType" class="login-input w-full text-xs">${window.TruckCarService.truckTypes().map(t => `<option value="${t.code}" ${t.code === d.requiredTruckType ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`, { ...opts, required: true })}`,
             `<datalist id="truckcar-cities">${cities().map(c => `<option value="${esc(c.city)}">${esc(c.department)}</option>`).join('')}</datalist>

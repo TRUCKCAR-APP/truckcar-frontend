@@ -359,3 +359,103 @@ test("el chat local y el registro de push se quitaron: el backend no tiene esos 
   assert.doesNotMatch(sources, /TruckCarMessaging|TruckCarNotifications|chatMessages|savePushToken|messagingService|notifications\.js/);
   assert.doesNotMatch(readFileSync("sw.js", "utf8"), /addEventListener\('push'/);
 });
+
+function apiClient(respond, { stored = null } = {}) {
+  const w = new JSDOM("<!doctype html><html><body></body></html>", { runScripts: "outside-only", url: "http://localhost:5500/" }).window;
+  const requests = [];
+  w.TruckCarConfig = { apiBaseUrl: "http://localhost:8000/api/v1", gatewayUrl: "http://localhost:8000", requestTimeoutMs: 5000, storageKeys: { session: "truckcar.session" } };
+  if (stored) w.localStorage.setItem("truckcar.session", JSON.stringify(stored));
+  w.fetch = async (url, options) => {
+    const request = { method: options.method, path: new URL(url).pathname.replace("/api/v1", ""), body: options.body ? JSON.parse(options.body) : null };
+    requests.push(request);
+    const { status = 200, body = null } = (await respond(request, w)) || {};
+    return { ok: status >= 200 && status < 300, status, headers: { get: (name) => name === "Content-Type" ? "application/json" : null },
+      text: async () => body === null ? "" : JSON.stringify(body) };
+  };
+  w.eval(readFileSync("js/api.js", "utf8"));
+  return { w, api: w.TruckCarApi, requests };
+}
+
+test("un 400 de validación sin message muestra los mensajes de details, no solo «Validación fallida»", async () => {
+  const body = { timestamp: "2026-11-12T10:00:00", status: 400, error: "Validación fallida",
+    details: { title: "El título de la alerta es obligatorio", severity: "La severidad es obligatoria" } };
+  const { api } = apiClient(() => ({ status: 400, body }));
+  const error = await api.alerts.create({}).catch((e) => e);
+  assert.equal(error.status, 400);
+  assert.match(error.message, /El título de la alerta es obligatorio/);
+  assert.match(error.message, /La severidad es obligatoria/);
+  assert.doesNotMatch(error.message, /Validación fallida/);
+
+  const withMessage = apiClient(() => ({ status: 400, body: { status: 400, error: "Validación de datos fallida",
+    message: "El volumen debe ser mayor a 0 m³", details: { volumeM3: "El volumen debe ser mayor a 0 m³" } } }));
+  const loadError = await withMessage.api.loads.publish({}).catch((e) => e);
+  assert.equal(loadError.message, "El volumen debe ser mayor a 0 m³");
+});
+
+test("expiresIn llega en segundos: una sesión de 900 s vence a los 15 minutos, no en menos de un segundo", async () => {
+  const opaque = { accessToken: "token-sin-claims", refreshToken: "r1", tokenType: "Bearer", expiresIn: 900 };
+  const { api } = apiClient(() => ({ body: opaque }));
+  const before = Date.now();
+  const session = await api.auth.login("ana@truckcar.co", "secreto123");
+  assert.ok(session.expiresAt >= before + 900 * 1000 - 50 && session.expiresAt <= Date.now() + 900 * 1000 + 50);
+  assert.equal(api.session.isActive(), true);
+});
+
+test("si otra pestaña ya renovó la sesión, esta usa el token nuevo y no gasta el refresh token viejo", async () => {
+  const old = { accessToken: "a1", refreshToken: "r1", expiresAt: Date.now() - 1000, role: "CONDUCTOR", userId: "driver-ana" };
+  const renewed = { accessToken: "a2", refreshToken: "r2", expiresAt: Date.now() + 900000, role: "CONDUCTOR", userId: "driver-ana" };
+  const { w, api, requests } = apiClient(() => ({ body: [] }), { stored: old });
+  let release;
+  Object.defineProperty(w.navigator, "locks", { configurable: true, value: {
+    request: (name, task) => new Promise((resolve) => { release = () => resolve(task()); })
+  } });
+  const pending = api.ensureFreshSession();
+  w.localStorage.setItem("truckcar.session", JSON.stringify(renewed));
+  release();
+  const session = await pending;
+  assert.equal(session.accessToken, "a2");
+  assert.deepEqual(requests, [], "no se llama a /auth/refresh");
+});
+
+test("el volumen es opcional, pero si se escribe debe ser mayor que 0 antes de enviar la carga", () => {
+  const { w } = service();
+  w.PodUI = { formatDate: () => "" };
+  w.eval(readFileSync("js/views/generatorPanel.js", "utf8"));
+  const ok = { cargoDescription: "Café", weightTons: "28", volumeM3: "", originCity: "Bogotá", destinationCity: "Cali", offeredBudget: "3000000" };
+  assert.equal(w.GeneratorPanel.validate(ok).volumeM3, undefined);
+  assert.equal(w.GeneratorPanel.validate({ ...ok, volumeM3: "12.5" }).volumeM3, undefined);
+  assert.match(w.GeneratorPanel.validate({ ...ok, volumeM3: "0" }).volumeM3, /mayor a 0/);
+  assert.match(w.GeneratorPanel.validate({ ...ok, volumeM3: "-3" }).volumeM3, /mayor a 0/);
+});
+
+test("la sesión se comparte entre pestañas: cerrar o iniciar sesión en una se refleja en la otra", () => {
+  const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only", url: "http://localhost:5500/" }).window;
+  const calls = [];
+  let stored = null;
+  const state = { isAuthenticated: true, sessionRole: "CONDUCTOR", currentUser: { id: "driver-ana" } };
+  w.store = { get state() { return state; }, setState: (patch) => Object.assign(state, patch) };
+  w.TruckCarConfig = { storageKeys: { session: "truckcar.session" } };
+  w.TruckCarApi = { session: { get: () => stored, isActive: () => Boolean(stored), clear: () => calls.push("clear") } };
+  w.eval(readFileSync("js/app.js", "utf8"));
+  w.app.endSession = (options = {}) => { calls.push("end" + (options.keepStoredSession ? ":keep" : "")); state.isAuthenticated = false; };
+  w.app.startSession = (session) => { calls.push("start:" + session.role); state.isAuthenticated = true; state.sessionRole = session.role; };
+  w.app.scheduleSessionRefresh = () => calls.push("reschedule");
+
+  w.app.onSessionStorageChange({ key: "otra.clave" });
+  assert.deepEqual(calls, []);
+  w.app.onSessionStorageChange({ key: "truckcar.session" });
+  assert.deepEqual(calls, ["end"], "otra pestaña cerró la sesión");
+
+  stored = { accessToken: "a2", role: "COORDINADOR", userId: "coord-1" };
+  w.app.onSessionStorageChange({ key: "truckcar.session" });
+  assert.deepEqual(calls, ["end", "start:COORDINADOR"], "otra pestaña inició sesión");
+
+  state.currentUser = { id: "coord-1" };
+  stored = { accessToken: "a3", role: "COORDINADOR", userId: "coord-1" };
+  w.app.onSessionStorageChange({ key: "truckcar.session" });
+  assert.deepEqual(calls, ["end", "start:COORDINADOR", "reschedule"], "otra pestaña renovó el token de la misma cuenta");
+
+  stored = { accessToken: "b1", role: "GENERADOR", userId: "gen-1" };
+  w.app.onSessionStorageChange({ key: null });
+  assert.deepEqual(calls.slice(3), ["end:keep", "start:GENERADOR"], "otra cuenta: se cambia sin borrar la sesión nueva");
+});

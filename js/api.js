@@ -31,7 +31,7 @@
             const value = {
                 accessToken: authResponse.accessToken,
                 refreshToken: authResponse.refreshToken,
-                expiresAt: claims.exp ? claims.exp * 1000 : Date.now() + (authResponse.expiresIn || 0),
+                expiresAt: claims.exp ? claims.exp * 1000 : Date.now() + (authResponse.expiresIn || 0) * 1000,
                 userId: claims.sub,
                 email: claims.email,
                 role: claims.role
@@ -59,14 +59,22 @@
     const REFRESH_MARGIN_MS = 60 * 1000;
     let refreshInFlight = null;
 
+    function withSessionLock(task) {
+        const locks = typeof navigator !== 'undefined' && navigator.locks;
+        return locks && typeof locks.request === 'function' ? locks.request('truckcar.session.refresh', task) : task();
+    }
+
     function refreshSession() {
         if (!refreshInFlight) {
-            const current = session.get();
-            refreshInFlight = (current && current.refreshToken
-                ? request('POST', '/auth/refresh', { body: { refreshToken: current.refreshToken }, auth: false })
-                    .then(response => session.save(response))
-                : Promise.reject(new ApiError('No hay sesión para renovar', { status: 401 })))
-                .finally(() => { refreshInFlight = null; });
+            const before = session.get();
+            refreshInFlight = withSessionLock(async () => {
+                const current = session.get();
+                if (!current || !current.refreshToken) throw new ApiError('No hay sesión para renovar', { status: 401 });
+                const renewedElsewhere = before && current.accessToken !== before.accessToken && current.expiresAt > Date.now();
+                if (renewedElsewhere) return current;
+                const response = await request('POST', '/auth/refresh', { body: { refreshToken: current.refreshToken }, auth: false });
+                return session.save(response);
+            }).finally(() => { refreshInFlight = null; });
         }
         return refreshInFlight;
     }
@@ -112,9 +120,17 @@
         return url.toString();
     }
 
+    function validationDetails(body) {
+        const details = body && body.details;
+        if (!details || typeof details !== 'object') return [];
+        return Object.values(details).filter(value => typeof value === 'string' && value.trim());
+    }
+
     function extractErrorMessage(body, status) {
         if (body && typeof body === 'object') {
             if (body.message) return body.message;
+            const details = validationDetails(body);
+            if (details.length) return details.join('. ');
             if (body.reasonDetails) return body.reasonDetails;
             if (body.error && typeof body.error === 'string') return body.error;
             if (body.errors && typeof body.errors === 'object') {
