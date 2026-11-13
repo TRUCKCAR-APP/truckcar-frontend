@@ -77,6 +77,11 @@
         driverPollingMs: 10000,
         // Plazo para responder una propuesta NOTIFIED (Load-Allocation TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES).
         assignmentResponseMinutes: 5,
+        // Intentos de asignación antes de quedar sin conductor (Load-Allocation TRUCKCAR_ASSIGNMENT_MAX_ATTEMPTS).
+        assignmentMaxAttempts: 5,
+        // "Mis envíos": refresco de respaldo. Con la telemetría en línea los estados llegan por WebSocket (KAN-47).
+        shipmentsPollingOnlineMs: 60000,
+        shipmentsPollingOfflineMs: 10000,
         storageKeys: {
             session: 'truckcar.session'
         }

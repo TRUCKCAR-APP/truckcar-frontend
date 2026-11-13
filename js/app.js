@@ -272,6 +272,12 @@ window.app = {
         this.endSession();
     },
 
+    /** Refresco de respaldo de "Mis envíos": espaciado si los estados ya llegan en vivo. */
+    shipmentsPollingMs() {
+        const config = window.TruckCarConfig;
+        return window.TruckCarTelemetry.isOnline ? config.shipmentsPollingOnlineMs : config.shipmentsPollingOfflineMs;
+    },
+
     schedulePolling() {
         clearInterval(this.pollTimer);
         this.pollTimer = setInterval(async () => {
@@ -280,7 +286,8 @@ window.app = {
             if (!state.isAuthenticated || state.activeRole !== 'coordinator' || typing) return;
             await window.TruckCarService.refreshCoordinator();
         }, window.TruckCarConfig.pollingIntervalMs);
-        // "Mis envíos" se refresca más seguido (solo cargas propias y flota) para seguir los cambios de estado.
+        // "Mis envíos": los cambios de estado llegan en vivo por /topic/trip.{id}.status (KAN-47); el polling queda de
+        // respaldo, cada 60 s con la telemetría en línea y cada 10 s si está reconectando o sin conexión.
         clearInterval(this.shipmentsTimer);
         this.shipmentsTimer = setInterval(async () => {
             const state = window.store.state;
@@ -289,8 +296,10 @@ window.app = {
             const onShipments = state.activeRole === 'generator'
                 || (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments');
             if (!state.isAuthenticated || !onShipments || typing || podOpen) return;
+            // Margen de 1 s: el temporizador no es exacto y sin él se saltaría un tick de cada dos sin conexión.
+            if (Date.now() - (window.generatorCtrl.lastRefreshAt() || 0) < this.shipmentsPollingMs() - 1000) return;
             await window.generatorCtrl.refresh(true);
-        }, 10000);
+        }, window.TruckCarConfig.shipmentsPollingOfflineMs);
         // El conductor sin viaje en curso se entera de una propuesta sin tocar nada: tiene minutos para responder.
         clearInterval(this.driverTimer);
         this.driverTimer = setInterval(() => this.pollDriverProposals(), window.TruckCarConfig.driverPollingMs);
@@ -494,8 +503,12 @@ window.app = {
                 if (window.mapCtrl.isMountedOn('generator-map-container')) window.mapCtrl.moveShipmentTruck(truck);
                 window.GeneratorPanel.updateTruckLine(truck);
             });
+            // Cambios de estado en vivo (KAN-47) de los envíos que aún pueden cambiar, más el que está abierto.
+            live.followStatuses(window.GeneratorPanel.liveStatusLoadIds(state),
+                (msg) => window.generatorCtrl.applyLiveStatus(msg));
         } else {
             live.unfollowTrips();
+            live.unfollowStatuses();
         }
 
         // Bloqueos de la IA: el conductor con un viaje en curso recalcula si le afectan; la torre recibe el aviso.

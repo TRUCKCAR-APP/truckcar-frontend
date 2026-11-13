@@ -496,6 +496,8 @@
     // =================================================================== receptores (torre y generador)
     let fleetUnsubscribe = null;
     const tripSubscriptions = new Map();   // loadId -> unsubscribe
+    const statusSubscriptions = new Map(); // loadId -> unsubscribe (cambios de estado, KAN-47)
+    let statusHandler = null;
     let blockageUnsubscribe = null;
     let blockageHandler = null;
 
@@ -575,6 +577,33 @@
         },
 
         /**
+         * "Mis envíos" (KAN-47): cambios de estado de cada carga abierta por /topic/trip.{id}.status (aceptada, en ruta,
+         * rechazada, sin conductores...). fleets-drivers los reenvía desde los eventos de Load-Allocation, así la línea
+         * de tiempo no espera al polling. Mismo permiso que las posiciones: el generador dueño o la torre de control.
+         * Llamar de nuevo ajusta las suscripciones y cambia el manejador.
+         */
+        followStatuses(loadIds, onStatus) {
+            statusHandler = onStatus;
+            const wantedIds = new Set(loadIds);
+            statusSubscriptions.forEach((unsubscribe, loadId) => {
+                if (!wantedIds.has(loadId)) {
+                    unsubscribe();
+                    statusSubscriptions.delete(loadId);
+                }
+            });
+            wantedIds.forEach(loadId => {
+                if (statusSubscriptions.has(loadId)) return;
+                statusSubscriptions.set(loadId, TruckCarTelemetry.subscribe('/topic/trip.' + loadId + '.status', (msg) => {
+                    if (msg && msg.loadId != null && statusHandler) statusHandler(msg);
+                }, () => statusSubscriptions.delete(loadId)));
+            });
+        },
+
+        unfollowStatuses() {
+            this.followStatuses([], null);
+        },
+
+        /**
          * Bloqueos viales que la IA de route-ai-agent detectó en las alertas de la comunidad (fleets-drivers los
          * reenvía por /topic/road-blockages). El conductor recalcula si caen en su ruta; la torre los ve como aviso.
          * Una sola suscripción por sesión: llamar de nuevo solo cambia el manejador.
@@ -596,6 +625,7 @@
         stopAll() {
             this.unfollowFleet();
             this.unfollowTrips();
+            this.unfollowStatuses();
             this.unfollowBlockages();
         }
     };
