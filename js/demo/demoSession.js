@@ -78,6 +78,7 @@ window.DemoSession = {
                 maxPayload: 34.0,
                 phone: '3104567890',
                 status: 'EN_TRANSITO',
+                backendStatus: 'ACTIVO',
                 speed: 62,
                 hoursActive: '2.5h',
                 lastCheckin: 'Hace 1 min',
@@ -96,7 +97,8 @@ window.DemoSession = {
                 tareWeight: 12.0,
                 maxPayload: 22.0,
                 phone: '3157891234',
-                status: 'DISPONIBLE',
+                status: 'ACTIVO',
+                backendStatus: 'ACTIVO',
                 speed: 0,
                 hoursActive: '0h',
                 lastCheckin: 'Hace 5 min',
@@ -115,6 +117,7 @@ window.DemoSession = {
                 maxPayload: 35.0,
                 phone: '3189998877',
                 status: 'DESCANSO',
+                backendStatus: 'ACTIVO',
                 speed: 0,
                 hoursActive: '8.5h',
                 lastCheckin: 'Hace 12 min',
@@ -149,7 +152,7 @@ window.DemoSession = {
                 corridor: 'Bogotá – Fusagasugá km 42',
                 severity: 'ALTA',
                 badge: 'Derrumbe',
-                verified: true,
+                validated: true,
                 timeAgo: 'Hace 15 min',
                 coords: [4.425, -74.28]
             },
@@ -160,7 +163,7 @@ window.DemoSession = {
                 corridor: 'La Línea km 18',
                 severity: 'ALTA',
                 badge: 'Gálibo Bajo',
-                verified: true,
+                validated: true,
                 timeAgo: 'Hace 40 min',
                 coords: [4.46, -75.35]
             }

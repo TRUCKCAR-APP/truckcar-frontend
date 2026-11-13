@@ -291,16 +291,9 @@ class MapController {
     async fetchRealRoadGeometry(waypoints, routeKey) {
         try {
             this.isFetchingRoute = true;
-            const coordString = waypoints.map(w => w.coords[1] + ',' + w.coords[0]).join(';');
-            const url = 'https://router.project-osrm.org/route/v1/driving/' + coordString + '?overview=full&geometries=geojson';
-
-            const res = await fetch(url);
-            if (!res.ok) return;
-            const data = await res.json();
-
-            if (data.routes && data.routes[0] && data.routes[0].geometry && this.cachedRouteKey === routeKey) {
-                const roadCoords = data.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
-                this.cachedOptimalRoadGeometry = roadCoords;
+            const route = await window.TruckCarApi.routing.drivingRoute(waypoints.map(w => w.coords));
+            if (this.cachedRouteKey === routeKey) {
+                this.cachedOptimalRoadGeometry = route.geometry.coordinates.map(pt => [pt[1], pt[0]]);
                 if (this.optimalRouteLayer && this.map) this.renderRoutes();
             }
         } catch (err) {
@@ -327,8 +320,9 @@ class MapController {
             });
 
             L.marker(alert.coords, { icon: alertIcon })
-                .bindPopup('<b>' + window.ui.escape(alert.title) + '</b><br>' + window.ui.escape(alert.description)
-                    + '<br><span class="text-xs">' + window.ui.escape(alert.upvotes) + ' confirmaciones</span>')
+                .bindPopup('<b>' + window.ui.escape(alert.title) + '</b>' + (alert.description ? '<br>' + window.ui.escape(alert.description) : '')
+                    + '<br><span class="text-xs">' + window.ui.escape(typeof alert.upvotes === 'number'
+                        ? alert.upvotes + ' confirmaciones' : 'Confirmaciones: ' + window.ui.NOT_AVAILABLE) + '</span>')
                 .addTo(this.alertMarkersLayer);
         });
     }

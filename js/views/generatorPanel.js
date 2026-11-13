@@ -79,7 +79,6 @@ window.GeneratorPanel = (function () {
         if (!String(d.cargoDescription || '').trim()) errors.cargoDescription = 'Describa la carga.';
         const weight = Number(d.weightTons);
         if (!(weight > 0)) errors.weightTons = 'Debe ser mayor a 0 t.';
-        else if (weight > 60) errors.weightTons = 'Máximo 60 t por vehículo.';
         if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) >= 0)) errors.volumeM3 = 'Volumen inválido.';
         if (!findCity(d.originCity)) errors.originCity = 'Elija una ciudad de la lista.';
         if (!findCity(d.destinationCity)) errors.destinationCity = 'Elija una ciudad de la lista.';
@@ -242,6 +241,7 @@ window.GeneratorPanel = (function () {
         const status = STATUS[statusKey(load)];
         const cancelled = load.status === 'CANCELLED';
         const assigned = ['ASSIGNED', 'IN_TRANSIT', 'DELIVERED'].includes(load.status);
+        const allowed = window.TruckCarService.loadActions(load);
         return `
             <div class="card p-4 flex flex-col gap-3 overflow-y-auto">
                 <div class="flex items-start justify-between gap-2">
@@ -253,7 +253,7 @@ window.GeneratorPanel = (function () {
                     ${badge(load)}
                 </div>
                 <div id="generator-map-container" class="h-44 rounded-xl overflow-hidden border border-slate-800 shrink-0" aria-label="Mapa del envío"></div>
-                ${load.status === 'ASSIGNED' || load.status === 'IN_TRANSIT' ? `
+                ${allowed.trackTruck ? `
                     <div class="flex items-center justify-between gap-2 text-[10px]">
                         <p id="shipment-truck-line" class="text-slate-200 truncate">${truckLine(truck)}</p>
                         <span data-telemetry-status class="shrink-0 flex items-center gap-1 text-slate-400"></span>
@@ -274,15 +274,15 @@ window.GeneratorPanel = (function () {
                                 load.podReceiverName ? 'recibió ' + load.podReceiverName : '')}
                 </ol>
                 <div class="flex flex-col gap-2 pt-1">
-                    ${load.status === 'DELIVERED' ? `
+                    ${allowed.viewProofOfDelivery ? `
                         <button onclick="window.generatorCtrl.showProofOfDelivery(${load.backendId})" class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 text-graphite-950 rounded-xl text-xs font-bold">
                             <i class="fas fa-file-signature"></i> Ver prueba de entrega (POD)
                         </button>` : ''}
-                    ${load.status !== 'CANCELLED' ? `
+                    ${allowed.shareTracking ? `
                         <button onclick="window.generatorCtrl.shareTracking(${load.backendId})" class="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold">
                             <i class="fas fa-link"></i> Generar enlace de seguimiento público
                         </button>` : ''}
-                    ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
+                    ${allowed.cancel ? `
                         <button onclick="window.generatorCtrl.cancel(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white border border-slate-700 rounded-xl text-xs font-bold">
                             <i class="fas ${state.busyAction === 'cancel' ? 'fa-spinner fa-spin' : 'fa-ban'}"></i> Cancelar envío
                         </button>` : ''}
@@ -309,7 +309,7 @@ window.GeneratorPanel = (function () {
     }
 
     function truckFor(load) {
-        if (!load || !load.assignedDriverId || !['ASSIGNED', 'IN_TRANSIT'].includes(load.status)) return null;
+        if (!load || !load.assignedDriverId || !window.TruckCarService.loadActions(load).trackTruck) return null;
         const tracked = (window.TruckCarData.shipmentTrucks || {})[load.assignedDriverId];
         return tracked || (window.TruckCarData.fleetVehicles || []).find(t => t.driverId === load.assignedDriverId) || null;
     }
@@ -319,7 +319,7 @@ window.GeneratorPanel = (function () {
         const loads = window.TruckCarData.publishedLoads || [];
         const load = selectedLoad(state);
         const user = state.currentUser;
-        const active = loads.filter(l => ['ASSIGNED', 'IN_TRANSIT'].includes(l.status)).length;
+        const active = loads.filter(l => window.TruckCarService.loadActions(l).trackTruck).length;
         const delivered = loads.filter(l => l.status === 'DELIVERED').length;
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
@@ -333,7 +333,7 @@ window.GeneratorPanel = (function () {
                             <p class="text-xs text-slate-400 truncate flex items-center gap-2"><span data-network-status class="lg:hidden"></span> Última ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
                         </div>
                     </div>
-                    ${state.sessionRole === 'GENERADOR' ? '' : window.CoordinatorPanel.renderTabs(state)}
+                    ${window.TruckCarService.roleAccess(state.sessionRole).shipmentsOnly ? '' : window.CoordinatorPanel.renderTabs(state)}
                     <div class="flex items-center gap-3">
                         <div class="px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                             <span class="text-xs text-slate-400 font-medium block">En curso</span>

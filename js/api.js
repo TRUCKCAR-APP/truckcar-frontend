@@ -265,6 +265,19 @@
         });
     }
 
+    async function drivingRoute(points, { steps = false } = {}) {
+        const url = config.routingUrl + points.map(c => c[1] + ',' + c[0]).join(';')
+            + '?overview=full&geometries=geojson' + (steps ? '&steps=true' : '');
+        const response = await fetch(url);
+        if (!response.ok) throw new ApiError('El servicio de rutas respondió ' + response.status, { status: response.status, path: 'routing' });
+        const json = await response.json();
+        const best = json.routes && json.routes[0];
+        if (!best || !best.geometry || !best.geometry.coordinates) {
+            throw new ApiError('El servicio de rutas no devolvió una ruta', { status: 502, path: 'routing' });
+        }
+        return best;
+    }
+
     window.TruckCarApi = {
         ApiError,
         session,
@@ -324,6 +337,10 @@
             matchLoad: (loadId) => http.post('/fleet-allocation/match/' + enc(loadId)),
             history: (loadId) => http.get('/fleet-allocation/history/' + enc(loadId)),
             optimize: (request) => http.post('/fleet-allocation/optimize', request)
+        },
+
+        routing: {
+            drivingRoute
         },
 
         routes: {

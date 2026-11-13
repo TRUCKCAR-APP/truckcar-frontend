@@ -36,14 +36,17 @@ function browser({ gps = null } = {}) {
   } });
   w.eval(readFileSync("js/ui.js", "utf8"));
   w.ui.toast = (title, type, options) => { (w.toasts = w.toasts || []).push({ title, type, ...options }); };
-  w.TruckCarService = { timeAgo: (iso) => "visto " + iso, formatHours: (hours) => hours + " h" };
+  w.eval(readFileSync("js/dataService.js", "utf8"));
+  Object.assign(w.TruckCarService, { timeAgo: (iso) => "visto " + iso, formatHours: (hours) => hours + " h" });
   w.store = { state: { driverScreen: "navigation" } };
   w.voiceEngine = { speak: (text) => spoken.push(text) };
   w.TruckCarData = {
     routes: { planForLoadId: 30, optimal: { id: "PLAN-9", waypoints: [{ coords: [4.6, -74.0] }, { coords: [4.61, -73.99] }] } }
   };
-  w.TruckCarConfig = { gatewayUrl: "http://localhost:8000" };
-  w.TruckCarApi = { session: { get: () => ({ accessToken: "t" }) }, ensureFreshSession: async () => ({}),
+  w.TruckCarConfig = { gatewayUrl: "http://localhost:8000", apiBaseUrl: "http://localhost:8000/api/v1", requestTimeoutMs: 5000,
+    routingUrl: "https://router.project-osrm.org/route/v1/driving/", storageKeys: { session: "truckcar.session" } };
+  w.eval(readFileSync("js/api.js", "utf8"));
+  w.TruckCarApi = { routing: w.TruckCarApi.routing, session: { get: () => ({ accessToken: "t" }) }, ensureFreshSession: async () => ({}),
     http: { post: async () => ({ ticket: "00000000-0000-4000-8000-000000000000", expiresInSeconds: 30 }) } };
   w.WebSocket = class { constructor() { this.readyState = 0; } close() {} };
   w.WebSocket.OPEN = 1;

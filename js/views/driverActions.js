@@ -88,7 +88,7 @@ window.DriverActions = (function () {
                     tile.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Enviando…</span>';
                     try {
                         const alert = await window.TruckCarService.reportAlert(report.type,
-                            detail || report.label + ' reportado desde la cabina.', coords);
+                            detail, coords);
                         window.Native.haptic('success');
                         tile.classList.add('is-sent');
                         tile.innerHTML = icon('check-circle-fill') + '<span>Reportado</span>';

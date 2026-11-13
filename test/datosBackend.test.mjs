@@ -211,3 +211,117 @@ test("un bloqueo de /topic/road-blockages recarga las alertas y pide un plan nue
   assert.deepEqual(calls, ["alerts", "plan"]);
   assert.equal(data.roadBlockages.length, 1);
 });
+
+const LOADS_MINE = [
+  { id: 41, status: "AVAILABLE", assignmentStatus: "NOTIFIED", assignedDriverId: "driver-ana", originCity: "Cali", destinationCity: "Pasto",
+    assignedAt: "2026-11-12T11:00:00", assignmentStatusChangedAt: "2026-11-12T11:00:05" },
+  { id: 30, status: "IN_TRANSIT", assignmentStatus: "ACCEPTED", assignedDriverId: "driver-ana", originCity: "Bogotá", destinationCity: "Ibagué",
+    assignedAt: "2026-11-12T08:00:00", tripStartedAt: "2026-11-12T08:30:00" }
+];
+
+const ROAD_ALERT = {
+  id: 55, clientAlertId: null, driverId: "driver-luis", driverName: null, alertType: "DERRUMBE", severity: "MEDIA",
+  title: "Derrumbe en el km 42", description: null, roadCorridor: "Bogotá - Girardot", maxClearanceMeters: null,
+  latitude: 4.42, longitude: -74.3, confirmationsCount: 5, isActive: true, reportedAt: "2026-11-12T09:00:00",
+  syncedAt: null, resolvedAt: null, resolvedBy: null, resolutionNotes: null
+};
+
+test("la carga vigente del conductor es la que fleets-drivers marca en currentLoadId, no un orden calculado en el front", async () => {
+  const { data, service: s } = service({ api: {
+    fleet: { getDriver: async () => DRIVER_STATE },
+    loads: { mine: async () => LOADS_MINE }
+  } });
+  await s.loadDriverProfile();
+  await s.loadDriverAssignment();
+  assert.equal(data.activeLoadOrder.backendId, 30, "currentLoadId = 30");
+
+  data.currentDriver.currentLoadId = null;
+  await s.loadDriverAssignment();
+  assert.equal(data.activeLoadOrder.backendId, 41, "sin currentLoadId se toma la primera en el orden de /loads/mine");
+});
+
+test("el estado de la flota sale de restRequiredAlert, currentLoadStatus y status; la velocidad no decide nada", () => {
+  const { service: s } = service();
+  assert.equal(s.fleetStatus({ status: "ACTIVO", restRequiredAlert: false, currentLoadStatus: null, currentSpeedKmH: 80 }), "ACTIVO");
+  assert.equal(s.fleetStatus({ status: "ACTIVO", restRequiredAlert: false, currentLoadStatus: "IN_TRANSIT", currentSpeedKmH: 0 }), "EN_TRANSITO");
+  assert.equal(s.fleetStatus({ status: "ACTIVO", restRequiredAlert: false, currentLoadStatus: "ASSIGNED" }), "CON_CARGA");
+  assert.equal(s.fleetStatus({ status: "ACTIVO", restRequiredAlert: true, currentLoadStatus: "IN_TRANSIT" }), "DESCANSO");
+  assert.equal(s.fleetStatus({ status: "INACTIVO" }), "INACTIVO");
+  assert.equal(s.fleetStatus({}), null);
+});
+
+test("las alertas no inventan validación, descripción, autor ni confirmaciones", async () => {
+  const { w, data, service: s } = service({ api: { alerts: { listActive: async () => [ROAD_ALERT, { ...ROAD_ALERT, id: 56, confirmationsCount: null }] } } });
+  await s.loadAlerts();
+  const [second, first] = data.communityAlerts;
+  assert.equal(first.validated, null, "RoadAlertResponse no trae validated: 5 confirmaciones no la validan en el front");
+  assert.equal(first.description, null);
+  assert.equal(first.author, null);
+  assert.equal(first.upvotes, 5);
+  assert.equal(second.upvotes, null);
+  assert.equal(s.towerHighlightsAlert(first), false);
+  assert.equal(s.towerHighlightsAlert({ ...first, severity: "CRITICA" }), true);
+  assert.equal(s.towerHighlightsAlert({ ...first, validated: true }), true);
+
+  w.OfflineQueue = { status: () => ({ pending: 0 }) };
+  const screen = text(driverScreens(w).renderAlertsScreen({ alertFilter: "all", dataStatus: { errors: {} } }));
+  assert.match(screen, /5 confirmaciones\s*Validación: No disponible/);
+  assert.match(screen, /Confirmaciones: No disponible/);
+  assert.doesNotMatch(screen, /Validada|Red TruckCar|Corredor Bogotá/);
+});
+
+test("el reporte envía el tipo, la severidad y el título que exige Community-Alerts y no inventa la descripción", async () => {
+  const sent = [];
+  const { w, data, service: s } = service({ api: { alerts: {
+    create: async (alert) => { sent.push(alert); return { ...ROAD_ALERT, ...alert, id: 60, confirmationsCount: 1 }; },
+    listActive: async () => []
+  } } });
+  w.OfflineQueue = { isOffline: () => false, isConnectivityError: () => false };
+  data.currentDriver = { name: "Ana Ruiz" };
+  await s.reportAlert("landslide", "", [4.42, -74.3]);
+  await s.reportAlert("police", "Retén antes del peaje", [4.5, -74.4]);
+  assert.equal(sent[0].alertType, "DERRUMBE");
+  assert.equal(sent[0].severity, "ALTA");
+  assert.equal(sent[0].title, "Derrumbe");
+  assert.equal(sent[0].description, null, "sin detalle del conductor no se envía un texto inventado");
+  assert.equal(sent[1].alertType, "RETEN");
+  assert.equal(sent[1].severity, "MEDIA");
+  assert.equal(sent[1].description, "Retén antes del peaje");
+});
+
+test("las acciones de una carga se deciden en un solo lugar según status y assignmentStatus", () => {
+  const { service: s } = service();
+  const on = (load) => Object.entries(s.loadActions(load)).filter(([, allowed]) => allowed).map(([name]) => name).sort();
+  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: null }), ["cancel", "requestMatching", "shareTracking"]);
+  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "PROPOSED" }), ["awaitNotification", "cancel", "shareTracking"]);
+  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "NOTIFIED" }), ["cancel", "respond", "shareTracking"]);
+  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "UNASSIGNED_NO_DRIVERS" }), ["cancel", "requestMatching", "shareTracking"]);
+  assert.deepEqual(on({ status: "ASSIGNED", assignmentStatus: "ACCEPTED" }), ["cancel", "navigate", "shareTracking", "startTrip", "trackTruck"]);
+  assert.deepEqual(on({ status: "IN_TRANSIT", assignmentStatus: "ACCEPTED" }), ["deliver", "navigate", "shareTracking", "trackTruck", "transmitPosition"]);
+  assert.deepEqual(on({ status: "DELIVERED", assignmentStatus: "ACCEPTED" }), ["shareTracking", "viewProofOfDelivery"]);
+  assert.deepEqual(on({ status: "CANCELLED", assignmentStatus: "ACCEPTED" }), []);
+});
+
+test("lo que cada rol puede abrir se decide en un solo lugar", () => {
+  const { service: s } = service();
+  assert.deepEqual({ ...s.roleAccess("CONDUCTOR") }, { home: "driver", controlTower: false, driver: true, shipmentsOnly: false, roadBlockages: true });
+  assert.deepEqual({ ...s.roleAccess("GENERADOR") }, { home: "generator", controlTower: false, driver: false, shipmentsOnly: true, roadBlockages: false });
+  for (const role of ["COORDINADOR", "ADMIN"]) {
+    assert.deepEqual({ ...s.roleAccess(role) }, { home: "coordinator", controlTower: true, driver: false, shipmentsOnly: false, roadBlockages: true });
+  }
+});
+
+test("la ruta por carretera se pide en un solo punto del front, con la URL de la configuración", async () => {
+  const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only", url: "http://localhost:5500/" }).window;
+  const urls = [];
+  w.TruckCarConfig = { apiBaseUrl: "http://localhost:8000/api/v1", gatewayUrl: "http://localhost:8000", requestTimeoutMs: 5000,
+    routingUrl: "https://rutas.example.test/route/v1/driving/", storageKeys: { session: "truckcar.session" } };
+  w.fetch = async (url) => { urls.push(String(url)); return { ok: true, json: async () => ({ routes: [{ geometry: { coordinates: [[-74, 4.6], [-73.99, 4.61]] }, legs: [] }] }) }; };
+  w.eval(readFileSync("js/api.js", "utf8"));
+  const route = await w.TruckCarApi.routing.drivingRoute([[4.6, -74], [4.61, -73.99]], { steps: true });
+  assert.equal(urls[0], "https://rutas.example.test/route/v1/driving/-74,4.6;-73.99,4.61?overview=full&geometries=geojson&steps=true");
+  assert.equal(route.geometry.coordinates.length, 2);
+  for (const file of ["js/navigation.js", "js/mapController.js", "js/telemetry.js"]) {
+    assert.doesNotMatch(readFileSync(file, "utf8"), /router\.project-osrm|fetch\(/, file + " no llama al servicio de rutas por su cuenta");
+  }
+});

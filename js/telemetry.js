@@ -251,14 +251,8 @@
         const guided = window.RouteGuidance && window.RouteGuidance.route;
         if (guided && guided.geometry.length > 1) return guided.geometry;
         try {
-            const url = 'https://router.project-osrm.org/route/v1/driving/'
-                + waypoints.map(c => c[1] + ',' + c[0]).join(';') + '?overview=full&geometries=geojson';
-            const response = await fetch(url);
-            if (response.ok) {
-                const json = await response.json();
-                const coords = json.routes && json.routes[0] && json.routes[0].geometry.coordinates;
-                if (coords && coords.length > 1) return coords.map(pt => [pt[1], pt[0]]);
-            }
+            const best = await api.routing.drivingRoute(waypoints);
+            if (best.geometry.coordinates.length > 1) return best.geometry.coordinates.map(pt => [pt[1], pt[0]]);
         } catch (e) {
         }
         return waypoints;
@@ -418,7 +412,7 @@
         get simulating() { return simulating(); },
 
         async start(load, driverId) {
-            if (!load || load.status !== 'IN_TRANSIT' || !driverId) return;
+            if (!load || !window.TruckCarService.loadActions(load).transmitPosition || !driverId) return;
             if (driver.timer && driver.loadId === load.backendId) return;
             this.stop();
             driver.loadId = load.backendId;
@@ -486,12 +480,19 @@
             coords,
             speed: typeof msg.speedKmH === 'number' ? Math.round(msg.speedKmH) : null,
             heading: msg.heading,
-            status: (msg.speedKmH || 0) > 0 || msg.loadStatus === 'IN_TRANSIT' ? 'EN_TRANSITO' : truck.status || 'DISPONIBLE',
+            status: liveStatus(truck, msg),
+            currentLoadStatus: msg.loadStatus || null,
             lastSeenAt: msg.timestamp || null,
             lastCheckin: lastSeenLabel(msg.timestamp),
             currentLoadId: msg.loadId
         });
         return truck;
+    }
+
+    function liveStatus(truck, msg) {
+        return window.TruckCarService.fleetStatus({
+            status: truck.backendStatus, restRequiredAlert: truck.restRequired, currentLoadStatus: msg.loadStatus
+        });
     }
 
     function lastSeenLabel(timestamp) {
@@ -534,7 +535,7 @@
                         coords: [msg.latitude, msg.longitude],
                         speed: typeof msg.speedKmH === 'number' ? Math.round(msg.speedKmH) : null,
                         heading: msg.heading,
-                        status: (msg.speedKmH || 0) > 0 ? 'EN_TRANSITO' : 'DISPONIBLE',
+                        status: liveStatus(trucks[msg.driverId] || {}, msg),
                         lastSeenAt: msg.timestamp || null,
                         lastCheckin: lastSeenLabel(msg.timestamp)
                     });

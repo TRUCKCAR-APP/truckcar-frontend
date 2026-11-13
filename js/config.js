@@ -56,6 +56,7 @@
         environment: isLocal ? 'local' : 'production',
         gatewayUrl,
         apiBaseUrl: gatewayUrl + API_PREFIX,
+        routingUrl: 'https://router.project-osrm.org/route/v1/driving/',
         requestTimeoutMs: 15000,
         pollingIntervalMs: 30000,
         storageKeys: {

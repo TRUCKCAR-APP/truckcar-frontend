@@ -16,7 +16,8 @@ function app({ phone, sessionRole, activeRole, demo = false }) {
   w.__phone = phone;
   const state = { isAuthenticated: true, sessionRole, activeRole };
   w.store = { get state() { return state; }, setState: (patch) => Object.assign(state, patch) };
-  w.TruckCarService = { loadAll: async () => {} };
+  w.eval(readFileSync("js/dataService.js", "utf8"));
+  w.TruckCarService.loadAll = async () => {};
   w.TruckCarConfig = { demoTools: demo };
   w.eval(readFileSync("js/ui.js", "utf8"));
   w.eval(readFileSync("js/app.js", "utf8"));

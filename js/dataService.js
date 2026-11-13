@@ -20,7 +20,6 @@
         landslide: 'DERRUMBE',
         workshop: 'OBRA_EN_VIA'
     };
-    const REPORT_SEVERITY = { danger: 'ALTA', landslide: 'ALTA', bridge: 'ALTA' };
     const ALERT_BADGES = {
         BASCULA: 'Báscula Activa',
         GALIBO_REDUCIDO: 'Gálibo Bajo',
@@ -30,7 +29,58 @@
         ACCIDENTE: 'Accidente',
         OBRA_EN_VIA: 'Obra en Vía'
     };
-    const ALERT_VALIDATION_THRESHOLD = 3;
+
+    function alertReportFields(uiType) {
+        const alertType = UI_TO_ALERT_TYPE[uiType] || 'ACCIDENTE';
+        const highSeverity = uiType === 'danger' || uiType === 'landslide' || uiType === 'bridge';
+        return { alertType, severity: highSeverity ? 'ALTA' : 'MEDIA', title: ALERT_BADGES[alertType] };
+    }
+
+    function towerHighlightsAlert(alert) {
+        return alert.validated === true || alert.severity === 'CRITICA' || alert.severity === 'ALTA';
+    }
+
+    function loadActions(load) {
+        const proposal = load.status === 'AVAILABLE' && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED');
+        const underway = load.status === 'ASSIGNED' || load.status === 'IN_TRANSIT';
+        return {
+            awaitNotification: proposal && load.assignmentStatus === 'PROPOSED',
+            respond: proposal && load.assignmentStatus === 'NOTIFIED',
+            startTrip: load.status === 'ASSIGNED',
+            navigate: underway,
+            deliver: load.status === 'IN_TRANSIT',
+            transmitPosition: load.status === 'IN_TRANSIT',
+            trackTruck: underway,
+            cancel: load.status === 'AVAILABLE' || load.status === 'ASSIGNED',
+            requestMatching: !load.assignmentStatus || load.assignmentStatus === 'UNASSIGNED_NO_DRIVERS',
+            shareTracking: load.status !== 'CANCELLED',
+            viewProofOfDelivery: load.status === 'DELIVERED'
+        };
+    }
+
+    function roleAccess(sessionRole) {
+        const controlTower = sessionRole === 'COORDINADOR' || sessionRole === 'ADMIN';
+        const driver = sessionRole === 'CONDUCTOR';
+        const generator = sessionRole === 'GENERADOR';
+        return {
+            home: driver ? 'driver' : generator ? 'generator' : 'coordinator',
+            controlTower,
+            driver,
+            shipmentsOnly: generator,
+            roadBlockages: driver || controlTower
+        };
+    }
+
+    function fleetStatus({ status, restRequiredAlert, currentLoadStatus }) {
+        if (restRequiredAlert) return 'DESCANSO';
+        if (currentLoadStatus === 'IN_TRANSIT') return 'EN_TRANSITO';
+        if (currentLoadStatus === 'ASSIGNED') return 'CON_CARGA';
+        return status ? String(status).toUpperCase() : null;
+    }
+
+    function currentLoadOf(loads, currentLoadId) {
+        return loads.find(load => load.id === currentLoadId) || loads[0] || null;
+    }
 
     function timeAgo(isoDate) {
         if (!isoDate) return '';
@@ -86,7 +136,7 @@
     function syncDriverTelemetry() {
         const load = data.activeLoadOrder;
         const driver = data.currentDriver;
-        if (load && load.status === 'IN_TRANSIT' && driver && driver.id) {
+        if (load && loadActions(load).transmitPosition && driver && driver.id) {
             window.DriverTelemetry.start(load, driver.id);
             window.RouteGuidance.prepare(load);
         } else if (window.DriverTelemetry.isRunning) {
@@ -127,6 +177,7 @@
             onTrip: given(state, 'onTrip'),
             accountVerified: given(state, 'accountVerified'),
             status: (state && state.status) || 'SIN_VEHICULO',
+            currentLoadId: given(state, 'currentLoadId'),
             rating: given(state, 'rating'),
             tripsCompleted: given(state, 'totalTrips'),
             hasVehicle: Boolean(state),
@@ -154,12 +205,7 @@
     }
 
     function mapFleetVehicle(state) {
-        let status = (state.status || 'DESCONOCIDO').toUpperCase();
-        if (state.restRequiredAlert) {
-            status = 'DESCANSO';
-        } else if (status === 'ACTIVO') {
-            status = (state.currentSpeedKmH || 0) > 0 || state.currentLoadStatus === 'IN_TRANSIT' ? 'EN_TRANSITO' : 'DISPONIBLE';
-        }
+        const status = fleetStatus(state);
         return {
             id: state.driverId,
             driverId: state.driverId,
@@ -173,6 +219,7 @@
             maxPayload: state.maxPayloadTons || null,
             phone: driverPhone(state),
             status,
+            backendStatus: given(state, 'status'),
             speed: state.currentSpeedKmH != null ? Math.round(state.currentSpeedKmH) : null,
             hoursActive: state.drivingHoursToday != null ? state.drivingHoursToday + ' h' : orNotAvailable(null),
             remainingDrivingHours: given(state, 'remainingDrivingHours'),
@@ -191,7 +238,6 @@
     }
 
     function mapAlert(alert) {
-        const confirmations = alert.confirmationsCount || 1;
         return {
             id: alert.id,
             type: ALERT_TYPE_TO_UI[alert.alertType] || 'danger',
@@ -199,13 +245,13 @@
             severity: alert.severity,
             badge: ALERT_BADGES[alert.alertType] || alert.alertType,
             title: alert.title,
-            description: alert.description || (alert.roadCorridor ? 'Corredor ' + alert.roadCorridor : ''),
+            description: given(alert, 'description'),
             timeAgo: timeAgo(alert.reportedAt),
-            author: alert.driverName || alert.driverId || 'Red TruckCar',
-            upvotes: confirmations,
+            author: given(alert, 'driverName'),
+            upvotes: given(alert, 'confirmationsCount'),
             coords: coordsOrNull(alert.latitude, alert.longitude),
             corridor: alert.roadCorridor,
-            verified: confirmations >= ALERT_VALIDATION_THRESHOLD,
+            validated: given(alert, 'validated'),
             pendingSync: Boolean(alert.pendingSync)
         };
     }
@@ -364,6 +410,10 @@
 
     const service = {
         mapLoad,
+        loadActions,
+        roleAccess,
+        fleetStatus,
+        towerHighlightsAlert,
         timeAgo,
         formatHours,
 
@@ -400,8 +450,7 @@
             if (!driver || !driver.id) return;
             try {
                 const mine = (await api.loads.mine()) || [];
-                const rank = load => load.status === 'IN_TRANSIT' ? 0 : load.status === 'ASSIGNED' ? 1 : 2;
-                const current = mine.slice().sort((a, b) => rank(a) - rank(b))[0];
+                const current = currentLoadOf(mine, driver.currentLoadId);
                 data.activeLoadOrder = current ? mapLoad(current) : null;
                 syncDriverTelemetry();
                 clearError('loads');
@@ -448,7 +497,7 @@
 
         async loadShipmentTrucks() {
             const drivers = [...new Set((data.publishedLoads || [])
-                .filter(l => (l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT') && l.assignedDriverId)
+                .filter(l => loadActions(l).trackTruck && l.assignedDriverId)
                 .map(l => l.assignedDriverId))];
             const trucks = {};
             await Promise.all(drivers.map(async (driverId) => {
@@ -463,7 +512,7 @@
         async refreshShipments() {
             await this.loadPublishedLoads();
             const trucks = data.shipmentTrucks || {};
-            const missing = (data.publishedLoads || []).some(l => (l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT')
+            const missing = (data.publishedLoads || []).some(l => loadActions(l).trackTruck
                 && l.assignedDriverId && !trucks[l.assignedDriverId]);
             if (!window.TruckCarTelemetry.isOnline || missing) await this.loadShipmentTrucks();
         },
@@ -536,7 +585,7 @@
                     destinationLongitude: load.destination.coords ? load.destination.coords[1] : null
                 });
                 data.routes = { ...mapRoutePlan(plan, load), planForLoadId: load.backendId };
-                if (load.status === 'IN_TRANSIT') window.RouteGuidance.prepare(load);
+                if (loadActions(load).transmitPosition) window.RouteGuidance.prepare(load);
                 if (window.mapCtrl) window.mapCtrl.resetRouteCache();
                 clearError('routes');
             } catch (error) {
@@ -641,13 +690,10 @@
 
         async reportAlert(uiType, comment, coords) {
             const driver = data.currentDriver || {};
-            const alertType = UI_TO_ALERT_TYPE[uiType] || 'ACCIDENTE';
             const alert = {
                 driverName: driver.name,
-                alertType,
-                severity: REPORT_SEVERITY[uiType] || 'MEDIA',
-                title: ALERT_BADGES[alertType],
-                description: comment,
+                ...alertReportFields(uiType),
+                description: comment || null,
                 latitude: coords[0],
                 longitude: coords[1]
             };
@@ -659,7 +705,7 @@
                 }),
                 async () => {
                     await window.OfflineQueue.enqueue('alert.reported', alert, { tripId });
-                    return { ...alert, id: null, confirmationsCount: 1, reportedAt: new Date().toISOString(), pendingSync: true };
+                    return { ...alert, id: null, reportedAt: new Date().toISOString(), pendingSync: true };
                 });
             if (!created.pendingSync) await this.loadAlerts();
             return mapAlert(created);

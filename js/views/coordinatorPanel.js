@@ -10,7 +10,7 @@ window.CoordinatorPanel = {
         const deliveries = data.deliveredLoads || [];
         const user = state.currentUser;
 
-        const operating = fleet.filter(t => t.status === 'EN_TRANSITO' || t.status === 'DISPONIBLE').length;
+        const operating = fleet.filter(t => t.backendStatus === 'ACTIVO').length;
         const clearanceAlerts = alerts.filter(a => a.type === 'bridge').length;
         const notices = this.buildNotices(fleet, alerts);
 
@@ -100,13 +100,13 @@ window.CoordinatorPanel = {
                                     </div>
                                 </div>
 
-                                ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
+                                ${window.TruckCarService.loadActions(load).cancel ? `
                                     <button onclick="window.coordinatorCtrl.cancelLoad(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white border border-slate-700 rounded-xl text-xs font-bold transition">
                                         <i class="fas ${state.busyAction === 'cancel' ? 'fa-spinner fa-spin' : 'fa-ban'}"></i> Cancelar carga
                                     </button>
                                 ` : ''}
 
-                                ${!load.assignmentStatus || load.assignmentStatus === 'UNASSIGNED_NO_DRIVERS' ? `
+                                ${window.TruckCarService.loadActions(load).requestMatching ? `
                                     <button onclick="window.coordinatorCtrl.requestMatching(${load.backendId})" ${state.busyAction === 'matching' ? 'disabled' : ''} class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 disabled:opacity-60 text-graphite-950 rounded-xl text-xs font-bold transition">
                                         <i class="fas ${state.busyAction === 'matching' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}"></i> Ejecutar matching con IA
                                     </button>
@@ -210,7 +210,7 @@ window.CoordinatorPanel = {
 
                             <div class="absolute bottom-4 right-4 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl p-2.5 text-[10px] text-slate-300 space-y-1 shadow-lg">
                                 <div class="flex items-center gap-2"><span class="fleet-legend is-transit"></span> En tránsito</div>
-                                <div class="flex items-center gap-2"><span class="fleet-legend"></span> Disponible</div>
+                                <div class="flex items-center gap-2"><span class="fleet-legend"></span> Activo</div>
                                 <div class="flex items-center gap-2"><span class="fleet-legend is-rest"></span> Descanso requerido</div>
                                 <div class="flex items-center gap-2"><i class="fas fa-triangle-exclamation text-warn-500"></i> Alerta vial</div>
                             </div>
@@ -254,7 +254,7 @@ window.CoordinatorPanel = {
                                                 <div><b class="text-white">${esc(n.title)}:</b> ${esc(n.text)}</div>
                                                 ${n.alertId ? `<div class="flex gap-1.5 mt-1.5">
                                                     <button onclick="window.app.upvoteAlert(${n.alertId})" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold" title="Confirmar la alerta en Community-Alerts (un voto por usuario)">
-                                                        <i class="fas fa-check"></i> Validar · ${n.upvotes}
+                                                        <i class="fas fa-check"></i> Validar${typeof n.upvotes === 'number' ? ' · ' + n.upvotes : ''}
                                                     </button>
                                                     <button onclick="window.coordinatorCtrl.dismissAlert(${n.alertId})" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 text-xs font-bold" title="Ocultar de esta vista (el backend no tiene descarte)">
                                                         <i class="fas fa-eye-slash"></i> Descartar
@@ -341,7 +341,6 @@ window.CoordinatorPanel = {
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Placa del vehículo</label>
                                     <input id="veh-plate" type="text" placeholder="Ej: TDK-410" required maxlength="10" class="login-input w-full text-xs uppercase font-mono">
-                                    <span class="text-[10px] text-slate-400 mt-0.5 block">Formato colombiano</span>
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Tipo de camión</label>
@@ -364,15 +363,15 @@ window.CoordinatorPanel = {
                             <div class="grid grid-cols-3 gap-2.5">
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Gálibo (m)</label>
-                                    <input id="veh-height" type="number" step="0.05" min="1.0" max="6.0" placeholder="4.1" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-height" type="number" step="0.05" min="0" placeholder="4.1" required class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Tara (t)</label>
-                                    <input id="veh-tare" type="number" step="0.1" min="0.5" max="40.0" placeholder="16.0" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-tare" type="number" step="0.1" min="0" placeholder="16.0" required class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Capacidad (t)</label>
-                                    <input id="veh-payload" type="number" step="0.1" min="0.5" max="60.0" placeholder="34.0" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-payload" type="number" step="0.1" min="0.1" placeholder="34.0" required class="login-input w-full text-xs font-mono">
                                 </div>
                             </div>
                             <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
@@ -443,11 +442,11 @@ window.CoordinatorPanel = {
             text: this.restText(t)
         }));
         const dismissed = window.coordinatorCtrl.dismissedAlerts();
-        alerts.filter(a => (a.verified || a.severity === 'CRITICA' || a.severity === 'ALTA') && !dismissed.has(a.id))
+        alerts.filter(a => window.TruckCarService.towerHighlightsAlert(a) && !dismissed.has(a.id))
             .slice(0, 6).forEach(a => notices.push({
                 icon: 'fa-triangle-exclamation text-warn-500',
                 style: 'bg-slate-800/50 text-slate-300',
-                title: a.badge + (a.verified ? ' (validada)' : ''),
+                title: a.badge + (a.validated === true ? ' (validada)' : ''),
                 text: a.title + (a.corridor ? ' · ' + a.corridor : '') + ' · ' + a.timeAgo,
                 alertId: a.id && !a.pendingSync ? a.id : null,
                 upvotes: a.upvotes
@@ -704,24 +703,10 @@ window.coordinatorCtrl = {
         }
         const driverName = (select && select.options[select.selectedIndex]) ? select.options[select.selectedIndex].text : driverId;
 
-        const plateClean = plate.replace(/[^A-Z0-9]/g, '');
-        const plateRegex = /^[A-Z]{3}[0-9]{3}$/;
-        if (!plateRegex.test(plateClean)) {
-            window.ui.toast('Placa inválida: debe tener formato colombiano (3 letras y 3 números, Ej: TDK-410).', 'warning');
-            return;
-        }
         if (!plate || !model || !type || isNaN(height) || isNaN(tare) || isNaN(payload)) {
             window.ui.toast('Complete todos los campos del vehículo.', 'warning');
             return;
         }
-        const duplicate = (window.TruckCarData.fleetVehicles || []).find(vehicle =>
-            String(vehicle.plate || '').replace(/[^A-Z0-9]/gi, '').toUpperCase() === plateClean
-            && vehicle.driverId !== driverId);
-        if (duplicate) {
-            window.ui.toast('Esta placa ya está asociada a otro conductor de la flota.', 'warning');
-            return;
-        }
-
         if (btn) {
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';

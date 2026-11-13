@@ -33,8 +33,9 @@ function browser({ url = "http://localhost:5500/", service = {}, api = {}, state
   w.voiceEngine = { speak() {} };
   w.app = { currentPosition: () => [9.99, -79.99] };
   w.TruckCarData = { activeLoadOrder: { id: "CARGA-30", backendId: 30 }, currentDriver: { name: "Ana Ruiz", vehicle: { plate: "TDK-410" } } };
-  w.TruckCarService = service;
   w.TruckCarApi = { loads: api };
+  w.eval(readFileSync("js/dataService.js", "utf8"));
+  Object.assign(w.TruckCarService, service);
   SCRIPTS.forEach((file) => w.eval(readFileSync(file, "utf8")));
   return { w, toasts };
 }

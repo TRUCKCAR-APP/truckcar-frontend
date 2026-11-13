@@ -1,7 +1,6 @@
 window.SosMonitor = (function () {
     const esc = (value) => window.ui.escape(value);
     const POLL_MS = 5000;
-    const TOWER = ['COORDINADOR', 'ADMIN'];
     const DOWN_TEXT = {
         network: {
             title: 'Monitoreo SOS caído',
@@ -235,7 +234,7 @@ window.SosMonitor = (function () {
     }
 
     function sync(state) {
-        const tower = state.isAuthenticated && state.activeRole === 'coordinator' && TOWER.includes(state.sessionRole);
+        const tower = state.isAuthenticated && state.activeRole === 'coordinator' && window.TruckCarService.roleAccess(state.sessionRole).controlTower;
         if (tower) start();
         else if (timer) stop();
     }

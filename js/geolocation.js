@@ -159,7 +159,7 @@ window.DeviceLocation = (function () {
         },
 
         sync(state) {
-            if (state.isAuthenticated && state.activeRole === 'driver' && state.sessionRole === 'CONDUCTOR') {
+            if (state.isAuthenticated && state.activeRole === 'driver' && window.TruckCarService.roleAccess(state.sessionRole).driver) {
                 this.watch();
             } else {
                 this.stop();

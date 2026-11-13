@@ -81,7 +81,8 @@ window.DriverApp = {
 
     hasPendingLoad() {
         const load = window.TruckCarData.activeLoadOrder;
-        return Boolean(load && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED'));
+        const actions = load ? window.TruckCarService.loadActions(load) : {};
+        return Boolean(actions.awaitNotification || actions.respond);
     },
 
     destinationLabel() {
@@ -157,7 +158,7 @@ window.DriverApp = {
         }
         const v = driver.vehicle;
         const load = window.TruckCarData.activeLoadOrder;
-        const status = this.statusLabel(driver.status) + (load && load.status === 'IN_TRANSIT' ? ' · ' + load.id : '');
+        const status = this.statusLabel(driver.status) + (load && window.TruckCarService.loadActions(load).deliver ? ' · ' + load.id : '');
         const na = window.ui.NOT_AVAILABLE;
         const rating = typeof driver.rating === 'number' ? this.number(driver.rating, 1) + ' de 5' : na;
         const yes = (on, onText, offText) => on === null || on === undefined ? esc(na) : this.dotText(on ? onText : offText, on ? 'ok' : '');
@@ -271,9 +272,9 @@ window.DriverApp = {
                 `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`);
         }
         const raw = load.raw || {};
-        const pending = load.status === 'AVAILABLE'
-            && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED');
-        const inTransit = load.status === 'IN_TRANSIT';
+        const allowed = window.TruckCarService.loadActions(load);
+        const pending = allowed.awaitNotification || allowed.respond;
+        const inTransit = allowed.deliver;
         const busy = state.busyAction;
         const statusCode = pending ? load.assignmentStatus : load.status;
         const clock = (iso) => new Date(iso).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
@@ -283,12 +284,12 @@ window.DriverApp = {
         const budget = Number(raw.offeredBudget);
         const busyIcon = (action, icon) => (busy === action ? this.spinner() : this.icon(icon));
 
-        const actions = load.assignmentStatus === 'PROPOSED' && pending ? `
+        const actions = allowed.awaitNotification ? `
                 <div class="notice">${this.warnLine('Propuesta en proceso de notificación', '· podrá aceptarla o rechazarla cuando llegue la notificación.')}</div>
                 <div class="screen-actions">
                     <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Consultar estado</button>
                 </div>`
-            : pending ? `
+            : allowed.respond ? `
                 <div class="screen-actions">
                     <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('accept', 'check-circle')}Aceptar carga y ver ruta</button>
                     <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('reject', 'x-circle')}Rechazar</button>
@@ -373,7 +374,7 @@ window.DriverApp = {
         const opt = routes.optimal;
         const rej = routes.rejectedAlternate;
         const title = load ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) : opt.title;
-        const inTransit = load && load.status === 'IN_TRANSIT';
+        const inTransit = load && window.TruckCarService.loadActions(load).deliver;
 
         return `
             <div class="route-screen">
@@ -504,7 +505,7 @@ window.DriverApp = {
                     ${alerts.map(a => `
                         <article class="alert-item">
                             <h2>${esc(a.title)}</h2>
-                            <p class="alert-meta">${esc([a.badge, a.timeAgo, a.upvotes + (Number(a.upvotes) === 1 ? ' confirmación' : ' confirmaciones')].filter(Boolean).join(' · '))}${a.verified ? ` <span class="alert-verified">${this.dotText('Validada', 'ok')}</span>` : ''}</p>
+                            <p class="alert-meta">${esc([a.badge, a.timeAgo, this.confirmationsText(a.upvotes)].filter(Boolean).join(' · '))} <span class="alert-verified">${this.validationHtml(a.validated)}</span></p>
                             ${a.description ? `<p class="alert-text">${esc(a.description)}</p>` : ''}
                             <div class="alert-foot">
                                 <span class="secondary">${esc(a.author || '')}</span>
@@ -526,6 +527,17 @@ window.DriverApp = {
                 ${body}
             </div>
         `;
+    },
+
+    confirmationsText(count) {
+        if (typeof count !== 'number') return 'Confirmaciones: ' + window.ui.NOT_AVAILABLE;
+        return count + (count === 1 ? ' confirmación' : ' confirmaciones');
+    },
+
+    validationHtml(validated) {
+        if (validated === true) return this.dotText('Validada', 'ok');
+        if (validated === false) return window.ui.escape('Sin validar');
+        return window.ui.escape('Validación: ' + window.ui.NOT_AVAILABLE);
     },
 
     QUEUE_GROUPS: [

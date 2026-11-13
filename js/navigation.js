@@ -1,5 +1,4 @@
 window.RouteGuidance = (function () {
-    const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
     const OFF_ROUTE_M = 250;
     const REROUTE_COOLDOWN_MS = 30000;
     const CLEARANCE_ANNOUNCE_M = 3000;
@@ -125,13 +124,8 @@ window.RouteGuidance = (function () {
     }
 
     async function requestRoute(points) {
-        const url = OSRM_URL + points.map(c => c[1] + ',' + c[0]).join(';')
-            + '?overview=full&geometries=geojson&steps=true';
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('OSRM ' + response.status);
-        const json = await response.json();
-        const best = json.routes && json.routes[0];
-        if (!best || !best.geometry || !best.legs) throw new Error('OSRM sin ruta');
+        const best = await window.TruckCarApi.routing.drivingRoute(points, { steps: true });
+        if (!best.legs) throw new Error('El servicio de rutas no devolvió maniobras');
         return best;
     }
 
@@ -370,7 +364,7 @@ window.RouteGuidance = (function () {
     }
 
     function hudText(s) {
-        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: 'Ruta por carretera de OSRM' };
+        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: '' };
         if (s.status === 'unavailable') return { distance: '—', instruction: 'Guía paso a paso no disponible', street: 'Sin conexión con el servicio de rutas: siga el mapa.' };
         if (s.status === 'idle') return { distance: '—', instruction: 'Preparando la navegación…', street: '' };
         if (!s.hasPosition || s.offRoute) return { distance: s.distance, instruction: s.instruction, street: '' };

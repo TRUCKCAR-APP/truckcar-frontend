@@ -113,7 +113,8 @@ test("el formulario del generador valida en vivo y reconoce ciudades sin tildes"
   assert.equal(findCity("Gotham"), null);
   const ok = { cargoDescription: "Café", weightTons: "28", volumeM3: "", originCity: "Bogotá", destinationCity: "cali", offeredBudget: "3000000" };
   assert.deepEqual(Object.keys(validate(ok)), []);
-  const bad = validate({ ...ok, cargoDescription: " ", weightTons: "75", destinationCity: "bogota", offeredBudget: "10" });
+  assert.deepEqual(Object.keys(validate({ ...ok, weightTons: "75" })), [], "el tope de peso lo decide el backend, no el formulario");
+  const bad = validate({ ...ok, cargoDescription: " ", weightTons: "0", destinationCity: "bogota", offeredBudget: "10" });
   assert.deepEqual(Object.keys(bad).sort(), ["cargoDescription", "destinationCity", "offeredBudget", "weightTons"]);
 });
 

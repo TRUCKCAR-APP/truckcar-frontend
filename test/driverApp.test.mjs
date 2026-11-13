@@ -7,6 +7,7 @@ function loadDriverApp(w) {
   const stubs = w.ui || {};
   w.eval(readFileSync("js/ui.js", "utf8"));
   Object.assign(w.ui, stubs);
+  if (!w.TruckCarService) w.eval(readFileSync("js/dataService.js", "utf8"));
   w.eval(readFileSync("js/views/driverApp.js", "utf8"));
 }
 

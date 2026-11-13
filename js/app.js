@@ -104,7 +104,7 @@ window.app = {
     },
 
     canUseDriverView(sessionRole) {
-        return sessionRole === 'CONDUCTOR' || !this.isPhone();
+        return window.TruckCarService.roleAccess(sessionRole).driver || !this.isPhone();
     },
 
     watchPhoneLayout() {
@@ -123,9 +123,7 @@ window.app = {
     },
 
     roleToView(role) {
-        if (role === 'CONDUCTOR') return 'driver';
-        if (role === 'GENERADOR') return 'generator';
-        return 'coordinator';
+        return window.TruckCarService.roleAccess(role).home;
     },
 
     async startSession(session) {
@@ -309,7 +307,7 @@ window.app = {
         const onShipments = state.activeRole === 'generator'
             || (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments');
 
-        if (state.sessionRole !== 'GENERADOR' && (onTower || state.activeRole === 'driver')) {
+        if (window.TruckCarService.roleAccess(state.sessionRole).roadBlockages && (onTower || state.activeRole === 'driver')) {
             live.followRoadBlockages((payload) => this.onRoadBlockage(payload));
         } else {
             live.unfollowRoadBlockages();
@@ -325,7 +323,7 @@ window.app = {
 
         if (onShipments) {
             const followed = (window.TruckCarData.publishedLoads || [])
-                .filter(l => l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT')
+                .filter(l => window.TruckCarService.loadActions(l).trackTruck)
                 .map(l => l.backendId);
             live.followTrips(followed, (truck, msg) => {
                 const selected = window.GeneratorPanel.selectedLoad(window.store.state);
@@ -355,10 +353,10 @@ window.app = {
             const el = document.getElementById(id);
             if (el) el.classList.toggle('hidden', !visible);
         };
-        const controlTower = role === 'COORDINADOR' || role === 'ADMIN';
-        show('role-switcher', !!(window.TruckCarConfig && window.TruckCarConfig.demoTools) && controlTower && this.canUseDriverView(role));
-        show('rotate-device-btn', role !== 'GENERADOR');
-        show('sim-toggle-btn', role !== 'GENERADOR');
+        const access = window.TruckCarService.roleAccess(role);
+        show('role-switcher', !!(window.TruckCarConfig && window.TruckCarConfig.demoTools) && access.controlTower && this.canUseDriverView(role));
+        show('rotate-device-btn', !access.shipmentsOnly);
+        show('sim-toggle-btn', !access.shipmentsOnly);
         document.body.dataset.view = state.isAuthenticated ? state.activeRole : 'login';
         const frame = document.getElementById('phone-mockup-frame');
         if (frame) {
@@ -439,11 +437,12 @@ window.app = {
     async setRole(role) {
         const sessionRole = window.store.state.sessionRole;
         if (!window.store.state.isAuthenticated) return;
-        if (sessionRole === 'GENERADOR') {
-            if (window.store.state.activeRole !== 'generator') window.store.setState({ activeRole: 'generator' });
+        const access = window.TruckCarService.roleAccess(sessionRole);
+        if (access.shipmentsOnly) {
+            if (window.store.state.activeRole !== access.home) window.store.setState({ activeRole: access.home });
             return;
         }
-        if (role === 'coordinator' && sessionRole === 'CONDUCTOR') {
+        if (role === 'coordinator' && !access.controlTower) {
             window.ui.toast('La torre de control requiere una cuenta de coordinador.', 'warning');
             return;
         }
@@ -518,11 +517,12 @@ window.app = {
 
     async startNavigation() {
         const load = window.TruckCarData.activeLoadOrder;
-        if (!load || (load.status !== 'ASSIGNED' && load.status !== 'IN_TRANSIT')) {
+        const actions = load ? window.TruckCarService.loadActions(load) : {};
+        if (!actions.navigate) {
             window.ui.toast('Acepte una carga antes de iniciar el viaje.', 'warning');
             return;
         }
-        if (load.status === 'ASSIGNED') {
+        if (actions.startTrip) {
             window.store.setState({ busyAction: 'start-trip' });
             try {
                 await window.TruckCarService.startTrip();
@@ -541,7 +541,7 @@ window.app = {
 
     async finishTrip() {
         const load = window.TruckCarData.activeLoadOrder;
-        if (!load || load.status !== 'IN_TRANSIT') {
+        if (!load || !window.TruckCarService.loadActions(load).deliver) {
             window.ui.toast('No hay un viaje en tránsito para finalizar.', 'warning');
             return;
         }
