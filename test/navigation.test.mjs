@@ -34,7 +34,9 @@ function browser({ gps = null } = {}) {
     watchPosition(ok) { watchers.push(ok); return watchers.length; },
     clearWatch() {}
   } });
-  w.ui = { escape: (v) => String(v ?? ""), toast() {} };
+  w.eval(readFileSync("js/ui.js", "utf8"));
+  w.ui.toast = (title, type, options) => { (w.toasts = w.toasts || []).push({ title, type, ...options }); };
+  w.TruckCarService = { timeAgo: (iso) => "visto " + iso, formatHours: (hours) => hours + " h" };
   w.store = { state: { driverScreen: "navigation" } };
   w.voiceEngine = { speak: (text) => spoken.push(text) };
   w.TruckCarData = {
@@ -109,7 +111,6 @@ test("el HUD usa un ícono por tipo de maniobra (giro, giro leve, retorno, glori
   assert.equal(g("roundabout", "right"), "arrows-counter-clockwise");
   assert.equal(g("arrive"), "flag-checkered-fill");
   assert.equal(g("new name", "straight"), "arrow-up");
-  assert.equal(w.RouteGuidance.formatDuration(8160), "2 h 16 min");
 });
 
 test("la línea gris del HUD muestra la calle actual solo si no repite la de la instrucción", () => {
@@ -130,8 +131,10 @@ test("el gálibo y el peso de la ruta real llegan de Routing-Restrictions y se a
   w.TruckCarData.currentDriver = { vehicle: { plate: "TDK-410", height: 4.1, grossWeight: 40 } };
   w.TruckCarApi.restrictions = { validateRoute: async (request) => {
     requests.push(request);
-    return { passable: false, blocking: [{ kind: "GALIBO_ALTURA", alongRouteMeters: 1400,
-      restriction: { id: 7, title: "Puente de la Calle 26", maxClearanceMeters: 3.8 } }], warnings: [] };
+    return { vehiclePlate: "TDK-410", passable: false, routeLengthMeters: 1560.4, restrictionsEvaluated: 3,
+      blocking: [{ kind: "GALIBO_ALTURA", alongRouteMeters: 1400, distanceFromRouteMeters: 12.5,
+        reason: "Altura del camión (4,10 m) supera el gálibo de 3,80 m en Puente de la Calle 26",
+        restriction: { id: 7, title: "Puente de la Calle 26", maxClearanceMeters: 3.8 } }], warnings: [] };
   } };
   w.document.body.insertAdjacentHTML("beforeend",
     "<div data-nav-clearance hidden><span data-nav-clearance-text></span><span data-nav-clearance-sub></span></div>");
@@ -147,9 +150,10 @@ test("el gálibo y el peso de la ruta real llegan de Routing-Restrictions y se a
   w.RouteGuidance.update({ coords: [4.6, -74.0], speed: 50, source: "gps" });
   const doc = w.document;
   assert.equal(doc.querySelector("[data-nav-clearance]").hidden, false);
-  assert.equal(doc.querySelector("[data-nav-clearance-text]").textContent, "Gálibo de 3,80 m en 1,4 km");
-  assert.equal(doc.querySelector("[data-nav-clearance-sub]").textContent, "· su vehículo mide 4,10 m");
-  assert.ok(spoken.some((t) => /Atención: .*gálibo de 3,80 metros; su vehículo mide 4,10/.test(t)), "se anuncia una vez a 3 km o menos");
+  assert.equal(doc.querySelector("[data-nav-clearance-text]").textContent,
+    "Altura del camión (4,10 m) supera el gálibo de 3,80 m en Puente de la Calle 26", "el motivo es el texto de RouteRestrictionHit.reason");
+  assert.equal(doc.querySelector("[data-nav-clearance-sub]").textContent, "· en 1,4 km");
+  assert.ok(spoken.some((t) => /Atención: .*Altura del camión \(4,10 m\) supera el gálibo de 3,80 m/.test(t)), "se anuncia una vez a 3 km o menos");
 
   w.RouteGuidance.update({ coords: [4.61, -73.995], speed: 40, source: "gps" });
   assert.equal(doc.querySelector("[data-nav-clearance]").hidden, true);

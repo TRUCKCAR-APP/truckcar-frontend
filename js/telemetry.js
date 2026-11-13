@@ -333,6 +333,7 @@
         });
         if (sent) {
             driver.lastSent = Date.now();
+            if (driver.rejection && Date.now() - driver.rejection.at > REJECTION_VISIBLE_MS) driver.rejection = null;
         } else if (!simulated) {
             queueOfflinePosition(point);
         }
@@ -340,6 +341,16 @@
         if (window.mapCtrl && window.mapCtrl.map && window.store.state.driverScreen === 'navigation') {
             window.mapCtrl.updateTruckPosition(point.coords);
         }
+        renderDriverBadge();
+    }
+
+    const REJECTION_VISIBLE_MS = 15000;
+
+    function onTelemetryRejected(payload) {
+        const message = (payload && payload.message) || window.ui.NOT_AVAILABLE;
+        const first = !driver.rejection || driver.rejection.message !== message;
+        driver.rejection = { message, code: payload && payload.error, at: Date.now() };
+        if (first) window.ui.toast('La torre rechazó su posición', 'warning', { description: message });
         renderDriverBadge();
     }
 
@@ -376,6 +387,12 @@
                 <span class="telemetry-sub">· <b>Simulación de prueba</b> · no se envía a la torre${p ? ' · ' + p.speed + ' km/h' : ''}</span>`;
             return;
         }
+        if (driver.rejection) {
+            el.dataset.state = 'warn';
+            el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Posición rechazada</span>
+                <span class="telemetry-sub">· ${window.ui.escape(driver.rejection.message)}</span>`;
+            return;
+        }
         const source = 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '');
         el.dataset.state = live ? 'ok' : 'warn';
         el.innerHTML = `
@@ -409,6 +426,8 @@
             driver.driverId = driverId;
             driver.travelledKm = 0;
             driver.timer = setInterval(tick, 3000);
+            driver.rejection = null;
+            driver.errorsUnsubscribe = TruckCarTelemetry.subscribe('/user/queue/errors', onTelemetryRejected);
             TruckCarTelemetry.acquirePublisher();
             window.DeviceLocation.watch();
             if (simulating()) await prepareSimulation();
@@ -419,10 +438,11 @@
         stop() {
             if (driver.timer) {
                 clearInterval(driver.timer);
+                if (driver.errorsUnsubscribe) driver.errorsUnsubscribe();
                 TruckCarTelemetry.releasePublisher();
             }
             Object.assign(driver, { loadId: null, load: null, timer: null, path: null, cumulative: null, lastSent: null,
-                lastPoint: null, mode: null });
+                lastPoint: null, mode: null, rejection: null, errorsUnsubscribe: null });
         },
 
         async toggleSimulation() {
@@ -449,6 +469,7 @@
     };
 
     let fleetUnsubscribe = null;
+    let blockagesUnsubscribe = null;
     const tripSubscriptions = new Map();
 
     function applyFleetLocation(msg) {
@@ -458,18 +479,23 @@
         let truck = fleet.find(t => t.driverId === msg.driverId);
         if (!truck) {
             truck = { id: msg.driverId, driverId: msg.driverId, driverName: msg.driverName || msg.driverId,
-                      plate: msg.vehiclePlate, vehicleType: '—', hoursActive: '—' };
+                      plate: msg.vehiclePlate, vehicleType: window.ui.NOT_AVAILABLE, hoursActive: window.ui.NOT_AVAILABLE };
             fleet.push(truck);
         }
         Object.assign(truck, {
             coords,
-            speed: Math.round(msg.speedKmH || 0),
+            speed: typeof msg.speedKmH === 'number' ? Math.round(msg.speedKmH) : null,
             heading: msg.heading,
             status: (msg.speedKmH || 0) > 0 || msg.loadStatus === 'IN_TRANSIT' ? 'EN_TRANSITO' : truck.status || 'DISPONIBLE',
-            lastCheckin: 'ahora',
+            lastSeenAt: msg.timestamp || null,
+            lastCheckin: lastSeenLabel(msg.timestamp),
             currentLoadId: msg.loadId
         });
         return truck;
+    }
+
+    function lastSeenLabel(timestamp) {
+        return window.ui.orNotAvailable(timestamp ? window.TruckCarService.timeAgo(timestamp) : null);
     }
 
     const LiveTracking = {
@@ -506,10 +532,11 @@
                         driverName: msg.driverName || msg.driverId,
                         plate: msg.vehiclePlate,
                         coords: [msg.latitude, msg.longitude],
-                        speed: Math.round(msg.speedKmH || 0),
+                        speed: typeof msg.speedKmH === 'number' ? Math.round(msg.speedKmH) : null,
                         heading: msg.heading,
                         status: (msg.speedKmH || 0) > 0 ? 'EN_TRANSITO' : 'DISPONIBLE',
-                        lastCheckin: 'ahora'
+                        lastSeenAt: msg.timestamp || null,
+                        lastCheckin: lastSeenLabel(msg.timestamp)
                     });
                     trucks[msg.driverId] = truck;
                     if (onUpdate) onUpdate(truck, msg);
@@ -521,9 +548,22 @@
             this.followTrips([]);
         },
 
+        followRoadBlockages(onBlockage) {
+            if (blockagesUnsubscribe) return;
+            blockagesUnsubscribe = TruckCarTelemetry.subscribe('/topic/road-blockages', (payload) => {
+                if (payload && onBlockage) onBlockage(payload);
+            }, () => { blockagesUnsubscribe = null; });
+        },
+
+        unfollowRoadBlockages() {
+            if (blockagesUnsubscribe) blockagesUnsubscribe();
+            blockagesUnsubscribe = null;
+        },
+
         stopAll() {
             this.unfollowFleet();
             this.unfollowTrips();
+            this.unfollowRoadBlockages();
         }
     };
 

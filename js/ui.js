@@ -5,6 +5,16 @@ window.ui = {
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
 
+    NOT_AVAILABLE: 'No disponible',
+
+    orNotAvailable(value) {
+        return value === null || value === undefined || value === '' ? this.NOT_AVAILABLE : value;
+    },
+
+    speedText(speed) {
+        return typeof speed === 'number' ? speed + ' km/h' : 'Velocidad: ' + this.NOT_AVAILABLE;
+    },
+
     toast(message, type = 'info', options = {}) {
         if (!window.Toaster) return;
         window.Toaster.show({ title: message, type, ...options });

@@ -30,8 +30,6 @@ class MapController {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
         this.isFetchingRoute = false;
-        this.routeSummary = null;
-        this.routeSummaryFailed = false;
         this.bottomInset = 0;
     }
 
@@ -104,8 +102,6 @@ class MapController {
     resetRouteCache() {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
-        this.routeSummary = null;
-        this.routeSummaryFailed = false;
     }
 
     observeBottomSheet(sheet) {
@@ -120,23 +116,6 @@ class MapController {
             this.sheetObserver = new ResizeObserver(apply);
             this.sheetObserver.observe(sheet);
         }
-    }
-
-    routeFiguresHtml() {
-        const s = this.routeSummary;
-        if (s) {
-            const minutes = Math.round(s.durationMin);
-            const hours = Math.floor(minutes / 60);
-            return '<span class="figure">' + Math.round(s.distanceKm) + '<small>km</small></span>'
-                + '<span class="figure">' + (hours ? hours + '<small>h</small> ' : '') + (minutes % 60) + '<small>min</small></span>';
-        }
-        return this.routeSummaryFailed
-            ? '<span class="figure is-none">Sin información</span>'
-            : '<span class="figure is-none">Calculando…</span>';
-    }
-
-    renderRouteFigures() {
-        document.querySelectorAll('[data-route-figures]').forEach(el => { el.innerHTML = this.routeFiguresHtml(); });
     }
 
     currentRoute() {
@@ -292,8 +271,6 @@ class MapController {
         if (this.cachedRouteKey !== routeKey) {
             this.cachedOptimalRoadGeometry = null;
             this.cachedRouteKey = routeKey;
-            this.routeSummary = null;
-            this.routeSummaryFailed = false;
         }
         const polylineCoords = this.cachedOptimalRoadGeometry || waypoints.map(w => w.coords);
 
@@ -318,23 +295,15 @@ class MapController {
             const url = 'https://router.project-osrm.org/route/v1/driving/' + coordString + '?overview=full&geometries=geojson';
 
             const res = await fetch(url);
-            if (!res.ok) {
-                this.routeSummaryFailed = true;
-                this.renderRouteFigures();
-                return;
-            }
+            if (!res.ok) return;
             const data = await res.json();
 
             if (data.routes && data.routes[0] && data.routes[0].geometry && this.cachedRouteKey === routeKey) {
                 const roadCoords = data.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
                 this.cachedOptimalRoadGeometry = roadCoords;
-                this.routeSummary = { distanceKm: data.routes[0].distance / 1000, durationMin: data.routes[0].duration / 60 };
                 if (this.optimalRouteLayer && this.map) this.renderRoutes();
-                this.renderRouteFigures();
             }
         } catch (err) {
-            this.routeSummaryFailed = true;
-            this.renderRouteFigures();
         } finally {
             this.isFetchingRoute = false;
         }
@@ -399,8 +368,8 @@ class MapController {
 
     fleetPopup(truck) {
         return '<b>' + window.ui.escape(truck.driverName) + ' (' + window.ui.escape(truck.plate) + ')</b><br>'
-            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(window.ui.statusLabel(truck.status)) + '</b> | Vel: '
-            + truck.speed + ' km/h' + (typeof truck.heading === 'number' ? ' | Rumbo: ' + Math.round(truck.heading) + '°' : '');
+            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(window.ui.statusLabel(truck.status)) + '</b> | '
+            + window.ui.escape(window.ui.speedText(truck.speed)) + (typeof truck.heading === 'number' ? ' | Rumbo: ' + Math.round(truck.heading) + '°' : '');
     }
 
     placeFleetMarker(truck, animate) {
@@ -577,7 +546,7 @@ class MapController {
     shipmentTruckPopup(truck) {
         const esc = window.ui.escape;
         return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(window.ui.statusLabel(truck.status)) + ' · '
-            + truck.speed + ' km/h · ' + esc(truck.lastCheckin);
+            + esc(window.ui.speedText(truck.speed)) + ' · ' + esc(truck.lastCheckin);
     }
 
     moveShipmentTruck(truck) {

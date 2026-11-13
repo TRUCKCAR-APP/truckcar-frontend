@@ -295,7 +295,7 @@ window.GeneratorPanel = (function () {
         const esc = window.ui.escape;
         if (!truck || !truck.coords) return '<i class="fas fa-satellite-dish"></i> Esperando la posición del camión…';
         const heading = typeof truck.heading === 'number' ? ' · rumbo ' + Math.round(truck.heading) + '°' : '';
-        return `<i class="fas fa-location-crosshairs"></i> ${esc(truck.plate)} · ${truck.speed} km/h${heading} · posición ${esc(truck.lastCheckin)}`;
+        return `<i class="fas fa-location-crosshairs"></i> ${esc(truck.plate)} · ${esc(window.ui.speedText(truck.speed))}${heading} · posición ${esc(truck.lastCheckin)}`;
     }
 
     function updateTruckLine(truck) {

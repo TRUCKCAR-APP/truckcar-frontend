@@ -309,6 +309,12 @@ window.app = {
         const onShipments = state.activeRole === 'generator'
             || (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments');
 
+        if (state.sessionRole !== 'GENERADOR' && (onTower || state.activeRole === 'driver')) {
+            live.followRoadBlockages((payload) => this.onRoadBlockage(payload));
+        } else {
+            live.unfollowRoadBlockages();
+        }
+
         if (onTower) {
             live.followFleet((truck) => {
                 if (window.mapCtrl.isMountedOn('coordinator-map-container')) window.mapCtrl.moveFleetMarker(truck);
@@ -330,6 +336,17 @@ window.app = {
         } else {
             live.unfollowTrips();
         }
+    },
+
+    async onRoadBlockage(payload) {
+        const blockage = await window.TruckCarService.handleRoadBlockage(payload);
+        if (!blockage) return;
+        const title = window.ui.orNotAvailable(blockage.title);
+        window.ui.toast('Bloqueo vial: ' + title, 'warning', { description: blockage.corridor || blockage.reason || undefined });
+        if (window.store.state.activeRole === 'driver') {
+            window.voiceEngine.speak('Atención. Bloqueo vial reportado: ' + title + '.', true);
+        }
+        window.store.setState({});
     },
 
     updateHeader(state) {

@@ -89,16 +89,6 @@ window.DriverApp = {
         return load ? load.destination.city || load.destination.name : 'Sin destino';
     },
 
-    routeEta() {
-        const routes = window.TruckCarData.routes;
-        return routes && routes.optimal ? routes.optimal.eta : '—';
-    },
-
-    routeDistance() {
-        const routes = window.TruckCarData.routes;
-        return routes && routes.optimal ? routes.optimal.distance : '—';
-    },
-
     TRUCK_TYPES: {
         TRACTOMULA_3S3: 'Tractocamión 3S3', TRACTOMULA_3S2: 'Tractocamión 3S2', MINIMULA: 'Minimula',
         DOBLETROQUE: 'Doble troque', CUATRO_MANOS: 'Cuatro manos', SENCILLO: 'Sencillo', TURBO: 'Turbo',
@@ -115,7 +105,7 @@ window.DriverApp = {
     },
 
     number(value, digits, unit) {
-        if (typeof value !== 'number' || Number.isNaN(value)) return 'Sin información';
+        if (typeof value !== 'number' || Number.isNaN(value)) return window.ui.NOT_AVAILABLE;
         return value.toLocaleString('es-CO', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + (unit ? ' ' + unit : '');
     },
 
@@ -168,8 +158,16 @@ window.DriverApp = {
         const v = driver.vehicle;
         const load = window.TruckCarData.activeLoadOrder;
         const status = this.statusLabel(driver.status) + (load && load.status === 'IN_TRANSIT' ? ' · ' + load.id : '');
-        const rating = typeof driver.rating === 'number' ? this.number(driver.rating, 1) + ' de 5' : 'Sin información';
-        const yes = (on, onText, offText) => this.dotText(on ? onText : offText, on ? 'ok' : '');
+        const na = window.ui.NOT_AVAILABLE;
+        const rating = typeof driver.rating === 'number' ? this.number(driver.rating, 1) + ' de 5' : na;
+        const yes = (on, onText, offText) => on === null || on === undefined ? esc(na) : this.dotText(on ? onText : offText, on ? 'ok' : '');
+        const hours = typeof driver.hoursDrivenToday === 'number' && typeof driver.maxDailyHours === 'number'
+            ? this.number(driver.hoursDrivenToday, 1, 'h') + ' de ' + this.number(driver.maxDailyHours, 0, 'h')
+            : typeof driver.hoursDrivenToday === 'number' ? this.number(driver.hoursDrivenToday, 1, 'h') : na;
+        const rest = driver.restRequired === null || driver.restRequired === undefined ? esc(na)
+            : driver.restRequired
+                ? this.warnLine('Descanso requerido', driver.mandatoryRestLocation ? '· ' + driver.mandatoryRestLocation : '')
+                : this.dotText('No requerido', 'ok');
 
         return `
             <div class="screen-scroll">
@@ -191,12 +189,16 @@ window.DriverApp = {
                 <h2 class="list-title">Conductor</h2>
                 <div class="list">
                     ${this.listRow('Nombre', esc(driver.name), true)}
-                    ${this.listRow('Licencia', esc(driver.licenseNumber && driver.licenseNumber !== '—' ? driver.licenseNumber : 'Sin información'))}
+                    ${this.listRow('Categoría de licencia', esc(window.ui.orNotAvailable(driver.licenseCategory)))}
+                    ${this.listRow('Cuenta', yes(driver.accountVerified, 'Verificada', 'Sin verificar'))}
                     ${this.listRow('Calificación', esc(rating))}
-                    ${this.listRow('Viajes completados', esc(driver.tripsCompleted))}
-                    ${this.listRow('Horas de conducción hoy', esc(this.number(driver.hoursDrivenToday, 1, 'h') + ' de ' + this.number(driver.maxDailyHours, 0, 'h')))}
-                    ${driver.restRequired ? this.listRow('Descanso', this.warnLine('Descanso requerido')) : ''}
-                    ${this.listRow('Estado', this.dotText(status, driver.status === 'EN_TRANSITO' ? 'ok' : ''))}
+                    ${this.listRow('Viajes completados', esc(window.ui.orNotAvailable(driver.tripsCompleted)))}
+                    ${this.listRow('Horas de conducción hoy', esc(hours))}
+                    ${this.listRow('Horas de conducción restantes', esc(this.number(driver.remainingDrivingHours, 1, 'h')))}
+                    ${this.listRow('Descanso', rest)}
+                    ${this.listRow('Parada de descanso obligatoria', esc(window.ui.orNotAvailable(driver.mandatoryRestLocation)))}
+                    ${this.listRow('En viaje', yes(driver.onTrip, 'Sí', 'No'))}
+                    ${this.listRow('Estado', this.dotText(status, driver.onTrip ? 'ok' : ''))}
                 </div>
 
                 ${v ? `
@@ -221,11 +223,26 @@ window.DriverApp = {
         `;
     },
 
+    plannedRoute() {
+        const routes = window.TruckCarData.routes;
+        const load = window.TruckCarData.activeLoadOrder;
+        if (!routes || !routes.optimal) return null;
+        return !routes.planForLoadId || (load && routes.planForLoadId === load.backendId) ? routes.optimal : null;
+    },
+
     roadDistanceKm() {
-        const guided = window.RouteGuidance && window.RouteGuidance.route;
-        if (guided && guided.totalM) return Math.round(guided.totalM / 1000);
-        const summary = window.mapCtrl && window.mapCtrl.routeSummary;
-        return summary ? Math.round(summary.distanceKm) : null;
+        const plan = this.plannedRoute();
+        return plan && typeof plan.totalDistanceKm === 'number' ? Math.round(plan.totalDistanceKm) : null;
+    },
+
+    planFiguresHtml(plan) {
+        const km = plan && typeof plan.totalDistanceKm === 'number' ? Math.round(plan.totalDistanceKm) : null;
+        const hours = plan && typeof plan.estimatedDurationHours === 'number' ? plan.estimatedDurationHours : null;
+        const none = '<span class="figure is-none">' + window.ui.NOT_AVAILABLE + '</span>';
+        const h = hours == null ? 0 : Math.floor(hours);
+        const min = hours == null ? 0 : Math.round((hours - h) * 60);
+        return (km == null ? none : '<span class="figure">' + km + '<small>km</small></span>')
+            + (hours == null ? none : '<span class="figure">' + (h ? h + '<small>h</small> ' : '') + min + '<small>min</small></span>');
     },
 
     renderAssignedLoadScreen(state) {
@@ -259,8 +276,9 @@ window.DriverApp = {
         const inTransit = load.status === 'IN_TRANSIT';
         const busy = state.busyAction;
         const statusCode = pending ? load.assignmentStatus : load.status;
-        const startedAt = inTransit && load.tripStartedAt
-            ? ' · salió ' + new Date(load.tripStartedAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) : '';
+        const clock = (iso) => new Date(iso).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+        const startedAt = inTransit && load.tripStartedAt ? ' · salió ' + clock(load.tripStartedAt)
+            : !inTransit && load.assignmentStatusChangedAt ? ' · desde ' + clock(load.assignmentStatusChangedAt) : '';
         const km = this.roadDistanceKm();
         const budget = Number(raw.offeredBudget);
         const busyIcon = (action, icon) => (busy === action ? this.spinner() : this.icon(icon));
@@ -326,17 +344,16 @@ window.DriverApp = {
 
     routeFactsHtml(opt) {
         const esc = window.ui.escape;
-        const facts = [];
-        const missing = [];
-        const warnings = opt.warnings || [];
-        if (warnings.length) facts.push(this.listRow('Restricciones', esc(warnings.join(' · '))));
-        else missing.push('restricciones');
-        missing.push('alertas', 'riesgo');
-        if (missing.length) {
-            const label = missing.join(', ').replace(/, ([^,]*)$/, ' y $1');
-            facts.push(`<div class="list-row"><span class="list-label">${esc(label.charAt(0).toUpperCase() + label.slice(1))}<span class="list-note"> · sin fuente de datos todavía</span></span></div>`);
-        }
-        return facts.join('');
+        const na = window.ui.NOT_AVAILABLE;
+        const warnings = opt.warnings;
+        const checkpoints = opt.checkpoints || [];
+        return [
+            this.listRow('Riesgo', esc(opt.riskLevel ? this.statusLabel(opt.riskLevel) : na), true),
+            this.listRow('Alertas activas en la ruta', esc(typeof opt.activeAlertsCount === 'number' ? String(opt.activeAlertsCount) : na)),
+            this.listRow('Restricciones', esc(!Array.isArray(warnings) ? na : warnings.length ? warnings.join(' · ') : 'Ninguna')),
+            this.listRow('Peajes y puestos de control', esc(checkpoints.length ? checkpoints.join(' · ') : na)),
+            this.listRow('Recomendación', esc(window.ui.orNotAvailable(opt.aiRecommendation)))
+        ].join('');
     },
 
     renderRouteOverviewScreen(state) {
@@ -368,8 +385,8 @@ window.DriverApp = {
 
                 <section class="route-sheet" data-route-sheet aria-label="Ruta de la carga">
                     <h1 class="route-title">${esc(title)}</h1>
-                    <div class="route-figures" data-route-figures>${window.mapCtrl.routeFiguresHtml()}</div>
-                    <p class="secondary">Tiempo estimado para auto</p>
+                    <div class="route-figures">${this.planFiguresHtml(opt)}</div>
+                    <p class="secondary">Distancia y duración calculadas por Route-AI</p>
                     <div class="list">${this.routeFactsHtml(opt)}</div>
                     ${rej ? `<div class="notice">${this.warnLine('Corredor descartado: ' + rej.title, '· ' + rej.rejectionReasons.join(' · '))}</div>` : ''}
                     <div class="sheet-actions-row">
@@ -426,7 +443,7 @@ window.DriverApp = {
                 <div class="trip-bar">
                     <div class="trip-remaining">
                         <b>Faltan <span data-nav-remaining>${esc(s.remaining)}</span></b>
-                        <span data-nav-eta>${esc(s.remainingTime === '—' ? 'Tiempo sin información' : s.remainingTime + ' · estimado para auto')}</span>
+                        <span data-nav-eta>${esc(window.RouteGuidance.durationText(s))}</span>
                         <span>${esc(routeLine)}</span>
                     </div>
                     <button type="button" onclick="window.app.finishTrip()" class="btn-trip">${this.icon('flag-checkered')}Llegué</button>

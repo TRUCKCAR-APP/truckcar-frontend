@@ -34,7 +34,9 @@ function browser({ gps = null } = {}) {
     watchPosition(ok) { watchers.push(ok); return watchers.length; },
     clearWatch() {}
   } });
-  w.ui = { escape: (v) => String(v ?? ""), toast() {} };
+  w.eval(readFileSync("js/ui.js", "utf8"));
+  w.ui.toast = (title, type, options) => { (w.toasts = w.toasts || []).push({ title, type, ...options }); };
+  w.TruckCarService = { timeAgo: (iso) => "visto " + iso, formatHours: (hours) => hours + " h" };
   w.store = { state: { driverScreen: "navigation" } };
   w.voiceEngine = { speak: (text) => spoken.push(text) };
   w.TruckCarData = {
@@ -142,9 +144,13 @@ test("la torre aplica el arreglo agregado de /topic/fleet-locations y sigue acep
   w.LiveTracking.followFleet((truck) => updated.push(truck.driverId));
 
   handler([
-    { driverId: "ana", vehiclePlate: "TDK-410", latitude: 4.61, longitude: -74.08, speedKmH: 62, loadId: 30, loadStatus: "IN_TRANSIT" },
+    { driverId: "ana", driverName: "Ana Ruiz", vehiclePlate: "TDK-410", latitude: 4.61, longitude: -74.08, speedKmH: 62, heading: 90,
+      loadId: 30, loadStatus: "IN_TRANSIT", timestamp: "2026-11-12T15:04:05Z" },
     { driverId: "carlos", vehiclePlate: "SNT-221", latitude: 4.7, longitude: -74.1, speedKmH: 0 }
   ]);
+  assert.equal(w.TruckCarData.fleetVehicles[0].lastCheckin, "visto 2026-11-12T15:04:05Z", "la última conexión sale de FleetLocationMessage.timestamp");
+  assert.equal(w.TruckCarData.fleetVehicles[0].lastSeenAt, "2026-11-12T15:04:05Z");
+  assert.equal(w.TruckCarData.fleetVehicles[1].lastCheckin, "No disponible", "sin timestamp no se inventa «ahora»");
   handler({ driverId: "ana", latitude: 4.62, longitude: -74.09, speedKmH: 40 });
   handler([null, {}]);
 
