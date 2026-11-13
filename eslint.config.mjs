@@ -30,7 +30,7 @@ export default [
     languageOptions: { ecmaVersion: 2022, sourceType: "script", globals: globals.serviceworker },
   },
   {
-    files: ["tailwind.config.cjs"],
+    files: ["tailwind.config.cjs", "capacitor.config.js"],
     languageOptions: { ecmaVersion: 2022, sourceType: "commonjs", globals: globals.node },
   },
   {

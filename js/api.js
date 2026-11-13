@@ -152,6 +152,9 @@
     }
 
     async function request(method, path, { body, query, auth = true, timeoutMs, headers = {}, retried = false } = {}) {
+        if (!config.gatewayUrl) {
+            throw new ApiError('Esta instalación no tiene configurada la dirección del servidor. Pida una versión actualizada de la aplicación.', { status: 0, path });
+        }
         if (auth && session.isRenewable()) {
             try {
                 await ensureFreshSession();

@@ -12,7 +12,7 @@
     "cap:add:android": "cap add android",
     "cap:sync": "cap sync",
     "cap:open:android": "cap open android",
-    "build:apk": "cap sync android"
+    "build:apk": "cap sync android && node scripts/inject-config.mjs android/app/src/main/assets/public/index.html --require-url --require-https"
   },
   "devDependencies": {
     "@capacitor/android": "^6.2.0",

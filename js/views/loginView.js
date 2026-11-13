@@ -19,6 +19,11 @@ window.LoginView = {
                         ? 'Para conductores y empresas que generan carga.'
                         : 'Cargas, ruta segura para su vehículo y entregas con prueba, incluso sin señal.'}</p>
 
+                    ${config.gatewayUrl ? '' : `
+                        <div class="notice login-error" role="alert">
+                            <div class="warn-line">${icon('warning-fill')}<span>Esta instalación no tiene configurada la dirección del servidor. Pida una versión actualizada de la aplicación.</span></div>
+                        </div>`}
+
                     ${state.authError ? `
                         <div class="notice login-error" role="alert">
                             <div class="warn-line">${icon('warning-fill')}<span>${esc(state.authError)}</span></div>

@@ -37,10 +37,11 @@ Desde la raíz del proyecto `TRUCKCAR`:
    ```
    *Esto generará automáticamente la carpeta `/android` con el proyecto Gradle, las actividades nativas y el archivo `AndroidManifest.xml`.*
 
-4. **Sincronizar el código:**
+4. **Sincronizar el código e inyectar la URL del API:**
    ```bash
-   npx cap sync
+   TRUCKCAR_API_BASE_URL=https://<dominio-del-api-gateway> npm run build:apk
    ```
+   *La APK no tiene URL de respaldo: `TRUCKCAR_API_BASE_URL` es obligatoria y debe ser `https` (el tráfico en claro, el contenido mixto y la depuración del WebView están apagados en `capacitor.config.js`). El nombre de host interno de la APK se define con la variable opcional `TRUCKCAR_APP_HOSTNAME`; si no se define, Capacitor usa su valor por defecto. El dominio que resulte debe estar en `TRUCKCAR_CORS_ALLOWED_ORIGINS` y `TRUCKCAR_WEBSOCKET_ALLOWED_ORIGINS` del backend.*
 
 ---
 
