@@ -76,9 +76,9 @@ async function install(handlers) {
   await installing;
 }
 
-test("registra install, activate y fetch", () => {
+test("registra install, activate, fetch, message y sync", () => {
   const { handlers } = loadServiceWorker();
-  assert.deepEqual(Object.keys(handlers).sort(), ["activate", "fetch", "install"]);
+  assert.deepEqual(Object.keys(handlers).sort(), ["activate", "fetch", "install", "message", "sync"]);
 });
 
 test("cada archivo del app shell existe y cada script y hoja de estilos de index.html está precargado", async () => {

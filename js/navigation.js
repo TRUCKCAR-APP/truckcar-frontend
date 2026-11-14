@@ -433,6 +433,6 @@ window.RouteGuidance = (function () {
         get route() { return route; },
         get clearance() { return clearance; },
         get hasWakeLock() { return Boolean(wakeLock); }, requestWakeLock: acquireWakeLock, releaseWakeLock,
-        instruction, formatDistance, glyph, project, samplePath, checkClearance
+        instruction, formatDistance, glyph, project, samplePath, checkClearance, OFF_ROUTE_M
     };
 })();

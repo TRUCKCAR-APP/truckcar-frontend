@@ -212,7 +212,7 @@ class MapController {
     }
 
     splitRoute(coords, position) {
-        if (!position) return { done: [], ahead: coords };
+        if (!position || !window.RouteGuidance) return { done: [], ahead: coords };
         const cos = Math.cos(position[0] * Math.PI / 180);
         let index = 0;
         let best = Infinity;
@@ -220,7 +220,7 @@ class MapController {
             const d = ((c[0] - position[0]) ** 2) + ((c[1] - position[1]) * cos) ** 2;
             if (d < best) { best = d; index = i; }
         });
-        if (Math.sqrt(best) * 111320 > 250) return { done: [], ahead: coords };
+        if (Math.sqrt(best) * 111320 > window.RouteGuidance.OFF_ROUTE_M) return { done: [], ahead: coords };
         return { done: coords.slice(0, index + 1).concat([position]), ahead: [position].concat(coords.slice(index + 1)) };
     }
 

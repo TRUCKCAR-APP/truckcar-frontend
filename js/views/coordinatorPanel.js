@@ -316,7 +316,7 @@ window.CoordinatorPanel = {
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Placa del vehículo</label>
-                                    <input id="veh-plate" type="text" placeholder="Ej: TDK-410" required maxlength="10" class="login-input w-full text-xs uppercase font-mono">
+                                    <input id="veh-plate" type="text" placeholder="Ej: TDK-410" required maxlength="10" class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Tipo de camión</label>
@@ -333,15 +333,15 @@ window.CoordinatorPanel = {
                             <div class="grid grid-cols-3 gap-2.5">
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Gálibo (m)</label>
-                                    <input id="veh-height" type="number" step="0.05" min="0" placeholder="4.1" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-height" type="number" step="0.05" min="0" required class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Tara (t)</label>
-                                    <input id="veh-tare" type="number" step="0.1" min="0" placeholder="16.0" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-tare" type="number" step="0.1" min="0" required class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Capacidad (t)</label>
-                                    <input id="veh-payload" type="number" step="0.1" min="0.1" placeholder="34.0" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-payload" type="number" step="0.1" min="0.1" required class="login-input w-full text-xs font-mono">
                                 </div>
                             </div>
                             <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
