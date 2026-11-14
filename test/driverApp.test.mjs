@@ -3,10 +3,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
+function loadDriverApp(w) {
+  const stubs = w.ui || {};
+  w.eval(readFileSync("js/ui.js", "utf8"));
+  Object.assign(w.ui, stubs);
+  if (!w.TruckCarService) w.eval(readFileSync("js/dataService.js", "utf8"));
+  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
+}
+
 function driverApp() {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
-  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
-  return w.DriverApp;
+  loadDriverApp(w);
+  return Object.assign(w.DriverApp, { core: w.ui });
 }
 
 test("los estados del backend se muestran en español, nunca como código", () => {
@@ -27,7 +35,7 @@ test("el perfil rotula el peso bruto como el actual (tara + carga a bordo), no c
     hasVehicle: true, badges: [],
     vehicle: { plate: "TDK-410", brand: "Kenworth T800", category: "TURBO", height: 3.9, grossWeight: 8.5, tareWeight: 8.5, netCargoWeight: 0, badges: [] }
   } };
-  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
+  loadDriverApp(w);
   const text = new JSDOM(w.DriverApp.renderProfileScreen({ dataStatus: {} })).window.document.body.textContent.replace(/\s+/g, " ");
 
   assert.match(text, /Peso bruto actual \(tara \+ carga\)\s*8,5 t/);
@@ -36,25 +44,24 @@ test("el perfil rotula el peso bruto como el actual (tara + carga a bordo), no c
   assert.doesNotMatch(text, /Peso Bruto Máx|Carga Útil/);
 });
 
-test("sin fuente de datos, restricciones, alertas y riesgo van en una sola fila; un dato real sale en su propia fila", () => {
+test("la ruta muestra el riesgo y las restricciones del plan de Route-AI; una lista vacía de restricciones es «Ninguna»", () => {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
   w.ui = { escape: (v) => String(v ?? "") };
-  w.mapCtrl = { routeFiguresHtml: () => "" };
   w.TruckCarData = {
     activeLoadOrder: { status: "IN_TRANSIT", origin: { city: "Bogotá" }, destination: { city: "Ibagué" } },
     currentDriver: { vehicle: { plate: "TDK-410" } },
-    routes: { optimal: { title: "Bogotá - Ibagué (Troncal Principal)", riskLevel: "BAJO", warnings: [], waypoints: [] } }
+    routes: { optimal: { title: "Bogotá - Ibagué (Troncal Principal)", riskLevel: "BAJO", activeAlertsCount: 0, warnings: [], checkpoints: [], waypoints: [] } }
   };
-  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
+  loadDriverApp(w);
   const text = new JSDOM(w.DriverApp.renderRouteOverviewScreen({ dataStatus: {} })).window.document.body.textContent.replace(/\s+/g, " ");
-  assert.match(text, /Restricciones, alertas y riesgo · sin fuente de datos todavía/);
-  assert.doesNotMatch(text, /Sin información/, "no se repite «Sin información» fila por fila");
-  assert.doesNotMatch(text, /Bajo|BAJO/, "el riesgo por defecto de Route-AI no se muestra");
+  assert.match(text, /Riesgo\s*Bajo/);
+  assert.match(text, /Alertas activas en la ruta\s*0/);
+  assert.match(text, /Restricciones\s*Ninguna/);
+  assert.doesNotMatch(text, /BAJO/, "el código del backend no se muestra como etiqueta");
 
   w.TruckCarData.routes.optimal.warnings = ["Gálibo de 4,0 m en el km 32"];
   const withData = new JSDOM(w.DriverApp.renderRouteOverviewScreen({ dataStatus: {} })).window.document.body.textContent.replace(/\s+/g, " ");
   assert.match(withData, /Restricciones\s*Gálibo de 4,0 m en el km 32/);
-  assert.match(withData, /Alertas y riesgo · sin fuente de datos todavía/);
 });
 
 test("las acciones guardadas sin señal se cuentan sobre la pestaña Offline, con texto para lectores de pantalla", () => {
@@ -62,7 +69,7 @@ test("las acciones guardadas sin señal se cuentan sobre la pestaña Offline, co
   let pending = 2;
   w.OfflineQueue = { status: () => ({ pending }) };
   w.TruckCarData = {};
-  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
+  loadDriverApp(w);
   const tab = new JSDOM(w.DriverApp.tabButton("profile", "offline", "Offline", "cloud-arrow-down")).window.document;
   assert.equal(tab.querySelector(".driver-tab-count").textContent, "2");
   assert.equal(tab.querySelector(".driver-tab-count").getAttribute("aria-hidden"), "true");
@@ -78,7 +85,7 @@ function screens({ alerts = [], dataStatus = {}, queue = { pending: 0, byKind: {
   w.OfflineQueue = { status: () => queue };
   w.TruckCarConfig = { demoTools: search.includes("demo=1") };
   w.TruckCarData = { communityAlerts: alerts, offlineSyncData: offlineData };
-  w.eval(readFileSync("js/views/driverApp.js", "utf8"));
+  loadDriverApp(w);
   const text = (html) => new JSDOM(html).window.document.body.textContent.replace(/\s+/g, " ");
   return { w, text, state: { alertFilter: "all", dataStatus: { errors: {}, ...dataStatus }, isOffline: false } };
 }
@@ -143,7 +150,8 @@ test("la Torre y «Mis envíos» usan solo la paleta de tokens: sin matices suel
 test("los estados del motor de asignación (AllocationStatus) se dicen en español", () => {
   const app = driverApp();
   for (const code of ["SUCCESSFUL", "NO_DRIVERS_AVAILABLE", "REJECTED", "DEGRADED_USING_CACHE", "RECOMMENDATION_PENDING", "ASSIGNMENT_CONFLICT", "ASSIGNMENT_FAILED"]) {
-    assert.ok(app.STATUS_LABELS[code], code + " sin etiqueta en español");
+    assert.ok(app.core.STATUS_LABELS[code], code + " sin etiqueta en español");
+    assert.equal(app.statusLabel(code), app.core.STATUS_LABELS[code], code + ": el conductor usa la etiqueta del núcleo");
   }
   assert.equal(app.statusLabel("SUCCESSFUL"), "Conductor seleccionado");
 });

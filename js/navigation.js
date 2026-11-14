@@ -1,5 +1,4 @@
 window.RouteGuidance = (function () {
-    const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
     const OFF_ROUTE_M = 250;
     const REROUTE_COOLDOWN_MS = 30000;
     const CLEARANCE_ANNOUNCE_M = 3000;
@@ -105,12 +104,6 @@ window.RouteGuidance = (function () {
         return 'arrow-up';
     }
 
-    function formatDuration(seconds) {
-        if (seconds == null || !Number.isFinite(seconds)) return '—';
-        const minutes = Math.max(1, Math.round(seconds / 60));
-        return minutes >= 60 ? Math.floor(minutes / 60) + ' h ' + (minutes % 60) + ' min' : minutes + ' min';
-    }
-
     function formatDistance(m) {
         if (m == null || !Number.isFinite(m)) return '—';
         if (m < 1000) return Math.max(10, Math.round(m / 10) * 10) + ' m';
@@ -131,13 +124,8 @@ window.RouteGuidance = (function () {
     }
 
     async function requestRoute(points) {
-        const url = OSRM_URL + points.map(c => c[1] + ',' + c[0]).join(';')
-            + '?overview=full&geometries=geojson&steps=true';
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('OSRM ' + response.status);
-        const json = await response.json();
-        const best = json.routes && json.routes[0];
-        if (!best || !best.geometry || !best.legs) throw new Error('OSRM sin ruta');
+        const best = await window.TruckCarApi.routing.drivingRoute(points, { steps: true });
+        if (!best.legs) throw new Error('El servicio de rutas no devolvió maniobras');
         return best;
     }
 
@@ -163,7 +151,7 @@ window.RouteGuidance = (function () {
             start += s.distance;
             return step;
         });
-        return { key, source, geometry, cumulative, steps, totalM: cumulative[cumulative.length - 1], durationS: osrm.duration };
+        return { key, source, geometry, cumulative, steps, totalM: cumulative[cumulative.length - 1] };
     }
 
     function notify() {
@@ -264,26 +252,10 @@ window.RouteGuidance = (function () {
         return Array.from({ length: CLEARANCE_MAX_POINTS }, (_, i) => geometry[Math.round(i * step)]);
     }
 
-    const metres = (value) => Number(value).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const tons = (value) => Number(value).toLocaleString('es-CO', { maximumFractionDigits: 1 });
-
-    function clearanceItem(item, vehicle, warning) {
+    function clearanceItem(item, warning) {
         const r = item.restriction || {};
-        const base = { id: r.id, kind: item.kind, alongM: item.alongRouteMeters, warning };
-        const title = r.title || 'Restricción vial';
-        if (item.kind === 'GALIBO_ALTURA') {
-            return { ...base, text: 'Gálibo de ' + metres(r.maxClearanceMeters) + ' m',
-                sub: 'su vehículo mide ' + metres(vehicle.height) + ' m',
-                spoken: 'gálibo de ' + metres(r.maxClearanceMeters) + ' metros; su vehículo mide ' + metres(vehicle.height) };
-        }
-        if (item.kind === 'PESO_BRUTO' || item.kind === 'PESO_POR_EJE') {
-            const limit = item.kind === 'PESO_BRUTO' ? r.maxGrossWeightTons : r.maxAxleWeightTons;
-            return { ...base, text: 'Límite de ' + tons(limit) + ' t' + (item.kind === 'PESO_POR_EJE' ? ' por eje' : ''),
-                sub: 'su peso bruto es ' + tons(vehicle.grossWeight) + ' t',
-                spoken: 'límite de peso de ' + tons(limit) + ' toneladas' };
-        }
-        if (item.kind === 'BLOQUEO_TOTAL') return { ...base, text: 'Paso cerrado', sub: title, spoken: 'paso cerrado: ' + title };
-        return { ...base, text: 'Precaución', sub: title, spoken: 'precaución: ' + title };
+        const reason = window.ui.orNotAvailable(item.reason);
+        return { id: r.id, kind: item.kind, alongM: item.alongRouteMeters, warning, text: reason, spoken: reason };
     }
 
     async function checkClearance(target) {
@@ -305,8 +277,8 @@ window.RouteGuidance = (function () {
             });
             if (route !== target) return;
             const items = [
-                ...(result.blocking || []).map(item => clearanceItem(item, vehicle, false)),
-                ...(result.warnings || []).map(item => clearanceItem(item, vehicle, true))
+                ...(result.blocking || []).map(item => clearanceItem(item, false)),
+                ...(result.warnings || []).map(item => clearanceItem(item, true))
             ].sort((a, b) => a.alongM - b.alongM);
             clearance = { key: target.key, status: items.length ? 'found' : 'ok', items };
         } catch (e) {
@@ -360,11 +332,20 @@ window.RouteGuidance = (function () {
             stepNumber: p && p.nextIndex != null ? p.nextIndex + 1 : route ? 1 : 0,
             stepCount: route ? route.steps.length : 0,
             remaining: route ? formatDistance(p && p.remainingM != null ? p.remainingM : route.totalM) : '—',
-            remainingTime: route && route.durationS && route.totalM
-                ? formatDuration(route.durationS * (p && p.remainingM != null ? p.remainingM : route.totalM) / route.totalM) : '—',
+            plannedDuration: plannedDuration(),
             speed,
             clearance: clearanceHud(p)
         };
+    }
+
+    function plannedDuration() {
+        const routes = window.TruckCarData && window.TruckCarData.routes;
+        const hours = routes && routes.optimal ? routes.optimal.estimatedDurationHours : null;
+        return hours == null ? null : window.TruckCarService.formatHours(hours);
+    }
+
+    function durationText(s) {
+        return s.plannedDuration ? 'Viaje completo: ' + s.plannedDuration + ' · Route-AI' : 'Duración: ' + window.ui.NOT_AVAILABLE;
     }
 
     function clearanceHud(p) {
@@ -372,7 +353,7 @@ window.RouteGuidance = (function () {
         const item = nextClearance(along);
         if (!item) return null;
         const away = Math.max(0, item.alongM - (along || 0));
-        return { text: item.text + ' en ' + formatDistance(away), sub: item.sub, warning: item.warning };
+        return { text: item.text, sub: 'en ' + formatDistance(away), warning: item.warning };
     }
 
     function currentStreet(s) {
@@ -383,7 +364,7 @@ window.RouteGuidance = (function () {
     }
 
     function hudText(s) {
-        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: 'Ruta por carretera de OSRM' };
+        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: '' };
         if (s.status === 'unavailable') return { distance: '—', instruction: 'Guía paso a paso no disponible', street: 'Sin conexión con el servicio de rutas: siga el mapa.' };
         if (s.status === 'idle') return { distance: '—', instruction: 'Preparando la navegación…', street: '' };
         if (!s.hasPosition || s.offRoute) return { distance: s.distance, instruction: s.instruction, street: '' };
@@ -400,7 +381,7 @@ window.RouteGuidance = (function () {
         set('[data-nav-street]', text.street);
         set('[data-nav-speed]', s.speed == null ? '—' : String(s.speed));
         set('[data-nav-remaining]', s.remaining);
-        set('[data-nav-eta]', s.remainingTime === '—' ? 'Tiempo sin información' : s.remainingTime + ' · estimado para auto');
+        set('[data-nav-eta]', durationText(s));
         set('[data-nav-step]', s.stepCount ? 'Paso ' + s.stepNumber + ' de ' + s.stepCount : 'Ruta real');
         document.querySelectorAll('[data-nav-icon]').forEach(el => { el.className = 'fas ' + s.icon; });
         document.querySelectorAll('[data-nav-glyph]').forEach(el => { el.setAttribute('href', 'assets/icons.svg#' + s.glyph); });
@@ -447,11 +428,11 @@ window.RouteGuidance = (function () {
     }
 
     return {
-        prepare, update, reset, snapshot, hudText, renderHud,
+        prepare, update, reset, snapshot, hudText, renderHud, durationText,
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
         get clearance() { return clearance; },
         get hasWakeLock() { return Boolean(wakeLock); }, requestWakeLock: acquireWakeLock, releaseWakeLock,
-        instruction, formatDistance, formatDuration, glyph, project, samplePath, checkClearance
+        instruction, formatDistance, glyph, project, samplePath, checkClearance, OFF_ROUTE_M
     };
 })();

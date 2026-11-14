@@ -1,22 +1,23 @@
 (function () {
-    const LOCAL_GATEWAY_URL = 'http://localhost:8000';
+    const LOCAL_DEVELOPMENT_GATEWAY_URL = 'http://localhost:8000';
     const API_PREFIX = '/api/v1';
 
     const host = window.location.hostname;
-    const isLocal = window.location.protocol === 'file:'
-        || host === 'localhost'
-        || host === '127.0.0.1'
-        || host === '';
+    const nativeApp = Boolean(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function'
+        && window.Capacitor.isNativePlatform());
+    const localDevelopment = !nativeApp && window.location.protocol === 'http:'
+        && (host === 'localhost' || host === '127.0.0.1');
+    const servedByGateway = !nativeApp && !localDevelopment && /^https?:$/.test(window.location.protocol);
 
     const metaTag = document.querySelector('meta[name="truckcar-api-base-url"]');
     const explicitUrl = window.TRUCKCAR_API_BASE_URL || (metaTag && metaTag.content) || '';
 
-    let gatewayUrl;
+    let gatewayUrl = '';
     if (explicitUrl) {
         gatewayUrl = explicitUrl;
-    } else if (isLocal) {
-        gatewayUrl = LOCAL_GATEWAY_URL;
-    } else {
+    } else if (localDevelopment) {
+        gatewayUrl = LOCAL_DEVELOPMENT_GATEWAY_URL;
+    } else if (servedByGateway) {
         gatewayUrl = window.location.origin;
     }
     gatewayUrl = gatewayUrl.replace(/\/+$/, '').replace(/\/api\/v1$/, '');
@@ -53,16 +54,15 @@
     window.TruckCarConfig = Object.freeze({
         demoTools,
         map: Object.freeze({ provider: MAP_PROVIDER, tileUrl, lightTileUrl: withKey(provider.lightUrl), attribution: provider.attribution, maxZoom: provider.maxZoom }),
-        environment: isLocal ? 'local' : 'production',
+        environment: localDevelopment ? 'local' : 'production',
+        nativeApp,
         gatewayUrl,
-        apiBaseUrl: gatewayUrl + API_PREFIX,
+        apiBaseUrl: gatewayUrl ? gatewayUrl + API_PREFIX : '',
+        routingUrl: 'https://router.project-osrm.org/route/v1/driving/',
         requestTimeoutMs: 15000,
         pollingIntervalMs: 30000,
         storageKeys: {
             session: 'truckcar.session'
         }
     });
-
-    console.info('[TruckCar] API base:', window.TruckCarConfig.apiBaseUrl,
-        '(' + window.TruckCarConfig.environment + ')');
 })();

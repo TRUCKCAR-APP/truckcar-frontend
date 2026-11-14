@@ -31,7 +31,7 @@
             const value = {
                 accessToken: authResponse.accessToken,
                 refreshToken: authResponse.refreshToken,
-                expiresAt: claims.exp ? claims.exp * 1000 : Date.now() + (authResponse.expiresIn || 0),
+                expiresAt: claims.exp ? claims.exp * 1000 : Date.now() + (authResponse.expiresIn || 0) * 1000,
                 userId: claims.sub,
                 email: claims.email,
                 role: claims.role
@@ -59,14 +59,22 @@
     const REFRESH_MARGIN_MS = 60 * 1000;
     let refreshInFlight = null;
 
+    function withSessionLock(task) {
+        const locks = typeof navigator !== 'undefined' && navigator.locks;
+        return locks && typeof locks.request === 'function' ? locks.request('truckcar.session.refresh', task) : task();
+    }
+
     function refreshSession() {
         if (!refreshInFlight) {
-            const current = session.get();
-            refreshInFlight = (current && current.refreshToken
-                ? request('POST', '/auth/refresh', { body: { refreshToken: current.refreshToken }, auth: false })
-                    .then(response => session.save(response))
-                : Promise.reject(new ApiError('No hay sesión para renovar', { status: 401 })))
-                .finally(() => { refreshInFlight = null; });
+            const before = session.get();
+            refreshInFlight = withSessionLock(async () => {
+                const current = session.get();
+                if (!current || !current.refreshToken) throw new ApiError('No hay sesión para renovar', { status: 401 });
+                const renewedElsewhere = before && current.accessToken !== before.accessToken && current.expiresAt > Date.now();
+                if (renewedElsewhere) return current;
+                const response = await request('POST', '/auth/refresh', { body: { refreshToken: current.refreshToken }, auth: false });
+                return session.save(response);
+            }).finally(() => { refreshInFlight = null; });
         }
         return refreshInFlight;
     }
@@ -112,9 +120,17 @@
         return url.toString();
     }
 
+    function validationDetails(body) {
+        const details = body && body.details;
+        if (!details || typeof details !== 'object') return [];
+        return Object.values(details).filter(value => typeof value === 'string' && value.trim());
+    }
+
     function extractErrorMessage(body, status) {
         if (body && typeof body === 'object') {
             if (body.message) return body.message;
+            const details = validationDetails(body);
+            if (details.length) return details.join('. ');
             if (body.reasonDetails) return body.reasonDetails;
             if (body.error && typeof body.error === 'string') return body.error;
             if (body.errors && typeof body.errors === 'object') {
@@ -136,6 +152,9 @@
     }
 
     async function request(method, path, { body, query, auth = true, timeoutMs, headers = {}, retried = false } = {}) {
+        if (!config.gatewayUrl) {
+            throw new ApiError('Esta instalación no tiene configurada la dirección del servidor. Pida una versión actualizada de la aplicación.', { status: 0, path });
+        }
         if (auth && session.isRenewable()) {
             try {
                 await ensureFreshSession();
@@ -232,6 +251,52 @@
 
     const enc = encodeURIComponent;
 
+    const DRIVER_STATE_FIELDS = ['driverName', 'licenseCategory', 'rating', 'totalTrips', 'netCargoWeightTons',
+        'drivingHoursToday', 'mandatoryRestLocation', 'hazmatAuthorized', 'coldChainCertified', 'runtValid',
+        'electronicTollTagActive', 'activeBadges', 'currentLatitude', 'currentLongitude', 'currentSpeedKmH', 'status'];
+
+    function finiteOrUndefined(value) {
+        if (value === null || value === undefined || value === '') return undefined;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : undefined;
+    }
+
+    async function registerVehicle(driverId, vehicleData) {
+        let current = null;
+        try {
+            current = await http.get('/fleets-drivers/drivers/' + enc(driverId));
+        } catch (error) {
+            if (!error.isNotFound) throw error;
+        }
+        const kept = {};
+        DRIVER_STATE_FIELDS.forEach(field => {
+            if (current && current[field] !== null && current[field] !== undefined) kept[field] = current[field];
+        });
+        return http.post('/fleets-drivers/state', {
+            ...kept,
+            driverId,
+            vehiclePlate: vehicleData.plate ? String(vehicleData.plate).toUpperCase().trim() : undefined,
+            vehicleModel: vehicleData.model ? String(vehicleData.model).trim() : undefined,
+            vehicleType: vehicleData.type || undefined,
+            maxHeightMeters: finiteOrUndefined(vehicleData.height),
+            maxPayloadTons: finiteOrUndefined(vehicleData.maxPayload),
+            tareWeightTons: finiteOrUndefined(vehicleData.tareWeight)
+        });
+    }
+
+    async function drivingRoute(points, { steps = false } = {}) {
+        const url = config.routingUrl + points.map(c => c[1] + ',' + c[0]).join(';')
+            + '?overview=full&geometries=geojson' + (steps ? '&steps=true' : '');
+        const response = await fetch(url);
+        if (!response.ok) throw new ApiError('El servicio de rutas respondió ' + response.status, { status: response.status, path: 'routing' });
+        const json = await response.json();
+        const best = json.routes && json.routes[0];
+        if (!best || !best.geometry || !best.geometry.coordinates) {
+            throw new ApiError('El servicio de rutas no devolvió una ruta', { status: 502, path: 'routing' });
+        }
+        return best;
+    }
+
     window.TruckCarApi = {
         ApiError,
         session,
@@ -264,16 +329,7 @@
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
             getVehicle: (plate) => http.get('/fleets-drivers/vehicles/' + enc(plate)),
             updateState: (state) => http.post('/fleets-drivers/state', state),
-            registerVehicle: (driverId, vehicleData) => http.post('/fleets-drivers/state', {
-                driverId,
-                vehiclePlate: vehicleData.plate ? String(vehicleData.plate).toUpperCase().trim() : undefined,
-                vehicleModel: vehicleData.model ? String(vehicleData.model).trim() : undefined,
-                vehicleType: vehicleData.type || 'TRACTOMULA_3S3',
-                maxHeightMeters: Number(vehicleData.height) || 4.1,
-                maxPayloadTons: Number(vehicleData.maxPayload) || 34.0,
-                tareWeightTons: Number(vehicleData.tareWeight) || 16.0,
-                status: 'ACTIVO'
-            })
+            registerVehicle
         },
 
         loads: {
@@ -300,6 +356,10 @@
             matchLoad: (loadId) => http.post('/fleet-allocation/match/' + enc(loadId)),
             history: (loadId) => http.get('/fleet-allocation/history/' + enc(loadId)),
             optimize: (request) => http.post('/fleet-allocation/optimize', request)
+        },
+
+        routing: {
+            drivingRoute
         },
 
         routes: {

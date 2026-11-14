@@ -1,6 +1,6 @@
 ﻿importScripts('js/tileStore.js');
 
-const VERSION = 'v20';
+const VERSION = 'v23';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v2';
@@ -29,6 +29,7 @@ const SHELL = [
     'js/api.js',
     'js/mockData.js',
     'js/state.js',
+    'js/ui.js',
     'js/ui/toaster.js',
     'js/ui/sheet.js',
     'js/offlineQueue.js',
@@ -51,13 +52,26 @@ const SHELL = [
     'js/views/publicTracking.js',
     'assets/vendor/leaflet/leaflet.css',
     'assets/vendor/leaflet/leaflet.js',
-    'js/messagingService.js',
-    'js/notifications.js',
-    'js/app.js'
+    'js/app.js',
+    'js/surfaces/driver.js',
+    'js/surfaces/panel.js',
+    'js/demo/demoSession.js'
 ];
 
 const CDN_HOSTS = ['cdnjs.cloudflare.com', 'unpkg.com'];
 const TILE_HOSTS = /^(tiles\.stadiamaps\.com|([a-d]\.)?basemaps\.cartocdn\.com)$/;
+const SCOPE_PATH = new URL('./', self.location).pathname;
+const NETWORK_ONLY_PAGES = ['panel.html', 'seguimiento.html'];
+const STATIC_PREFIXES = ['assets/', 'css/', 'js/', 'fonts/'];
+const SESSION_ENDED = 'TRUCKCAR_SESSION_ENDED';
+
+function scopedPath(url) {
+    return url.pathname.startsWith(SCOPE_PATH) ? url.pathname.slice(SCOPE_PATH.length) : url.pathname.replace(/^\/+/, '');
+}
+
+function isApi(url) {
+    return url.pathname.startsWith('/api/') || scopedPath(url).startsWith('api/');
+}
 
 self.addEventListener('install', (event) => {
     event.waitUntil(caches.open(SHELL_CACHE)
@@ -92,7 +106,8 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
         return;
     }
-    if (url.origin !== self.location.origin || url.pathname.startsWith('/pod-media/')) return;
+    if (url.origin !== self.location.origin || url.pathname.startsWith('/pod-media/') || isApi(url)) return;
+    if (NETWORK_ONLY_PAGES.includes(scopedPath(url))) return;
 
     if (request.mode === 'navigate') {
         event.respondWith(networkFirstNavigation(request));
@@ -112,16 +127,45 @@ async function networkFirstShell(request) {
     }
 }
 
+function navigationKey(url) {
+    return scopedPath(url) || 'index.html';
+}
+
 async function networkFirstNavigation(request) {
+    const key = navigationKey(new URL(request.url));
+    const cache = await caches.open(SHELL_CACHE);
     try {
         const response = await fetch(request);
-        const cache = await caches.open(SHELL_CACHE);
-        cache.put('index.html', response.clone());
+        if (response.ok) cache.put(key, response.clone());
         return response;
     } catch (error) {
-        return (await caches.match('index.html')) || Response.error();
+        const own = await cache.match(key);
+        if (own) return own;
+        const anotherPage = /\.html?$/i.test(key) && key !== 'index.html';
+        return (!anotherPage && await cache.match('index.html')) || Response.error();
     }
 }
+
+async function clearSessionCaches() {
+    const shell = new Set(SHELL.map(path => new URL(path, self.location).href));
+    const names = (await caches.keys()).filter(name => name.startsWith('truckcar-') && name !== TILE_CACHE);
+    await Promise.all(names.map(async (name) => {
+        const cache = await caches.open(name);
+        const keys = (await cache.keys()).map(key => (typeof key === 'string' ? key : key.url));
+        await Promise.all(keys.filter((key) => {
+            const url = new URL(key, self.location);
+            if (url.origin !== self.location.origin) return false;
+            if (isApi(url)) return true;
+            return !shell.has(url.href) && !STATIC_PREFIXES.some(prefix => scopedPath(url).startsWith(prefix));
+        }).map(key => cache.delete(key)));
+    }));
+}
+
+self.addEventListener('message', (event) => {
+    if (!event.data || event.data.type !== SESSION_ENDED) return;
+    const done = clearSessionCaches().catch(() => {});
+    if (event.waitUntil) event.waitUntil(done);
+});
 
 async function staleWhileRevalidate(request, cacheName) {
     const cache = await caches.open(cacheName);
@@ -216,39 +260,6 @@ async function reconcileTiles() {
     } catch (error) { }
 }
 
-
-self.addEventListener('push', (event) => {
-    let data = {};
-    try {
-        data = event.data ? event.data.json() : {};
-    } catch (e) {
-        data = { title: 'TruckCar', body: event.data ? event.data.text() : 'Nueva actualización' };
-    }
-    const title = data.title || 'TruckCar';
-    const options = {
-        body: data.body || 'Novedad en su ruta o asignación.',
-        icon: 'assets/icon-192.png',
-        badge: 'assets/icon-192.png',
-        vibrate: [100, 50, 100],
-        data: data.data || { url: './' }
-    };
-    event.waitUntil(self.registration.showNotification(title, options));
-});
-
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    const targetUrl = (event.notification.data && event.notification.data.url) || './';
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-            for (const client of clientList) {
-                if (client.url.includes(self.location.origin) && 'focus' in client) {
-                    return client.focus();
-                }
-            }
-            if (clients.openWindow) return clients.openWindow(targetUrl);
-        })
-    );
-});
 
 self.addEventListener('sync', (event) => {
     if (event.tag === 'truckcar-outbox-sync') {

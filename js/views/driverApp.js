@@ -1,18 +1,6 @@
 window.DriverApp = {
-    STATUS_LABELS: {
-        PROPOSED: 'Propuesta', NOTIFIED: 'Propuesta', AVAILABLE: 'Disponible', ASSIGNED: 'Aceptada',
-        IN_TRANSIT: 'En tránsito', DELIVERED: 'Entregada', CANCELLED: 'Cancelada',
-        DISPONIBLE: 'Disponible', EN_TRANSITO: 'En tránsito', DESCANSO: 'En descanso', SIN_VEHICULO: 'Sin vehículo',
-        ACCEPTED: 'Aceptada', REJECTED: 'Rechazada', TIMEOUT: 'Sin respuesta a tiempo',
-        UNASSIGNED_NO_DRIVERS: 'Sin conductores disponibles', ACTIVO: 'Activo', INACTIVO: 'Inactivo', DESCONOCIDO: 'Sin estado',
-        SUCCESSFUL: 'Conductor seleccionado', NO_DRIVERS_AVAILABLE: 'Sin conductores disponibles',
-        DEGRADED_USING_CACHE: 'Con datos guardados', RECOMMENDATION_PENDING: 'Recomendación pendiente',
-        ASSIGNMENT_CONFLICT: 'Rechazada por conflicto', ASSIGNMENT_FAILED: 'Asignación sin respuesta'
-    },
-
     statusLabel(code) {
-        if (!code) return 'Sin estado';
-        return this.STATUS_LABELS[code] || String(code).charAt(0) + String(code).slice(1).toLowerCase().replace(/_/g, ' ');
+        return window.ui.statusLabel(code);
     },
 
     render(state) {
@@ -40,7 +28,7 @@ window.DriverApp = {
                     <span class="wordmark">TruckCar</span>
                     <span data-network-status aria-live="polite" class="min-w-0"></span>
                     <span class="app-header-spacer"></span>
-                    <button onclick="window.app.logout()" class="header-icon-btn" title="Cerrar sesión" aria-label="Cerrar sesión">
+                    <button type="button" onclick="window.DriverActions.confirmLogout(this)" class="header-icon-btn" title="Cerrar sesión" aria-label="Cerrar sesión">
                         ${this.icon('sign-out')}
                     </button>
                 </header>
@@ -93,7 +81,8 @@ window.DriverApp = {
 
     hasPendingLoad() {
         const load = window.TruckCarData.activeLoadOrder;
-        return Boolean(load && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED'));
+        const actions = load ? window.TruckCarService.loadActions(load) : {};
+        return Boolean(actions.awaitNotification || actions.respond);
     },
 
     destinationLabel() {
@@ -101,25 +90,9 @@ window.DriverApp = {
         return load ? load.destination.city || load.destination.name : 'Sin destino';
     },
 
-    routeEta() {
-        const routes = window.TruckCarData.routes;
-        return routes && routes.optimal ? routes.optimal.eta : '—';
-    },
-
-    routeDistance() {
-        const routes = window.TruckCarData.routes;
-        return routes && routes.optimal ? routes.optimal.distance : '—';
-    },
-
-    TRUCK_TYPES: {
-        TRACTOMULA_3S3: 'Tractocamión 3S3', TRACTOMULA_3S2: 'Tractocamión 3S2', MINIMULA: 'Minimula',
-        DOBLETROQUE: 'Doble troque', CUATRO_MANOS: 'Cuatro manos', SENCILLO: 'Sencillo', TURBO: 'Turbo',
-        REFRIGERADO: 'Refrigerado'
-    },
-
     truckTypeLabel(code) {
-        if (!code || code === '—') return 'Sin información';
-        return this.TRUCK_TYPES[code] || this.statusLabel(code);
+        if (!code || code === '—') return window.ui.NOT_AVAILABLE;
+        return window.TruckCarService.truckTypeLabel(code) || this.statusLabel(code);
     },
 
     icon(name, cls = '') {
@@ -127,7 +100,7 @@ window.DriverApp = {
     },
 
     number(value, digits, unit) {
-        if (typeof value !== 'number' || Number.isNaN(value)) return 'Sin información';
+        if (typeof value !== 'number' || Number.isNaN(value)) return window.ui.NOT_AVAILABLE;
         return value.toLocaleString('es-CO', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + (unit ? ' ' + unit : '');
     },
 
@@ -179,9 +152,17 @@ window.DriverApp = {
         }
         const v = driver.vehicle;
         const load = window.TruckCarData.activeLoadOrder;
-        const status = this.statusLabel(driver.status) + (load && load.status === 'IN_TRANSIT' ? ' · ' + load.id : '');
-        const rating = typeof driver.rating === 'number' ? this.number(driver.rating, 1) + ' de 5' : 'Sin información';
-        const yes = (on, onText, offText) => this.dotText(on ? onText : offText, on ? 'ok' : '');
+        const status = this.statusLabel(driver.status) + (load && window.TruckCarService.loadActions(load).deliver ? ' · ' + load.id : '');
+        const na = window.ui.NOT_AVAILABLE;
+        const rating = typeof driver.rating === 'number' ? this.number(driver.rating, 1) + ' de 5' : na;
+        const yes = (on, onText, offText) => on === null || on === undefined ? esc(na) : this.dotText(on ? onText : offText, on ? 'ok' : '');
+        const hours = typeof driver.hoursDrivenToday === 'number' && typeof driver.maxDailyHours === 'number'
+            ? this.number(driver.hoursDrivenToday, 1, 'h') + ' de ' + this.number(driver.maxDailyHours, 0, 'h')
+            : typeof driver.hoursDrivenToday === 'number' ? this.number(driver.hoursDrivenToday, 1, 'h') : na;
+        const rest = driver.restRequired === null || driver.restRequired === undefined ? esc(na)
+            : driver.restRequired
+                ? this.warnLine('Descanso requerido', driver.mandatoryRestLocation ? '· ' + driver.mandatoryRestLocation : '')
+                : this.dotText('No requerido', 'ok');
 
         return `
             <div class="screen-scroll">
@@ -203,12 +184,16 @@ window.DriverApp = {
                 <h2 class="list-title">Conductor</h2>
                 <div class="list">
                     ${this.listRow('Nombre', esc(driver.name), true)}
-                    ${this.listRow('Licencia', esc(driver.licenseNumber && driver.licenseNumber !== '—' ? driver.licenseNumber : 'Sin información'))}
+                    ${this.listRow('Categoría de licencia', esc(window.ui.orNotAvailable(driver.licenseCategory)))}
+                    ${this.listRow('Cuenta', yes(driver.accountVerified, 'Verificada', 'Sin verificar'))}
                     ${this.listRow('Calificación', esc(rating))}
-                    ${this.listRow('Viajes completados', esc(driver.tripsCompleted))}
-                    ${this.listRow('Horas de conducción hoy', esc(this.number(driver.hoursDrivenToday, 1, 'h') + ' de ' + this.number(driver.maxDailyHours, 0, 'h')))}
-                    ${driver.restRequired ? this.listRow('Descanso', this.warnLine('Descanso requerido')) : ''}
-                    ${this.listRow('Estado', this.dotText(status, driver.status === 'EN_TRANSITO' ? 'ok' : ''))}
+                    ${this.listRow('Viajes completados', esc(window.ui.orNotAvailable(driver.tripsCompleted)))}
+                    ${this.listRow('Horas de conducción hoy', esc(hours))}
+                    ${this.listRow('Horas de conducción restantes', esc(this.number(driver.remainingDrivingHours, 1, 'h')))}
+                    ${this.listRow('Descanso', rest)}
+                    ${this.listRow('Parada de descanso obligatoria', esc(window.ui.orNotAvailable(driver.mandatoryRestLocation)))}
+                    ${this.listRow('En viaje', yes(driver.onTrip, 'Sí', 'No'))}
+                    ${this.listRow('Estado', this.dotText(status, driver.onTrip ? 'ok' : ''))}
                 </div>
 
                 ${v ? `
@@ -233,11 +218,26 @@ window.DriverApp = {
         `;
     },
 
+    plannedRoute() {
+        const routes = window.TruckCarData.routes;
+        const load = window.TruckCarData.activeLoadOrder;
+        if (!routes || !routes.optimal) return null;
+        return !routes.planForLoadId || (load && routes.planForLoadId === load.backendId) ? routes.optimal : null;
+    },
+
     roadDistanceKm() {
-        const guided = window.RouteGuidance && window.RouteGuidance.route;
-        if (guided && guided.totalM) return Math.round(guided.totalM / 1000);
-        const summary = window.mapCtrl && window.mapCtrl.routeSummary;
-        return summary ? Math.round(summary.distanceKm) : null;
+        const plan = this.plannedRoute();
+        return plan && typeof plan.totalDistanceKm === 'number' ? Math.round(plan.totalDistanceKm) : null;
+    },
+
+    planFiguresHtml(plan) {
+        const km = plan && typeof plan.totalDistanceKm === 'number' ? Math.round(plan.totalDistanceKm) : null;
+        const hours = plan && typeof plan.estimatedDurationHours === 'number' ? plan.estimatedDurationHours : null;
+        const none = '<span class="figure is-none">' + window.ui.NOT_AVAILABLE + '</span>';
+        const h = hours == null ? 0 : Math.floor(hours);
+        const min = hours == null ? 0 : Math.round((hours - h) * 60);
+        return (km == null ? none : '<span class="figure">' + km + '<small>km</small></span>')
+            + (hours == null ? none : '<span class="figure">' + (h ? h + '<small>h</small> ' : '') + min + '<small>min</small></span>');
     },
 
     renderAssignedLoadScreen(state) {
@@ -266,23 +266,24 @@ window.DriverApp = {
                 `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`);
         }
         const raw = load.raw || {};
-        const pending = load.status === 'AVAILABLE'
-            && (load.assignmentStatus === 'PROPOSED' || load.assignmentStatus === 'NOTIFIED');
-        const inTransit = load.status === 'IN_TRANSIT';
+        const allowed = window.TruckCarService.loadActions(load);
+        const pending = allowed.awaitNotification || allowed.respond;
+        const inTransit = allowed.deliver;
         const busy = state.busyAction;
         const statusCode = pending ? load.assignmentStatus : load.status;
-        const startedAt = inTransit && load.tripStartedAt
-            ? ' · salió ' + new Date(load.tripStartedAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) : '';
+        const clock = (iso) => new Date(iso).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+        const startedAt = inTransit && load.tripStartedAt ? ' · salió ' + clock(load.tripStartedAt)
+            : !inTransit && load.assignmentStatusChangedAt ? ' · desde ' + clock(load.assignmentStatusChangedAt) : '';
         const km = this.roadDistanceKm();
         const budget = Number(raw.offeredBudget);
         const busyIcon = (action, icon) => (busy === action ? this.spinner() : this.icon(icon));
 
-        const actions = load.assignmentStatus === 'PROPOSED' && pending ? `
+        const actions = allowed.awaitNotification ? `
                 <div class="notice">${this.warnLine('Propuesta en proceso de notificación', '· podrá aceptarla o rechazarla cuando llegue la notificación.')}</div>
                 <div class="screen-actions">
                     <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Consultar estado</button>
                 </div>`
-            : pending ? `
+            : allowed.respond ? `
                 <div class="screen-actions">
                     <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('accept', 'check-circle')}Aceptar carga y ver ruta</button>
                     <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('reject', 'x-circle')}Rechazar</button>
@@ -338,17 +339,16 @@ window.DriverApp = {
 
     routeFactsHtml(opt) {
         const esc = window.ui.escape;
-        const facts = [];
-        const missing = [];
-        const warnings = opt.warnings || [];
-        if (warnings.length) facts.push(this.listRow('Restricciones', esc(warnings.join(' · '))));
-        else missing.push('restricciones');
-        missing.push('alertas', 'riesgo');
-        if (missing.length) {
-            const label = missing.join(', ').replace(/, ([^,]*)$/, ' y $1');
-            facts.push(`<div class="list-row"><span class="list-label">${esc(label.charAt(0).toUpperCase() + label.slice(1))}<span class="list-note"> · sin fuente de datos todavía</span></span></div>`);
-        }
-        return facts.join('');
+        const na = window.ui.NOT_AVAILABLE;
+        const warnings = opt.warnings;
+        const checkpoints = opt.checkpoints || [];
+        return [
+            this.listRow('Riesgo', esc(opt.riskLevel ? this.statusLabel(opt.riskLevel) : na), true),
+            this.listRow('Alertas activas en la ruta', esc(typeof opt.activeAlertsCount === 'number' ? String(opt.activeAlertsCount) : na)),
+            this.listRow('Restricciones', esc(!Array.isArray(warnings) ? na : warnings.length ? warnings.join(' · ') : 'Ninguna')),
+            this.listRow('Peajes y puestos de control', esc(checkpoints.length ? checkpoints.join(' · ') : na)),
+            this.listRow('Recomendación', esc(window.ui.orNotAvailable(opt.aiRecommendation)))
+        ].join('');
     },
 
     renderRouteOverviewScreen(state) {
@@ -368,7 +368,7 @@ window.DriverApp = {
         const opt = routes.optimal;
         const rej = routes.rejectedAlternate;
         const title = load ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) : opt.title;
-        const inTransit = load && load.status === 'IN_TRANSIT';
+        const inTransit = load && window.TruckCarService.loadActions(load).deliver;
 
         return `
             <div class="route-screen">
@@ -380,8 +380,8 @@ window.DriverApp = {
 
                 <section class="route-sheet" data-route-sheet aria-label="Ruta de la carga">
                     <h1 class="route-title">${esc(title)}</h1>
-                    <div class="route-figures" data-route-figures>${window.mapCtrl.routeFiguresHtml()}</div>
-                    <p class="secondary">Tiempo estimado para auto</p>
+                    <div class="route-figures">${this.planFiguresHtml(opt)}</div>
+                    <p class="secondary">Distancia y duración calculadas por Route-AI</p>
                     <div class="list">${this.routeFactsHtml(opt)}</div>
                     ${rej ? `<div class="notice">${this.warnLine('Corredor descartado: ' + rej.title, '· ' + rej.rejectionReasons.join(' · '))}</div>` : ''}
                     <div class="sheet-actions-row">
@@ -438,7 +438,7 @@ window.DriverApp = {
                 <div class="trip-bar">
                     <div class="trip-remaining">
                         <b>Faltan <span data-nav-remaining>${esc(s.remaining)}</span></b>
-                        <span data-nav-eta>${esc(s.remainingTime === '—' ? 'Tiempo sin información' : s.remainingTime + ' · estimado para auto')}</span>
+                        <span data-nav-eta>${esc(window.RouteGuidance.durationText(s))}</span>
                         <span>${esc(routeLine)}</span>
                     </div>
                     <button type="button" onclick="window.app.finishTrip()" class="btn-trip">${this.icon('flag-checkered')}Llegué</button>
@@ -499,7 +499,7 @@ window.DriverApp = {
                     ${alerts.map(a => `
                         <article class="alert-item">
                             <h2>${esc(a.title)}</h2>
-                            <p class="alert-meta">${esc([a.badge, a.timeAgo, a.upvotes + (Number(a.upvotes) === 1 ? ' confirmación' : ' confirmaciones')].filter(Boolean).join(' · '))}${a.verified ? ` <span class="alert-verified">${this.dotText('Validada', 'ok')}</span>` : ''}</p>
+                            <p class="alert-meta">${esc([a.badge, a.timeAgo, this.confirmationsText(a.upvotes)].filter(Boolean).join(' · '))} <span class="alert-verified">${this.validationHtml(a.validated)}</span></p>
                             ${a.description ? `<p class="alert-text">${esc(a.description)}</p>` : ''}
                             <div class="alert-foot">
                                 <span class="secondary">${esc(a.author || '')}</span>
@@ -521,6 +521,17 @@ window.DriverApp = {
                 ${body}
             </div>
         `;
+    },
+
+    confirmationsText(count) {
+        if (typeof count !== 'number') return 'Confirmaciones: ' + window.ui.NOT_AVAILABLE;
+        return count + (count === 1 ? ' confirmación' : ' confirmaciones');
+    },
+
+    validationHtml(validated) {
+        if (validated === true) return this.dotText('Validada', 'ok');
+        if (validated === false) return window.ui.escape('Sin validar');
+        return window.ui.escape('Validación: ' + window.ui.NOT_AVAILABLE);
     },
 
     QUEUE_GROUPS: [
@@ -602,98 +613,5 @@ window.DriverApp = {
                     </div>` : ''}
             </div>
         `;
-    },
-
-    openDispatchModal() {
-        let modal = document.getElementById('driver-dispatch-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'driver-dispatch-modal';
-            modal.className = 'fixed inset-0 z-[1100] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3';
-            document.body.appendChild(modal);
-        }
-        this.renderDispatchModalContent(modal);
-        modal.classList.remove('hidden');
-    },
-
-    closeDispatchModal() {
-        const modal = document.getElementById('driver-dispatch-modal');
-        if (modal) modal.classList.add('hidden');
-    },
-
-    renderDispatchModalContent(modal) {
-        const esc = window.ui.escape;
-        const messages = window.store.state.chatMessages || [];
-        const replies = (window.TruckCarMessaging && window.TruckCarMessaging.QUICK_REPLIES) || [];
-        modal.innerHTML = `
-            <div class="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-5 max-w-md w-full shadow-2xl flex flex-col max-h-[85vh]">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-2.5 shrink-0">
-                    <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 rounded-xl bg-accent-500/15 text-accent-500 grid place-items-center">
-                            <i class="fas fa-headset text-sm"></i>
-                        </div>
-                        <div>
-                            <h3 class="font-bold text-sm text-white leading-tight">Central de Despacho</h3>
-                            <p class="text-[10px] text-slate-400">Canal bidireccional en tiempo real</p>
-                        </div>
-                    </div>
-                    <button type="button" onclick="window.DriverApp.closeDispatchModal()" class="w-8 h-8 rounded-lg text-slate-400 hover:text-white grid place-items-center text-lg">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-
-                <div id="driver-chat-messages" class="flex-1 overflow-y-auto my-3 space-y-2 pr-1 text-xs">
-                    ${messages.length === 0 ? '<p class="text-center text-slate-500 py-6">Mensajería no disponible: falta habilitar el servicio del backend.</p>' : ''}
-                    ${messages.map(m => `
-                        <div class="p-2.5 rounded-2xl max-w-[85%] ${m.sender === 'driver' ? 'bg-accent-500/20 border border-accent-500/40 text-slate-100 ml-auto' : 'bg-slate-800 border border-slate-700 text-slate-200'}">
-                            <div class="flex justify-between items-center gap-2 mb-1">
-                                <span class="font-bold text-[10px] ${m.sender === 'driver' ? 'text-accent-400' : 'text-slate-400'}">${esc(m.senderName || (m.sender === 'driver' ? 'Usted' : 'Torre'))}</span>
-                                <span class="text-[9px] text-slate-500 font-mono">${esc(m.time)}</span>
-                            </div>
-                            <p class="leading-relaxed">${esc(m.text)}</p>
-                        </div>
-                    `).join('')}
-                </div>
-
-                <div class="border-t border-slate-800 pt-2 shrink-0 space-y-2">
-                    <div class="text-[10px] font-semibold text-slate-400">Respuestas rápidas para cabina:</div>
-                    <div class="grid grid-cols-2 gap-1.5">
-                        ${replies.map(r => `
-                            <button type="button" onclick="window.DriverApp.sendQuickReply('${esc(r)}')" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-[11px] font-semibold text-left truncate transition">
-                                ${esc(r)}
-                            </button>
-                        `).join('')}
-                    </div>
-
-                    <form onsubmit="window.DriverApp.sendDriverMessage(event)" class="flex gap-2 pt-1">
-                        <input id="driver-chat-input" type="text" placeholder="Escribir mensaje a la torre..." class="login-input flex-1 text-xs" enterkeyhint="send">
-                        <button type="submit" class="w-10 h-9 bg-accent-500 hover:bg-accent-600 text-graphite-950 font-bold rounded-xl grid place-items-center text-xs transition">
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
-                    </form>
-                </div>
-            </div>
-        `;
-        const container = document.getElementById('driver-chat-messages');
-        if (container) container.scrollTop = container.scrollHeight;
-    },
-
-    async sendQuickReply(text) {
-        if (window.TruckCarMessaging) {
-            try {
-                await window.TruckCarMessaging.sendMessage(text);
-            } catch (error) {
-                window.ui.failure('No se pudo enviar el mensaje', error, 'contactar a la torre');
-            }
-        }
-    },
-
-    async sendDriverMessage(event) {
-        event.preventDefault();
-        const input = document.getElementById('driver-chat-input');
-        if (!input || !input.value.trim()) return;
-        const text = input.value.trim();
-        input.value = '';
-        await this.sendQuickReply(text);
     }
 };

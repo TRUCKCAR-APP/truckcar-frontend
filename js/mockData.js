@@ -2,7 +2,7 @@ window.TruckCarData = {
     currentDriver: null,
     activeLoadOrder: null,
     availableLoads: [],
-    dispatchEvaluation: { loadId: null, evaluatedAt: '—', candidates: [] },
+    dispatchEvaluation: { loadId: null, candidates: [] },
     routes: null,
     communityAlerts: [],
     fleetVehicles: [],

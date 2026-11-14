@@ -21,8 +21,7 @@ class TruckCarStore {
             tripAccepted: true,
             tripCompleted: false,
             alertFilter: 'all',
-            activeModal: null,
-            chatMessages: []
+            activeModal: null
         };
         
         this.listeners = [];

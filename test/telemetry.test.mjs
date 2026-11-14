@@ -34,14 +34,19 @@ function browser({ gps = null } = {}) {
     watchPosition(ok) { watchers.push(ok); return watchers.length; },
     clearWatch() {}
   } });
-  w.ui = { escape: (v) => String(v ?? ""), toast() {} };
+  w.eval(readFileSync("js/ui.js", "utf8"));
+  w.ui.toast = (title, type, options) => { (w.toasts = w.toasts || []).push({ title, type, ...options }); };
+  w.eval(readFileSync("js/dataService.js", "utf8"));
+  Object.assign(w.TruckCarService, { timeAgo: (iso) => "visto " + iso, formatHours: (hours) => hours + " h" });
   w.store = { state: { driverScreen: "navigation" } };
   w.voiceEngine = { speak: (text) => spoken.push(text) };
   w.TruckCarData = {
     routes: { planForLoadId: 30, optimal: { id: "PLAN-9", waypoints: [{ coords: [4.6, -74.0] }, { coords: [4.61, -73.99] }] } }
   };
-  w.TruckCarConfig = { gatewayUrl: "http://localhost:8000" };
-  w.TruckCarApi = { session: { get: () => ({ accessToken: "t" }) }, ensureFreshSession: async () => ({}),
+  w.TruckCarConfig = { gatewayUrl: "http://localhost:8000", apiBaseUrl: "http://localhost:8000/api/v1", requestTimeoutMs: 5000,
+    routingUrl: "https://router.project-osrm.org/route/v1/driving/", storageKeys: { session: "truckcar.session" } };
+  w.eval(readFileSync("js/api.js", "utf8"));
+  w.TruckCarApi = { routing: w.TruckCarApi.routing, session: { get: () => ({ accessToken: "t" }) }, ensureFreshSession: async () => ({}),
     http: { post: async () => ({ ticket: "00000000-0000-4000-8000-000000000000", expiresInSeconds: 30 }) } };
   w.WebSocket = class { constructor() { this.readyState = 0; } close() {} };
   w.WebSocket.OPEN = 1;
@@ -73,16 +78,19 @@ test("la telemetría usa el GPS real por defecto: sin señal no transmite posici
   assert.equal(w.DeviceLocation.last().coords[0], 4.6012);
 });
 
-test("la simulación solo existe si se activa en las herramientas de prueba y nunca llega a la ubicación del dispositivo", async () => {
+test("la simulación solo existe si se activa en las herramientas de prueba y nunca llega al backend ni a la ubicación del dispositivo", async () => {
   const { w, queued } = browser();
+  const sent = [];
+  w.TruckCarTelemetry.send = (destination, payload) => { sent.push({ destination, payload }); return true; };
   await w.DriverTelemetry.toggleSimulation();
   assert.equal(w.DriverTelemetry.simulating, true);
 
   await w.DriverTelemetry.start(LOAD, "driver-ana");
   w.DriverTelemetry.stop();
 
-  assert.equal(queued.length, 1);
-  assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /Simulación de prueba/);
+  assert.equal(sent.length, 0, "la posición simulada no se envía por el WebSocket");
+  assert.equal(queued.length, 0, "la posición simulada no se encola para sincronizar después");
+  assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /Sin transmitir[\s\S]*Simulación de prueba[\s\S]*no se envía a la torre/);
   assert.equal(w.DeviceLocation.last(), null, "la posición simulada no se guarda como GPS real");
 
   await w.DriverTelemetry.toggleSimulation();
@@ -139,10 +147,14 @@ test("la torre aplica el arreglo agregado de /topic/fleet-locations y sigue acep
   w.LiveTracking.followFleet((truck) => updated.push(truck.driverId));
 
   handler([
-    { driverId: "ana", vehiclePlate: "TDK-410", latitude: 4.61, longitude: -74.08, speedKmH: 62, loadId: 30, loadStatus: "IN_TRANSIT" },
+    { driverId: "ana", driverName: "Ana Ruiz", vehiclePlate: "TDK-410", latitude: 4.61, longitude: -74.08, speedKmH: 62, heading: 90,
+      loadId: 30, loadStatus: "IN_TRANSIT", timestamp: "2026-11-12T15:04:05Z" },
     { driverId: "carlos", vehiclePlate: "SNT-221", latitude: 4.7, longitude: -74.1, speedKmH: 0 }
   ]);
-  handler({ driverId: "ana", latitude: 4.62, longitude: -74.09, speedKmH: 40 });
+  assert.equal(w.TruckCarData.fleetVehicles[0].lastCheckin, "visto 2026-11-12T15:04:05Z", "la última conexión sale de FleetLocationMessage.timestamp");
+  assert.equal(w.TruckCarData.fleetVehicles[0].lastSeenAt, "2026-11-12T15:04:05Z");
+  assert.equal(w.TruckCarData.fleetVehicles[1].lastCheckin, "No disponible", "sin timestamp no se inventa «ahora»");
+  handler({ driverId: "ana", latitude: 4.62, longitude: -74.09, speedKmH: 40, loadId: 30, loadStatus: "IN_TRANSIT" });
   handler([null, {}]);
 
   assert.deepEqual(updated, ["ana", "carlos", "ana"]);
@@ -150,7 +162,9 @@ test("la torre aplica el arreglo agregado de /topic/fleet-locations y sigue acep
   assert.equal(fleet.length, 2);
   const ana = fleet.find((t) => t.driverId === "ana");
   assert.equal(JSON.stringify(ana.coords), JSON.stringify([4.62, -74.09]));
-  assert.equal(ana.status, "EN_TRANSITO");
+  assert.equal(ana.status, "EN_TRANSITO", "el estado sale de loadStatus");
+  const carlos = fleet.find((t) => t.driverId === "carlos");
+  assert.equal(carlos.status, null, "sin carga ni estado del backend no se deduce «Disponible» por la velocidad");
   assert.equal(fleet.find((t) => t.driverId === "carlos").plate, "SNT-221");
   w.LiveTracking.unfollowFleet();
 });

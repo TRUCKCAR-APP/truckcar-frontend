@@ -251,14 +251,8 @@
         const guided = window.RouteGuidance && window.RouteGuidance.route;
         if (guided && guided.geometry.length > 1) return guided.geometry;
         try {
-            const url = 'https://router.project-osrm.org/route/v1/driving/'
-                + waypoints.map(c => c[1] + ',' + c[0]).join(';') + '?overview=full&geometries=geojson';
-            const response = await fetch(url);
-            if (response.ok) {
-                const json = await response.json();
-                const coords = json.routes && json.routes[0] && json.routes[0].geometry.coordinates;
-                if (coords && coords.length > 1) return coords.map(pt => [pt[1], pt[0]]);
-            }
+            const best = await api.routing.drivingRoute(waypoints);
+            if (best.geometry.coordinates.length > 1) return best.geometry.coordinates.map(pt => [pt[1], pt[0]]);
         } catch (e) {
         }
         return waypoints;
@@ -321,8 +315,9 @@
             return;
         }
         driver.lastPoint = point;
+        const simulated = point.source === 'simulation';
         const offline = window.OfflineQueue && window.OfflineQueue.isOffline();
-        const sent = !offline && TruckCarTelemetry.send('/app/telemetry', {
+        const sent = !simulated && !offline && TruckCarTelemetry.send('/app/telemetry', {
             driverId: driver.driverId,
             latitude: Math.round(point.coords[0] * 1e6) / 1e6,
             longitude: Math.round(point.coords[1] * 1e6) / 1e6,
@@ -332,13 +327,24 @@
         });
         if (sent) {
             driver.lastSent = Date.now();
-        } else {
+            if (driver.rejection && Date.now() - driver.rejection.at > REJECTION_VISIBLE_MS) driver.rejection = null;
+        } else if (!simulated) {
             queueOfflinePosition(point);
         }
         if (window.RouteGuidance) window.RouteGuidance.update(point);
         if (window.mapCtrl && window.mapCtrl.map && window.store.state.driverScreen === 'navigation') {
             window.mapCtrl.updateTruckPosition(point.coords);
         }
+        renderDriverBadge();
+    }
+
+    const REJECTION_VISIBLE_MS = 15000;
+
+    function onTelemetryRejected(payload) {
+        const message = (payload && payload.message) || window.ui.NOT_AVAILABLE;
+        const first = !driver.rejection || driver.rejection.message !== message;
+        driver.rejection = { message, code: payload && payload.error, at: Date.now() };
+        if (first) window.ui.toast('La torre rechazó su posición', 'warning', { description: message });
         renderDriverBadge();
     }
 
@@ -369,9 +375,19 @@
                 <span class="telemetry-sub">· ${window.ui.escape(reason)}</span>`;
             return;
         }
-        const source = driver.mode === 'gps'
-            ? 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '')
-            : '<b>Simulación de prueba</b>';
+        if (driver.mode === 'simulation') {
+            el.dataset.state = 'warn';
+            el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Sin transmitir</span>
+                <span class="telemetry-sub">· <b>Simulación de prueba</b> · no se envía a la torre${p ? ' · ' + p.speed + ' km/h' : ''}</span>`;
+            return;
+        }
+        if (driver.rejection) {
+            el.dataset.state = 'warn';
+            el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Posición rechazada</span>
+                <span class="telemetry-sub">· ${window.ui.escape(driver.rejection.message)}</span>`;
+            return;
+        }
+        const source = 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '');
         el.dataset.state = live ? 'ok' : 'warn';
         el.innerHTML = `
             ${live ? '<span class="dot ok" aria-hidden="true"></span><span class="telemetry-main">Transmitiendo</span>'
@@ -396,7 +412,7 @@
         get simulating() { return simulating(); },
 
         async start(load, driverId) {
-            if (!load || load.status !== 'IN_TRANSIT' || !driverId) return;
+            if (!load || !window.TruckCarService.loadActions(load).transmitPosition || !driverId) return;
             if (driver.timer && driver.loadId === load.backendId) return;
             this.stop();
             driver.loadId = load.backendId;
@@ -404,6 +420,8 @@
             driver.driverId = driverId;
             driver.travelledKm = 0;
             driver.timer = setInterval(tick, 3000);
+            driver.rejection = null;
+            driver.errorsUnsubscribe = TruckCarTelemetry.subscribe('/user/queue/errors', onTelemetryRejected);
             TruckCarTelemetry.acquirePublisher();
             window.DeviceLocation.watch();
             if (simulating()) await prepareSimulation();
@@ -414,10 +432,11 @@
         stop() {
             if (driver.timer) {
                 clearInterval(driver.timer);
+                if (driver.errorsUnsubscribe) driver.errorsUnsubscribe();
                 TruckCarTelemetry.releasePublisher();
             }
             Object.assign(driver, { loadId: null, load: null, timer: null, path: null, cumulative: null, lastSent: null,
-                lastPoint: null, mode: null });
+                lastPoint: null, mode: null, rejection: null, errorsUnsubscribe: null });
         },
 
         async toggleSimulation() {
@@ -431,7 +450,7 @@
             window.ui.toast(next ? 'Simulación de GPS activada (herramienta de prueba)' : 'GPS real del dispositivo',
                 next ? 'warning' : 'success', {
                     description: next
-                        ? 'La telemetría y la guía avanzan sobre la ruta. El SOS y los reportes siguen usando solo el GPS real.'
+                        ? 'La guía avanza sobre la ruta solo en este dispositivo: la posición simulada no se envía a la torre. El SOS y los reportes siguen usando solo el GPS real.'
                         : 'La telemetría y la guía usan la ubicación del teléfono.'
                 });
             if (next) await prepareSimulation();
@@ -444,6 +463,7 @@
     };
 
     let fleetUnsubscribe = null;
+    let blockagesUnsubscribe = null;
     const tripSubscriptions = new Map();
 
     function applyFleetLocation(msg) {
@@ -453,18 +473,30 @@
         let truck = fleet.find(t => t.driverId === msg.driverId);
         if (!truck) {
             truck = { id: msg.driverId, driverId: msg.driverId, driverName: msg.driverName || msg.driverId,
-                      plate: msg.vehiclePlate, vehicleType: '—', hoursActive: '—' };
+                      plate: msg.vehiclePlate, vehicleType: window.ui.NOT_AVAILABLE, hoursActive: window.ui.NOT_AVAILABLE };
             fleet.push(truck);
         }
         Object.assign(truck, {
             coords,
-            speed: Math.round(msg.speedKmH || 0),
+            speed: typeof msg.speedKmH === 'number' ? Math.round(msg.speedKmH) : null,
             heading: msg.heading,
-            status: (msg.speedKmH || 0) > 0 || msg.loadStatus === 'IN_TRANSIT' ? 'EN_TRANSITO' : truck.status || 'DISPONIBLE',
-            lastCheckin: 'ahora',
+            status: liveStatus(truck, msg),
+            currentLoadStatus: msg.loadStatus || null,
+            lastSeenAt: msg.timestamp || null,
+            lastCheckin: lastSeenLabel(msg.timestamp),
             currentLoadId: msg.loadId
         });
         return truck;
+    }
+
+    function liveStatus(truck, msg) {
+        return window.TruckCarService.fleetStatus({
+            status: truck.backendStatus, restRequiredAlert: truck.restRequired, currentLoadStatus: msg.loadStatus
+        });
+    }
+
+    function lastSeenLabel(timestamp) {
+        return window.ui.orNotAvailable(timestamp ? window.TruckCarService.timeAgo(timestamp) : null);
     }
 
     const LiveTracking = {
@@ -501,10 +533,11 @@
                         driverName: msg.driverName || msg.driverId,
                         plate: msg.vehiclePlate,
                         coords: [msg.latitude, msg.longitude],
-                        speed: Math.round(msg.speedKmH || 0),
+                        speed: typeof msg.speedKmH === 'number' ? Math.round(msg.speedKmH) : null,
                         heading: msg.heading,
-                        status: (msg.speedKmH || 0) > 0 ? 'EN_TRANSITO' : 'DISPONIBLE',
-                        lastCheckin: 'ahora'
+                        status: liveStatus(trucks[msg.driverId] || {}, msg),
+                        lastSeenAt: msg.timestamp || null,
+                        lastCheckin: lastSeenLabel(msg.timestamp)
                     });
                     trucks[msg.driverId] = truck;
                     if (onUpdate) onUpdate(truck, msg);
@@ -516,9 +549,22 @@
             this.followTrips([]);
         },
 
+        followRoadBlockages(onBlockage) {
+            if (blockagesUnsubscribe) return;
+            blockagesUnsubscribe = TruckCarTelemetry.subscribe('/topic/road-blockages', (payload) => {
+                if (payload && onBlockage) onBlockage(payload);
+            }, () => { blockagesUnsubscribe = null; });
+        },
+
+        unfollowRoadBlockages() {
+            if (blockagesUnsubscribe) blockagesUnsubscribe();
+            blockagesUnsubscribe = null;
+        },
+
         stopAll() {
             this.unfollowFleet();
             this.unfollowTrips();
+            this.unfollowRoadBlockages();
         }
     };
 

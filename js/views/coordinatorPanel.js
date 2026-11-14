@@ -10,7 +10,7 @@ window.CoordinatorPanel = {
         const deliveries = data.deliveredLoads || [];
         const user = state.currentUser;
 
-        const operating = fleet.filter(t => t.status === 'EN_TRANSITO' || t.status === 'DISPONIBLE').length;
+        const operating = fleet.filter(t => t.backendStatus === 'ACTIVO').length;
         const clearanceAlerts = alerts.filter(a => a.type === 'bridge').length;
         const notices = this.buildNotices(fleet, alerts);
 
@@ -96,17 +96,17 @@ window.CoordinatorPanel = {
                                     </div>
                                     <div class="flex justify-between gap-2">
                                         <span class="text-slate-400 font-medium">Asignación:</span>
-                                        <span class="font-semibold text-right ${this.assignmentColor(load.assignmentStatus)}">${this.assignmentWarn(load.assignmentStatus) ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(load.assignmentStatus ? window.DriverApp.statusLabel(load.assignmentStatus) : 'Sin asignar')}${load.assignedDriverName ? ' · ' + esc(load.assignedDriverName) : ''}</span>
+                                        <span class="font-semibold text-right ${this.assignmentColor(load.assignmentStatus)}">${this.assignmentWarn(load.assignmentStatus) ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(load.assignmentStatus ? window.ui.statusLabel(load.assignmentStatus) : 'Sin asignar')}${load.assignedDriverName ? ' · ' + esc(load.assignedDriverName) : ''}${load.assignmentStatusChangedAt ? ' · desde ' + esc(window.PodUI.formatDate(load.assignmentStatusChangedAt)) : ''}</span>
                                     </div>
                                 </div>
 
-                                ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
+                                ${window.TruckCarService.loadActions(load).cancel ? `
                                     <button onclick="window.coordinatorCtrl.cancelLoad(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white border border-slate-700 rounded-xl text-xs font-bold transition">
                                         <i class="fas ${state.busyAction === 'cancel' ? 'fa-spinner fa-spin' : 'fa-ban'}"></i> Cancelar carga
                                     </button>
                                 ` : ''}
 
-                                ${!load.assignmentStatus || load.assignmentStatus === 'UNASSIGNED_NO_DRIVERS' ? `
+                                ${window.TruckCarService.loadActions(load).requestMatching ? `
                                     <button onclick="window.coordinatorCtrl.requestMatching(${load.backendId})" ${state.busyAction === 'matching' ? 'disabled' : ''} class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 disabled:opacity-60 text-graphite-950 rounded-xl text-xs font-bold transition">
                                         <i class="fas ${state.busyAction === 'matching' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}"></i> Ejecutar matching con IA
                                     </button>
@@ -119,20 +119,20 @@ window.CoordinatorPanel = {
                                             <div class="flex items-center justify-between mb-1.5">
                                                 <div class="flex items-center gap-2 min-w-0">
                                                     <span class="w-5 h-5 shrink-0 rounded-full flex items-center justify-center text-[10px] font-mono font-bold ${c.isCurrentAssignment ? 'bg-ok-500 text-graphite-950' : 'bg-slate-700 text-slate-300'}">${i + 1}</span>
-                                                    <span class="font-bold text-xs text-white truncate">${esc(c.driverName)}</span>
-                                                    <span class="font-mono text-[10px] text-slate-400">(${esc(c.vehiclePlate)})</span>
+                                                    <span class="font-bold text-xs text-white truncate">${esc(c.driverName || window.ui.statusLabel(c.decisionStatus))}</span>
+                                                    ${c.vehiclePlate ? `<span class="font-mono text-[10px] text-slate-400">(${esc(c.vehiclePlate)})</span>` : ''}
                                                 </div>
-                                                <span class="text-sm font-bold font-mono ${c.isCurrentAssignment ? 'text-white' : 'text-slate-300'}">${c.score != null ? c.score + '/100' : '—'}</span>
+                                                <span class="text-sm font-bold font-mono ${c.isCurrentAssignment ? 'text-white' : 'text-slate-300'}">${c.score != null ? c.score + '/100' : esc(window.ui.NOT_AVAILABLE)}</span>
                                             </div>
                                             ${c.score != null ? `<div class="h-1.5 mb-2 rounded-full bg-slate-700/60 overflow-hidden" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Number(c.score)}" aria-label="Puntaje del motor de asignación">
                                                 <div class="h-full rounded-full origin-left ${c.isCurrentAssignment ? 'bg-ok-500' : 'bg-slate-400'}" style="transform: scaleX(${Math.max(0, Math.min(100, Number(c.score))) / 100}); transition: transform 600ms cubic-bezier(0.23, 1, 0.32, 1)"></div>
                                             </div>` : ''}
                                             <div class="grid grid-cols-2 gap-1.5 text-[10px] text-slate-300 pt-1 border-t border-slate-700/40">
-                                                <div>Distancia en vacío: <b class="font-mono text-white">${c.deadheadDistanceKm != null ? Math.round(c.deadheadDistanceKm) + ' km' : '—'}</b></div>
+                                                <div>Distancia en vacío: <b class="font-mono text-white">${c.deadheadDistanceKm != null ? Math.round(c.deadheadDistanceKm) + ' km' : esc(window.ui.NOT_AVAILABLE)}</b></div>
                                                 <div class="text-right text-slate-400">${esc(c.executedAt)}</div>
                                             </div>
                                             <div class="mt-2 flex items-center gap-2">
-                                                <button onclick="window.coordinatorCtrl.showAiInspectionModal('${esc(c.driverId)}')" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg text-[11px] font-bold transition">
+                                                <button onclick="window.coordinatorCtrl.showAiInspectionModal(${i})" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-lg text-[11px] font-bold transition">
                                                     <i class="fas fa-magnifying-glass"></i> Ver criterios
                                                 </button>
                                                  ${c.driverPhone ? `<a href="tel:${esc(c.driverPhone)}" class="px-2.5 py-1.5 bg-slate-800 hover:bg-ok-600/30 hover:text-ok-400 border border-slate-700 text-slate-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5" title="Llamar a ${esc(c.driverName)}"><i class="fas fa-phone"></i> Llamar</a>` : `<span class="px-2.5 py-1.5 bg-slate-800/40 border border-slate-800 text-slate-500 rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-not-allowed" title="Sin teléfono registrado"><i class="fas fa-phone-slash"></i> Sin tel.</span>`}
@@ -172,8 +172,8 @@ window.CoordinatorPanel = {
                                         </div>
                                         <div class="flex items-center gap-2 shrink-0">
                                             <div class="text-right">
-                                                <span class="text-xs font-semibold ${truck.status === 'DESCANSO' ? 'text-warn-500' : 'text-slate-200'}">${truck.status === 'DESCANSO' ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(window.DriverApp.statusLabel(truck.status))}</span>
-                                                <div class="text-[10px] text-slate-400 font-mono mt-0.5">${truck.speed} km/h · ${esc(truck.lastCheckin)}</div>
+                                                <span class="text-xs font-semibold ${truck.status === 'DESCANSO' ? 'text-warn-500' : 'text-slate-200'}">${truck.status === 'DESCANSO' ? '<i class="fas fa-triangle-exclamation"></i> ' : ''}${esc(window.ui.statusLabel(truck.status))}</span>
+                                                <div class="text-[10px] text-slate-400 font-mono mt-0.5">${esc(window.ui.speedText(truck.speed))} · ${esc(truck.lastCheckin)}${truck.accountVerified === false ? ' · cuenta sin verificar' : ''}</div>
                                             </div>
                                             ${truck.phone ? `<a href="tel:${esc(truck.phone)}" onclick="event.stopPropagation()" class="w-7 h-7 rounded-lg bg-slate-700/80 hover:bg-ok-600/30 hover:text-ok-400 text-slate-300 grid place-items-center text-xs transition border border-slate-600/50" title="Llamar a ${esc(truck.driverName)}" aria-label="Llamar por teléfono"><i class="fas fa-phone"></i></a>` : `<span class="w-7 h-7 rounded-lg bg-slate-800/50 text-slate-600 grid place-items-center text-xs border border-slate-800 cursor-not-allowed" title="Conductor sin teléfono registrado" aria-label="Sin teléfono"><i class="fas fa-phone-slash"></i></span>`}
                                             <button type="button" onclick="event.stopPropagation(); window.coordinatorCtrl.openVehicleModal('${esc(truck.driverId || truck.id)}')" class="w-7 h-7 rounded-lg bg-slate-700/80 hover:bg-slate-600 text-slate-300 hover:text-white grid place-items-center text-xs transition border border-slate-600/50" title="Editar vehículo" aria-label="Editar vehículo"><i class="fas fa-truck"></i></button>
@@ -210,13 +210,13 @@ window.CoordinatorPanel = {
 
                             <div class="absolute bottom-4 right-4 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl p-2.5 text-[10px] text-slate-300 space-y-1 shadow-lg">
                                 <div class="flex items-center gap-2"><span class="fleet-legend is-transit"></span> En tránsito</div>
-                                <div class="flex items-center gap-2"><span class="fleet-legend"></span> Disponible</div>
+                                <div class="flex items-center gap-2"><span class="fleet-legend"></span> Activo</div>
                                 <div class="flex items-center gap-2"><span class="fleet-legend is-rest"></span> Descanso requerido</div>
                                 <div class="flex items-center gap-2"><i class="fas fa-triangle-exclamation text-warn-500"></i> Alerta vial</div>
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-3 md:h-48 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 md:h-48 gap-4">
                             <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
@@ -254,7 +254,7 @@ window.CoordinatorPanel = {
                                                 <div><b class="text-white">${esc(n.title)}:</b> ${esc(n.text)}</div>
                                                 ${n.alertId ? `<div class="flex gap-1.5 mt-1.5">
                                                     <button onclick="window.app.upvoteAlert(${n.alertId})" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold" title="Confirmar la alerta en Community-Alerts (un voto por usuario)">
-                                                        <i class="fas fa-check"></i> Validar · ${n.upvotes}
+                                                        <i class="fas fa-check"></i> Validar${typeof n.upvotes === 'number' ? ' · ' + n.upvotes : ''}
                                                     </button>
                                                     <button onclick="window.coordinatorCtrl.dismissAlert(${n.alertId})" class="px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 text-xs font-bold" title="Ocultar de esta vista (el backend no tiene descarte)">
                                                         <i class="fas fa-eye-slash"></i> Descartar
@@ -266,30 +266,6 @@ window.CoordinatorPanel = {
                                 </div>
                             </div>
 
-                            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
-                                        <i class="fas fa-comments text-slate-400"></i> Canal directo de despacho
-                                    </h3>
-                                    <span class="text-[10px] text-slate-500 font-mono">local · sin backend</span>
-                                </div>
-
-                                <div id="coordinator-chat-box" class="flex-1 overflow-y-auto space-y-1.5 text-xs p-1">
-                                    ${(state.chatMessages || []).map(m => `
-                                        <div class="${m.sender === 'coordinator' ? 'bg-slate-700 text-white ml-auto' : 'bg-slate-800/80 text-slate-200'} p-2 rounded-xl max-w-[85%]">
-                                            <span class="text-[9px] block font-mono text-slate-400">${m.sender === 'coordinator' ? 'Central' : 'Conductor'} • ${esc(m.time)}</span>
-                                            ${esc(m.text)}
-                                        </div>
-                                    `).join('')}
-                                </div>
-
-                                <div class="mt-2 flex gap-2">
-                                    <input id="coord-msg-input" type="text" placeholder="Escribir instrucción al conductor..." class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-slate-400">
-                                    <button onclick="window.coordinatorCtrl.sendDispatchMessage()" class="w-10 h-9 grid place-items-center bg-accent-500 hover:bg-accent-600 text-graphite-950 rounded-xl text-xs font-bold transition" aria-label="Enviar instrucción">
-                                        <i class="fas fa-paper-plane"></i>
-                                    </button>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -340,19 +316,13 @@ window.CoordinatorPanel = {
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Placa del vehículo</label>
-                                    <input id="veh-plate" type="text" placeholder="Ej: TDK-410" required maxlength="10" class="login-input w-full text-xs uppercase font-mono">
-                                    <span class="text-[10px] text-slate-400 mt-0.5 block">Formato colombiano</span>
+                                    <input id="veh-plate" type="text" placeholder="Ej: TDK-410" required maxlength="10" class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Tipo de camión</label>
                                     <select id="veh-type" class="login-input w-full text-xs" required>
-                                        <option value="TRACTOMULA_3S3">Tractomula 3S3</option>
-                                        <option value="MINIMULA">Minimula</option>
-                                        <option value="DOBLETROQUE">Doble troque</option>
-                                        <option value="CUATRO_MANOS">Cuatro manos</option>
-                                        <option value="SENCILLO">Sencillo</option>
-                                        <option value="TURBO">Turbo</option>
-                                        <option value="REFRIGERADO">Refrigerado</option>
+                                        <option value="" disabled>Seleccione el tipo</option>
+                                        ${window.TruckCarService.truckTypes().map(t => `<option value="${t.code}">${esc(t.label)}</option>`).join('')}
                                     </select>
                                 </div>
                             </div>
@@ -363,15 +333,15 @@ window.CoordinatorPanel = {
                             <div class="grid grid-cols-3 gap-2.5">
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Gálibo (m)</label>
-                                    <input id="veh-height" type="number" step="0.05" min="1.0" max="6.0" placeholder="4.1" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-height" type="number" step="0.05" min="0" required class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Tara (t)</label>
-                                    <input id="veh-tare" type="number" step="0.1" min="0.5" max="40.0" placeholder="16.0" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-tare" type="number" step="0.1" min="0" required class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-slate-300 mb-1">Capacidad (t)</label>
-                                    <input id="veh-payload" type="number" step="0.1" min="0.5" max="60.0" placeholder="34.0" required class="login-input w-full text-xs font-mono">
+                                    <input id="veh-payload" type="number" step="0.1" min="0.1" required class="login-input w-full text-xs font-mono">
                                 </div>
                             </div>
                             <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
@@ -397,6 +367,15 @@ window.CoordinatorPanel = {
                 ${item('fleet', 'fa-tower-broadcast', 'Torre de control')}
                 ${item('shipments', 'fa-boxes-stacked', 'Mis envíos')}
             </nav>`;
+    },
+
+    restText(truck) {
+        const parts = [truck.driverName + ' (' + truck.plate + ')', 'conducción hoy: ' + truck.hoursActive];
+        if (typeof truck.remainingDrivingHours === 'number') {
+            parts.push('le quedan ' + truck.remainingDrivingHours.toLocaleString('es-CO', { maximumFractionDigits: 1 }) + ' h');
+        }
+        parts.push('parada obligatoria: ' + window.ui.orNotAvailable(truck.mandatoryRestLocation));
+        return parts.join(' · ');
     },
 
     initials(user) {
@@ -430,14 +409,14 @@ window.CoordinatorPanel = {
             icon: 'fa-triangle-exclamation text-warn-500',
             style: 'bg-slate-800/50 text-slate-300',
             title: 'Descanso requerido',
-            text: t.driverName + ' (' + t.plate + ') lleva ' + t.hoursActive + ' de conducción.'
+            text: this.restText(t)
         }));
         const dismissed = window.coordinatorCtrl.dismissedAlerts();
-        alerts.filter(a => (a.verified || a.severity === 'CRITICA' || a.severity === 'ALTA') && !dismissed.has(a.id))
+        alerts.filter(a => window.TruckCarService.towerHighlightsAlert(a) && !dismissed.has(a.id))
             .slice(0, 6).forEach(a => notices.push({
                 icon: 'fa-triangle-exclamation text-warn-500',
                 style: 'bg-slate-800/50 text-slate-300',
-                title: a.badge + (a.verified ? ' (validada)' : ''),
+                title: a.badge + (a.validated === true ? ' (validada)' : ''),
                 text: a.title + (a.corridor ? ' · ' + a.corridor : '') + ' · ' + a.timeAgo,
                 alertId: a.id && !a.pendingSync ? a.id : null,
                 upvotes: a.upvotes
@@ -473,25 +452,51 @@ window.coordinatorCtrl = {
         window.store.setState({});
     },
 
-    showAiInspectionModal(driverId) {
+    evaluatedCandidatesOf(decision) {
+        if (decision.evaluatedCandidates) return decision.evaluatedCandidates;
+        const last = window.TruckCarData.lastMatching;
+        const sameDecision = last && last.decision && decision.decisionId != null && last.decision.decisionId === decision.decisionId;
+        return sameDecision ? last.decision.evaluatedCandidates : null;
+    },
+
+    evaluatedCandidatesHtml(candidates) {
+        const esc = window.ui.escape;
+        const na = window.ui.NOT_AVAILABLE;
+        if (!candidates) return '<p class="text-slate-400">Candidatos evaluados: ' + esc(na) + '</p>';
+        if (!candidates.length) return '<p class="text-slate-400">El motor no evaluó candidatos.</p>';
+        const number = (value, digits, unit) => typeof value === 'number'
+            ? value.toLocaleString('es-CO', { maximumFractionDigits: digits }) + unit : na;
+        return `<ul class="space-y-1.5" aria-label="Candidatos evaluados">${candidates.map(c => `
+            <li class="p-2 bg-slate-950/80 border border-slate-800 rounded-xl">
+                <div class="flex justify-between gap-2"><b class="text-white">${esc(window.ui.orNotAvailable(c.driverName || c.driverId))} ${c.vehiclePlate ? '(' + esc(c.vehiclePlate) + ')' : ''}</b>
+                    <span class="font-mono">${esc(c.eligible === true ? 'Elegible' : c.eligible === false ? 'Descartado' : na)} · ${esc(number(c.score, 2, ''))}</span></div>
+                <div class="text-slate-400">${esc(number(c.deadheadDistanceKm, 1, ' km'))} en vacío · ${esc(number(c.capacityUtilizationPercent, 0, ' %'))} de la capacidad${c.reason ? ' · ' + esc(c.reason) : ''}</div>
+            </li>`).join('')}</ul>`;
+    },
+
+    showAiInspectionModal(index) {
         const modal = document.getElementById('ai-inspection-modal');
         const body = document.getElementById('ai-inspection-body');
         const evaluation = window.TruckCarData.dispatchEvaluation || { candidates: [] };
-        const candidate = evaluation.candidates.find(c => c.driverId === driverId);
-        if (!modal || !body || !candidate) return;
+        const decision = evaluation.candidates[index];
+        if (!modal || !body || !decision) return;
         const esc = window.ui.escape;
+        const na = window.ui.NOT_AVAILABLE;
         body.innerHTML = `
-            <p>El motor de asignación seleccionó a <b>${esc(candidate.driverName)} (${esc(candidate.vehiclePlate)})</b>
-               con un puntaje de <b>${candidate.score != null ? candidate.score + '/100' : '—'}</b>.</p>
             <div class="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-2">
-                <div class="flex justify-between"><span class="text-slate-400">Ponderación del modelo</span><span class="font-mono text-slate-300">Cercanía 50% · Capacidad 30% · Calificación 20%</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Distancia en vacío al cargue</span><span class="font-mono text-white font-bold">${candidate.deadheadDistanceKm != null ? candidate.deadheadDistanceKm.toFixed(1) + ' km' : '—'}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Estado de la decisión</span><span class="text-slate-200">${esc(window.DriverApp.statusLabel(candidate.decisionStatus))}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Ejecutada</span><span class="font-mono text-slate-200">${esc(candidate.executedAt)}</span></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Conductor seleccionado</span><span class="text-white font-bold text-right">${esc(window.ui.orNotAvailable(decision.driverName))}${decision.vehiclePlate ? ' (' + esc(decision.vehiclePlate) + ')' : ''}</span></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Puntaje</span><span class="font-mono text-white font-bold">${decision.score != null ? decision.score + '/100' : esc(na)}</span></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Distancia en vacío al cargue</span><span class="font-mono text-white font-bold">${decision.deadheadDistanceKm != null ? decision.deadheadDistanceKm.toLocaleString('es-CO', { maximumFractionDigits: 1 }) + ' km' : esc(na)}</span></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Estado de la decisión</span><span class="text-slate-200">${esc(window.ui.statusLabel(decision.decisionStatus))}</span></div>
+                <div class="flex justify-between gap-2"><span class="text-slate-400">Ejecutada</span><span class="font-mono text-slate-200">${esc(decision.executedAt)}</span></div>
             </div>
             <div class="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl text-slate-200">
-                <b>Justificación del motor:</b> ${esc(candidate.reason || 'Sin detalle registrado')}
+                <b>Explicación del motor:</b> ${esc(window.ui.orNotAvailable(decision.explanation))}
             </div>
+            <div class="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl text-slate-200">
+                <b>Detalle:</b> ${esc(window.ui.orNotAvailable(decision.reason))}
+            </div>
+            ${this.evaluatedCandidatesHtml(this.evaluatedCandidatesOf(decision))}
         `;
         modal.classList.remove('hidden');
     },
@@ -559,21 +564,7 @@ window.coordinatorCtrl = {
         const truck = (window.TruckCarData.fleetVehicles || []).find(t => t.id === truckId);
         if (!truck) return;
         if (truck.coords) window.mapCtrl.focusOn(truck.coords, 12);
-        window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + window.DriverApp.statusLabel(truck.status) + ' · ' + truck.speed + ' km/h · conducción ' + truck.hoursActive, 'info');
-    },
-
-    async sendDispatchMessage() {
-        const input = document.getElementById('coord-msg-input');
-        if (!input || !input.value.trim()) return;
-        const text = input.value.trim();
-        input.value = '';
-        if (window.TruckCarMessaging) {
-            try {
-                await window.TruckCarMessaging.sendMessage(text);
-            } catch (error) {
-                window.ui.failure('No se pudo enviar el mensaje', error, 'contactar al conductor');
-            }
-        }
+        window.ui.toast(truck.driverName + ' · ' + truck.plate + ' · ' + window.ui.statusLabel(truck.status) + ' · ' + window.ui.speedText(truck.speed) + ' · conducción ' + truck.hoursActive, 'info');
     },
 
     async openVehicleModal(selectedDriverId) {
@@ -623,11 +614,11 @@ window.coordinatorCtrl = {
         if (truck && (truck.rawType || (truck.vehicle && truck.vehicle.category))) {
             typeSelect.value = truck.rawType || truck.vehicle.category;
         } else {
-            typeSelect.value = 'TRACTOMULA_3S3';
+            typeSelect.value = '';
         }
-        heightInput.value = (truck && (truck.height || (truck.vehicle && truck.vehicle.height))) || '4.1';
-        tareInput.value = (truck && (truck.tareWeight || (truck.vehicle && truck.vehicle.tareWeight))) || '16.0';
-        payloadInput.value = (truck && (truck.maxPayload || (truck.vehicle && truck.vehicle.maxPayload))) || '34.0';
+        heightInput.value = (truck && (truck.height || (truck.vehicle && truck.vehicle.height))) || '';
+        tareInput.value = (truck && (truck.tareWeight || (truck.vehicle && truck.vehicle.tareWeight))) || '';
+        payloadInput.value = (truck && (truck.maxPayload || (truck.vehicle && truck.vehicle.maxPayload))) || '';
 
         select.onchange = () => {
             const selDriver = driverMap.get(select.value);
@@ -668,24 +659,10 @@ window.coordinatorCtrl = {
         }
         const driverName = (select && select.options[select.selectedIndex]) ? select.options[select.selectedIndex].text : driverId;
 
-        const plateClean = plate.replace(/[^A-Z0-9]/g, '');
-        const plateRegex = /^[A-Z]{3}[0-9]{3}$/;
-        if (!plateRegex.test(plateClean)) {
-            window.ui.toast('Placa inválida: debe tener formato colombiano (3 letras y 3 números, Ej: TDK-410).', 'warning');
-            return;
-        }
-        if (!plate || !model || isNaN(height) || isNaN(tare) || isNaN(payload)) {
+        if (!plate || !model || !type || isNaN(height) || isNaN(tare) || isNaN(payload)) {
             window.ui.toast('Complete todos los campos del vehículo.', 'warning');
             return;
         }
-        const duplicate = (window.TruckCarData.fleetVehicles || []).find(vehicle =>
-            String(vehicle.plate || '').replace(/[^A-Z0-9]/gi, '').toUpperCase() === plateClean
-            && vehicle.driverId !== driverId);
-        if (duplicate) {
-            window.ui.toast('Esta placa ya está asociada a otro conductor de la flota.', 'warning');
-            return;
-        }
-
         if (btn) {
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
@@ -697,9 +674,7 @@ window.coordinatorCtrl = {
             });
 
             if (window.TruckCarData.currentDriver && (window.TruckCarData.currentDriver.id === driverId || window.TruckCarData.currentDriver.userId === driverId)) {
-                const cd = window.TruckCarData.currentDriver;
-                cd.hasVehicle = true;
-                cd.vehicle = { plate, brand: model, category: type, height, tareWeight: tare, maxPayload: payload, grossWeight: tare, badges: ['Verificado'] };
+                await window.TruckCarService.loadDriverProfile();
             }
 
             await window.TruckCarService.loadFleet();

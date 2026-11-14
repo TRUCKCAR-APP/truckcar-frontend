@@ -1,56 +1,25 @@
-window.ui = {
-    escape(value) {
-        return String(value === null || value === undefined ? '' : value)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    },
-
-    toast(message, type = 'info', options = {}) {
-        if (!window.Toaster) return;
-        window.Toaster.show({ title: message, type, ...options });
-    },
-
-    failure(title, error, context) {
-        if (error && error.status === 401) return;
-        if (window.Sheet && window.Sheet.explainError(error, context)) return;
-        this.toast(title, 'error', { description: this.errorMessage(error) });
-    },
-
-    errorMessage(error) {
-        if (!error) return 'Error desconocido';
-        const suffix = error.correlationId ? ' [trace ' + String(error.correlationId).slice(0, 8) + ']' : '';
-        return (error.message || String(error)) + suffix;
-    },
-
-    SYNC_SECTIONS: {
-        alerts: 'las alertas', routes: 'la ruta', fleet: 'la flota', user: 'su perfil', profile: 'el perfil',
-        driver: 'el perfil', assignment: 'la carga', load: 'la carga', loads: 'las cargas', shipments: 'los envíos',
-        deliveries: 'las entregas', evaluation: 'la evaluación de despacho'
-    },
-
-    syncBanner(state) {
-        const status = state.dataStatus || {};
-        const own = state.activeRole === 'driver'
-            ? { alerts: 'alerts', route_overview: 'routes' }[state.driverScreen] : null;
-        const errors = Object.entries(status.errors || {}).filter(([key]) => key !== own);
-        const icon = (name) => '<svg aria-hidden="true"><use href="assets/icons.svg#' + name + '"></use></svg>';
-        if (status.loading) {
-            return '<div class="sync-banner" role="status"><span class="spinner" aria-hidden="true"></span>Actualizando…</div>';
-        }
-        if (errors.length) {
-            const what = [...new Set(errors.map(([key]) => this.SYNC_SECTIONS[key] || key))];
-            const list = what.length > 1 ? what.slice(0, -1).join(', ') + ' y ' + what[what.length - 1] : what[0];
-            const detail = errors.map(([k, v]) => k + ': ' + v).join(' · ');
-            return `<div class="sync-banner is-warn" role="status" title="${this.escape(detail)}">
-                <span class="sync-text">${icon('warning-fill')}No se pudo actualizar ${this.escape(list)}</span>
-                <button onclick="window.app.reloadData()" class="sync-retry">Reintentar</button></div>`;
-        }
-        return '';
-    }
-};
-
 window.app = {
     pollTimer: null,
+    views: {},
+    mountHooks: [],
+    renderHooks: [],
+    sessionEndHooks: [],
+
+    registerView(role, view) {
+        this.views[role] = view;
+    },
+
+    onMount(hook) {
+        this.mountHooks.push(hook);
+    },
+
+    onRender(hook) {
+        this.renderHooks.push(hook);
+    },
+
+    onSessionEnd(hook) {
+        this.sessionEndHooks.push(hook);
+    },
 
     init() {
         if (window.PublicTracking.maybeStart()) return;
@@ -82,6 +51,8 @@ window.app = {
             }
         });
 
+        window.addEventListener('storage', (event) => this.onSessionStorageChange(event));
+
         const session = window.TruckCarApi.session;
         if (session.isActive()) {
             this.startSession(session.get());
@@ -99,184 +70,57 @@ window.app = {
     },
 
 
-    startDemoSession(role = 'driver') {
+    onSessionStorageChange(event) {
+        if (event.key !== null && event.key !== window.TruckCarConfig.storageKeys.session) return;
+        const stored = window.TruckCarApi.session.get();
+        const state = window.store.state;
+        const user = state.currentUser;
+        if (!state.isAuthenticated) {
+            if (stored && window.TruckCarApi.session.isActive()) this.startSession(stored);
+            return;
+        }
+        if (!stored) {
+            this.endSession();
+            return;
+        }
+        const otherAccount = stored.role !== state.sessionRole || (user && stored.userId && user.id !== stored.userId);
+        if (otherAccount) {
+            this.endSession({ keepStoredSession: true });
+            this.startSession(stored);
+        } else {
+            this.scheduleSessionRefresh();
+        }
+    },
+
+    loadDemoSession() {
+        if (window.DemoSession) return Promise.resolve(window.DemoSession);
+        if (!this.demoSessionLoading) {
+            this.demoSessionLoading = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'js/demo/demoSession.js';
+                script.onload = () => resolve(window.DemoSession);
+                script.onerror = () => {
+                    this.demoSessionLoading = null;
+                    script.remove();
+                    reject(new Error('No se pudo cargar la sesión de demostración'));
+                };
+                document.head.appendChild(script);
+            });
+        }
+        return this.demoSessionLoading;
+    },
+
+    async startDemoSession(role = 'driver') {
         if (!window.TruckCarConfig.demoTools) {
             window.ui.toast('La sesión de demostración solo está disponible con ?demo=1.', 'warning');
             return;
         }
-        const isDriver = role === 'driver';
-        const session = {
-            accessToken: 'demo-token',
-            userId: isDriver ? 'abc27ef4-1e64-4b94-809a-9605ddc3d2e5' : 'coord-1',
-            email: isDriver ? 'conductor@truckcar.demo' : 'torre@truckcar.demo',
-            role: isDriver ? 'CONDUCTOR' : 'COORDINADOR',
-            expiresAt: Date.now() + 86400000
-        };
-        try { localStorage.setItem(window.TruckCarConfig.storageKeys.session, JSON.stringify(session)); } catch (e) {}
-
-        window.TruckCarData.currentDriver = {
-            id: 'abc27ef4-1e64-4b94-809a-9605ddc3d2e5',
-            userId: 'abc27ef4-1e64-4b94-809a-9605ddc3d2e5',
-            name: 'Carlos Conductor',
-            email: 'conductor@truckcar.demo',
-            phone: '3104567890',
-            licenseNumber: 'C3-994821',
-            hoursDrivenToday: 2.5,
-            maxDailyHours: 9,
-            restRequired: false,
-            status: 'EN_TRANSITO',
-            rating: 4.8,
-            tripsCompleted: 126,
-            hasVehicle: true,
-            vehicle: {
-                plate: 'TDK-410',
-                brand: 'Kenworth T800 2021',
-                category: 'TRACTOMULA_3S3',
-                height: 4.1,
-                grossWeight: 40.0,
-                tareWeight: 16.0,
-                maxPayload: 34.0,
-                badges: ['Verificado', 'GPS Activo']
-            },
-            coords: [4.6486, -74.1481]
-        };
-
-        window.TruckCarData.activeLoadOrder = {
-            id: 'CARGA-88',
-            backendId: 88,
-            status: 'IN_TRANSIT',
-            assignmentStatus: 'ACCEPTED',
-            assignedDriverId: 'abc27ef4-1e64-4b94-809a-9605ddc3d2e5',
-            assignedDriverName: 'Carlos Conductor',
-            assignedVehiclePlate: 'TDK-410',
-            cargoType: 'Café excelso de exportación',
-            netWeight: 24.0,
-            origin: { city: 'Bogotá', department: 'Cundinamarca', latitude: 4.6097, longitude: -74.0817 },
-            destination: { city: 'Ibagué', department: 'Tolima', latitude: 4.4389, longitude: -75.2322 },
-            routeDistanceKm: 204.0,
-            estimatedHours: 4.5,
-            pricing: { offeredBudget: 3800000 }
-        };
-
-        window.TruckCarData.availableLoads = [window.TruckCarData.activeLoadOrder];
-
-        window.TruckCarData.fleetVehicles = [
-            {
-                id: 'abc27ef4-1e64-4b94-809a-9605ddc3d2e5',
-                driverId: 'abc27ef4-1e64-4b94-809a-9605ddc3d2e5',
-                driverName: 'Carlos Conductor',
-                plate: 'TDK-410',
-                model: 'Kenworth T800 2021',
-                rawType: 'TRACTOMULA_3S3',
-                vehicleType: 'Kenworth T800 • Tractomula 3S3',
-                height: 4.1,
-                tareWeight: 16.0,
-                maxPayload: 34.0,
-                phone: '3104567890',
-                status: 'EN_TRANSITO',
-                speed: 62,
-                hoursActive: '2.5h',
-                lastCheckin: 'Hace 1 min',
-                currentLoadId: 88,
-                coords: [4.6486, -74.1481]
-            },
-            {
-                id: '4462bf82-702a-4745-b231-ae0b4ea4b24d',
-                driverId: '4462bf82-702a-4745-b231-ae0b4ea4b24d',
-                driverName: 'Diana Ríos',
-                plate: 'SNT-238',
-                model: 'International WorkStar 2019',
-                rawType: 'DOBLETROQUE',
-                vehicleType: 'International • Dobletroque',
-                height: 3.8,
-                tareWeight: 12.0,
-                maxPayload: 22.0,
-                phone: '3157891234',
-                status: 'DISPONIBLE',
-                speed: 0,
-                hoursActive: '0h',
-                lastCheckin: 'Hace 5 min',
-                coords: [4.7110, -74.0721]
-            },
-            {
-                id: '207a8e39-990e-48da-9b85-10178c83a8cb',
-                driverId: '207a8e39-990e-48da-9b85-10178c83a8cb',
-                driverName: 'Ana Ruiz',
-                plate: 'TKR-527',
-                model: 'Freightliner Cascadia 2022',
-                rawType: 'TRACTOMULA_3S3',
-                vehicleType: 'Freightliner • Tractomula 3S3',
-                height: 4.2,
-                tareWeight: 15.5,
-                maxPayload: 35.0,
-                phone: '3189998877',
-                status: 'DESCANSO',
-                speed: 0,
-                hoursActive: '8.5h',
-                lastCheckin: 'Hace 12 min',
-                coords: [4.5339, -75.6811]
-            }
-        ];
-
-        window.TruckCarData.dispatchEvaluation = {
-            loadId: 88,
-            evaluatedAt: 'Hace 15 min',
-            candidates: [
-                {
-                    driverId: 'abc27ef4-1e64-4b94-809a-9605ddc3d2e5',
-                    driverName: 'Carlos Conductor',
-                    vehiclePlate: 'TDK-410',
-                    driverPhone: '3104567890',
-                    score: 94,
-                    isCurrentAssignment: true,
-                    deadheadDistanceKm: 4.2,
-                    decisionStatus: 'ACCEPTED',
-                    executedAt: 'Hace 1 h',
-                    reason: 'Mayor compatibilidad de gálibo y cercanía al punto de carga en Bogotá.',
-                }
-            ]
-        };
-
-        window.TruckCarData.communityAlerts = [
-            {
-                id: 1,
-                type: 'landslide',
-                title: 'Paso a un carril por derrumbe',
-                corridor: 'Bogotá – Fusagasugá km 42',
-                severity: 'ALTA',
-                badge: 'Derrumbe',
-                verified: true,
-                timeAgo: 'Hace 15 min',
-                coords: [4.425, -74.28]
-            },
-            {
-                id: 2,
-                type: 'bridge',
-                title: 'Gálibo bajo en puente (4.1 m)',
-                corridor: 'La Línea km 18',
-                severity: 'ALTA',
-                badge: 'Gálibo Bajo',
-                verified: true,
-                timeAgo: 'Hace 40 min',
-                coords: [4.46, -75.35]
-            }
-        ];
-
-        window.store.setState({
-            isAuthenticated: true,
-            currentUser: {
-                id: session.userId,
-                firstName: isDriver ? 'Carlos' : 'Tomás',
-                lastName: isDriver ? 'Conductor' : 'Torre',
-                email: session.email,
-                role: session.role
-            },
-            sessionRole: session.role,
-            activeRole: role,
-            authError: null
-        });
-
-        window.ui.toast('Sesión demo iniciada como ' + (isDriver ? 'Conductor' : 'Torre de Control'), 'success');
+        try {
+            const demo = await this.loadDemoSession();
+            demo.start(role);
+        } catch (error) {
+            window.ui.failure('No se pudo iniciar la sesión de demostración', error);
+        }
     },
 
     isPhone() {
@@ -284,7 +128,7 @@ window.app = {
     },
 
     canUseDriverView(sessionRole) {
-        return sessionRole === 'CONDUCTOR' || !this.isPhone();
+        return window.TruckCarService.roleAccess(sessionRole).driver || !this.isPhone();
     },
 
     watchPhoneLayout() {
@@ -303,9 +147,7 @@ window.app = {
     },
 
     roleToView(role) {
-        if (role === 'CONDUCTOR') return 'driver';
-        if (role === 'GENERADOR') return 'generator';
-        return 'coordinator';
+        return window.TruckCarService.roleAccess(role).home;
     },
 
     async startSession(session) {
@@ -321,11 +163,6 @@ window.app = {
         this.schedulePolling();
         window.Native.applyShortcut();
         window.Native.Install.maybeOffer();
-        if (window.TruckCarMessaging) {
-            const load = window.TruckCarData.activeLoadOrder;
-            const driver = window.TruckCarData.currentDriver;
-            window.TruckCarMessaging.initContext(load ? load.backendId : null, driver ? driver.id : null);
-        }
     },
 
     scheduleSessionRefresh() {
@@ -345,19 +182,24 @@ window.app = {
         }, delay);
     },
 
-    endSession() {
+    clearSessionCaches() {
+        if (!('serviceWorker' in navigator)) return;
+        navigator.serviceWorker.ready
+            .then((registration) => {
+                if (registration.active) registration.active.postMessage({ type: 'TRUCKCAR_SESSION_ENDED' });
+            })
+            .catch(() => { });
+    },
+
+    endSession({ keepStoredSession = false } = {}) {
+        this.clearSessionCaches();
         clearTimeout(this.sessionRefreshTimer);
         clearInterval(this.pollTimer);
         clearInterval(this.shipmentsTimer);
-        window.SosMonitor.stop();
-        window.DriverTelemetry.stop();
-        window.RouteGuidance.reset();
-        window.DeviceLocation.forget();
-        window.LiveTracking.stopAll();
+        this.sessionEndHooks.forEach(hook => hook());
         window.TruckCarTelemetry.disconnect();
         window.TruckCarService.reset();
-        window.TruckCarApi.session.clear();
-        window.generatorCtrl.reset();
+        if (!keepStoredSession) window.TruckCarApi.session.clear();
         window.store.setState({
             isAuthenticated: false,
             currentUser: null,
@@ -442,28 +284,19 @@ window.app = {
 
         this.updateHeader(state);
         if (!state.isAuthenticated) {
-            this.syncLiveTracking(state);
             mount.innerHTML = window.LoginView.render(state);
             window.Native.markScreen(mount, 'login');
-            window.DriverActions.syncSos(state);
-            window.SosMonitor.sync(state);
-            window.DeviceLocation.sync(state);
+            this.renderHooks.forEach(hook => hook(state));
             window.Native.NetworkStatus.render();
             return;
         }
 
+        const view = this.views[state.activeRole];
+        const keepAliveMaps = Object.values(this.views).flatMap(registered => registered.keepAliveMaps || []);
         const liveMap = window.mapCtrl.map ? window.mapCtrl.map.getContainer() : null;
-        const keepMap = liveMap && this.KEEP_ALIVE_MAPS.includes(liveMap.id) ? liveMap : null;
+        const keepMap = liveMap && keepAliveMaps.includes(liveMap.id) ? liveMap : null;
 
-        if (state.activeRole === 'generator') {
-            mount.innerHTML = window.GeneratorPanel.render(state);
-        } else if (state.activeRole === 'driver') {
-            mount.innerHTML = window.DriverApp.render(state);
-        } else if (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments') {
-            mount.innerHTML = window.GeneratorPanel.render(state);
-        } else if (state.activeRole === 'coordinator') {
-            mount.innerHTML = window.CoordinatorPanel.render(state);
-        }
+        if (view) mount.innerHTML = view.render(state);
 
         const placeholder = keepMap && document.getElementById(keepMap.id);
         if (placeholder && placeholder !== keepMap) {
@@ -471,25 +304,17 @@ window.app = {
             window.mapCtrl.map.invalidateSize();
         }
 
-        if (state.activeRole === 'driver') this.handleDriverMapMount(state);
-        else if (document.getElementById('generator-map-container')) this.handleGeneratorMapMount(state);
-        else if (document.getElementById('coordinator-map-container')) this.handleCoordinatorMapMount(state);
+        if (view && view.mountMap) view.mountMap(state);
 
-        this.syncLiveTracking(state);
+        this.mountHooks.forEach(hook => hook(state));
         window.TruckCarTelemetry.renderStatusBadges();
-        window.DriverTelemetry.renderBadge();
 
-        const screenKey = state.activeRole + ':' + (state.activeRole === 'driver' ? state.driverScreen : state.coordinatorTab);
+        const screenKey = state.activeRole + ':' + (view && view.screen ? view.screen(state) : state.coordinatorTab);
         window.Native.markScreen(mount, screenKey);
         window.Native.NetworkStatus.render();
         window.Native.animateCounters(mount);
-        window.DriverActions.syncSos(state);
-        window.SosMonitor.sync(state);
-        window.DeviceLocation.sync(state);
-        window.DriverTelemetry.renderSimulationToggle();
+        this.renderHooks.forEach(hook => hook(state));
     },
-
-    KEEP_ALIVE_MAPS: ['coordinator-map-container', 'generator-map-container'],
 
     syncLiveTracking(state) {
         const live = window.LiveTracking;
@@ -501,6 +326,12 @@ window.app = {
         const onShipments = state.activeRole === 'generator'
             || (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments');
 
+        if (window.TruckCarService.roleAccess(state.sessionRole).roadBlockages && (onTower || state.activeRole === 'driver')) {
+            live.followRoadBlockages((payload) => this.onRoadBlockage(payload));
+        } else {
+            live.unfollowRoadBlockages();
+        }
+
         if (onTower) {
             live.followFleet((truck) => {
                 if (window.mapCtrl.isMountedOn('coordinator-map-container')) window.mapCtrl.moveFleetMarker(truck);
@@ -511,7 +342,7 @@ window.app = {
 
         if (onShipments) {
             const followed = (window.TruckCarData.publishedLoads || [])
-                .filter(l => l.status === 'ASSIGNED' || l.status === 'IN_TRANSIT')
+                .filter(l => window.TruckCarService.loadActions(l).trackTruck)
                 .map(l => l.backendId);
             live.followTrips(followed, (truck, msg) => {
                 const selected = window.GeneratorPanel.selectedLoad(window.store.state);
@@ -524,16 +355,27 @@ window.app = {
         }
     },
 
+    async onRoadBlockage(payload) {
+        const blockage = await window.TruckCarService.handleRoadBlockage(payload);
+        if (!blockage) return;
+        const title = window.ui.orNotAvailable(blockage.title);
+        window.ui.toast('Bloqueo vial: ' + title, 'warning', { description: blockage.corridor || blockage.reason || undefined });
+        if (window.store.state.activeRole === 'driver') {
+            window.voiceEngine.speak('Atención. Bloqueo vial reportado: ' + title + '.', true);
+        }
+        window.store.setState({});
+    },
+
     updateHeader(state) {
         const role = state.isAuthenticated ? state.sessionRole : null;
         const show = (id, visible) => {
             const el = document.getElementById(id);
             if (el) el.classList.toggle('hidden', !visible);
         };
-        const controlTower = role === 'COORDINADOR' || role === 'ADMIN';
-        show('role-switcher', controlTower && this.canUseDriverView(role));
-        show('rotate-device-btn', role !== 'GENERADOR');
-        show('sim-toggle-btn', role !== 'GENERADOR');
+        const access = window.TruckCarService.roleAccess(role);
+        show('role-switcher', !!(window.TruckCarConfig && window.TruckCarConfig.demoTools) && access.controlTower && this.canUseDriverView(role));
+        show('rotate-device-btn', !access.shipmentsOnly);
+        show('sim-toggle-btn', !access.shipmentsOnly);
         document.body.dataset.view = state.isAuthenticated ? state.activeRole : 'login';
         const frame = document.getElementById('phone-mockup-frame');
         if (frame) {
@@ -567,7 +409,7 @@ window.app = {
             if (window.mapCtrl.isMountedOn('generator-map-container')) {
                 window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load), { fit: window.mapCtrl.shipmentKey !== key });
             } else {
-                window.mapCtrl.initMap('generator-map-container', [4.6097, -74.0817], 6);
+                window.mapCtrl.initMap('generator-map-container', null, 6);
                 window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load));
             }
             window.mapCtrl.shipmentKey = key;
@@ -583,14 +425,14 @@ window.app = {
         this.scheduleMapMount(() => {
             if (state.driverScreen === 'route_overview') {
                 if (!document.getElementById('overview-map-container')) return;
-                window.mapCtrl.initMap('overview-map-container', [4.6097, -74.0817], 7);
+                window.mapCtrl.initMap('overview-map-container', null, 7);
                 window.mapCtrl.observeBottomSheet(document.querySelector('[data-route-sheet]'));
                 window.mapCtrl.drawOverviewRoutes();
             } else if (state.driverScreen === 'navigation') {
                 if (!document.getElementById('live-nav-map-container')) return;
                 const point = window.DriverTelemetry.lastPoint;
                 const fix = point ? point.coords : (window.DeviceLocation.last() || {}).coords;
-                window.mapCtrl.initMap('live-nav-map-container', fix || [4.6097, -74.0817], fix ? 15 : 7);
+                window.mapCtrl.initMap('live-nav-map-container', fix || null, fix ? 15 : 7);
                 window.mapCtrl.drawLiveNavigation(fix || null);
                 window.RouteGuidance.prepare(window.TruckCarData.activeLoadOrder);
                 window.RouteGuidance.renderHud();
@@ -606,7 +448,7 @@ window.app = {
                 window.mapCtrl.renderCoordinatorFleetMarkers();
                 return;
             }
-            window.mapCtrl.initMap('coordinator-map-container', [4.4389, -75.2322], 7);
+            window.mapCtrl.initMap('coordinator-map-container', null, 7);
             window.mapCtrl.drawCoordinatorFleet();
         });
     },
@@ -614,11 +456,12 @@ window.app = {
     async setRole(role) {
         const sessionRole = window.store.state.sessionRole;
         if (!window.store.state.isAuthenticated) return;
-        if (sessionRole === 'GENERADOR') {
-            if (window.store.state.activeRole !== 'generator') window.store.setState({ activeRole: 'generator' });
+        const access = window.TruckCarService.roleAccess(sessionRole);
+        if (access.shipmentsOnly) {
+            if (window.store.state.activeRole !== access.home) window.store.setState({ activeRole: access.home });
             return;
         }
-        if (role === 'coordinator' && sessionRole === 'CONDUCTOR') {
+        if (role === 'coordinator' && !access.controlTower) {
             window.ui.toast('La torre de control requiere una cuenta de coordinador.', 'warning');
             return;
         }
@@ -693,11 +536,12 @@ window.app = {
 
     async startNavigation() {
         const load = window.TruckCarData.activeLoadOrder;
-        if (!load || (load.status !== 'ASSIGNED' && load.status !== 'IN_TRANSIT')) {
+        const actions = load ? window.TruckCarService.loadActions(load) : {};
+        if (!actions.navigate) {
             window.ui.toast('Acepte una carga antes de iniciar el viaje.', 'warning');
             return;
         }
-        if (load.status === 'ASSIGNED') {
+        if (actions.startTrip) {
             window.store.setState({ busyAction: 'start-trip' });
             try {
                 await window.TruckCarService.startTrip();
@@ -716,7 +560,7 @@ window.app = {
 
     async finishTrip() {
         const load = window.TruckCarData.activeLoadOrder;
-        if (!load || load.status !== 'IN_TRANSIT') {
+        if (!load || !window.TruckCarService.loadActions(load).deliver) {
             window.ui.toast('No hay un viaje en tránsito para finalizar.', 'warning');
             return;
         }

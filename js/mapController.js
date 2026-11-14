@@ -24,18 +24,16 @@ class MapController {
         this.shipmentLayer = null;
         this.shipmentTruckMarker = null;
         this.mountKey = null;
-        this.currentCoords = [4.6752, -74.1450];
-        this.heading = 240;
+        this.currentCoords = null;
+        this.defaultCenter = [4.6097, -74.0817];
 
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
         this.isFetchingRoute = false;
-        this.routeSummary = null;
-        this.routeSummaryFailed = false;
         this.bottomInset = 0;
     }
 
-    initMap(containerId, center = [4.6097, -74.0817], zoom = 8) {
+    initMap(containerId, center = null, zoom = 8) {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
@@ -65,7 +63,7 @@ class MapController {
         const container = document.getElementById(containerId);
         if (!container) return;
 
-        const defaultCenter = Array.isArray(center) ? center : (center.lat ? [center.lat, center.lng] : [4.6097, -74.0817]);
+        const defaultCenter = Array.isArray(center) ? center : (center && center.lat ? [center.lat, center.lng] : this.defaultCenter);
 
         this.map = L.map(containerId, {
             center: defaultCenter,
@@ -104,8 +102,6 @@ class MapController {
     resetRouteCache() {
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
-        this.routeSummary = null;
-        this.routeSummaryFailed = false;
     }
 
     observeBottomSheet(sheet) {
@@ -120,23 +116,6 @@ class MapController {
             this.sheetObserver = new ResizeObserver(apply);
             this.sheetObserver.observe(sheet);
         }
-    }
-
-    routeFiguresHtml() {
-        const s = this.routeSummary;
-        if (s) {
-            const minutes = Math.round(s.durationMin);
-            const hours = Math.floor(minutes / 60);
-            return '<span class="figure">' + Math.round(s.distanceKm) + '<small>km</small></span>'
-                + '<span class="figure">' + (hours ? hours + '<small>h</small> ' : '') + (minutes % 60) + '<small>min</small></span>';
-        }
-        return this.routeSummaryFailed
-            ? '<span class="figure is-none">Sin información</span>'
-            : '<span class="figure is-none">Calculando…</span>';
-    }
-
-    renderRouteFigures() {
-        document.querySelectorAll('[data-route-figures]').forEach(el => { el.innerHTML = this.routeFiguresHtml(); });
     }
 
     currentRoute() {
@@ -233,7 +212,7 @@ class MapController {
     }
 
     splitRoute(coords, position) {
-        if (!position) return { done: [], ahead: coords };
+        if (!position || !window.RouteGuidance) return { done: [], ahead: coords };
         const cos = Math.cos(position[0] * Math.PI / 180);
         let index = 0;
         let best = Infinity;
@@ -241,7 +220,7 @@ class MapController {
             const d = ((c[0] - position[0]) ** 2) + ((c[1] - position[1]) * cos) ** 2;
             if (d < best) { best = d; index = i; }
         });
-        if (Math.sqrt(best) * 111320 > 250) return { done: [], ahead: coords };
+        if (Math.sqrt(best) * 111320 > window.RouteGuidance.OFF_ROUTE_M) return { done: [], ahead: coords };
         return { done: coords.slice(0, index + 1).concat([position]), ahead: [position].concat(coords.slice(index + 1)) };
     }
 
@@ -292,8 +271,6 @@ class MapController {
         if (this.cachedRouteKey !== routeKey) {
             this.cachedOptimalRoadGeometry = null;
             this.cachedRouteKey = routeKey;
-            this.routeSummary = null;
-            this.routeSummaryFailed = false;
         }
         const polylineCoords = this.cachedOptimalRoadGeometry || waypoints.map(w => w.coords);
 
@@ -314,27 +291,12 @@ class MapController {
     async fetchRealRoadGeometry(waypoints, routeKey) {
         try {
             this.isFetchingRoute = true;
-            const coordString = waypoints.map(w => w.coords[1] + ',' + w.coords[0]).join(';');
-            const url = 'https://router.project-osrm.org/route/v1/driving/' + coordString + '?overview=full&geometries=geojson';
-
-            const res = await fetch(url);
-            if (!res.ok) {
-                this.routeSummaryFailed = true;
-                this.renderRouteFigures();
-                return;
-            }
-            const data = await res.json();
-
-            if (data.routes && data.routes[0] && data.routes[0].geometry && this.cachedRouteKey === routeKey) {
-                const roadCoords = data.routes[0].geometry.coordinates.map(pt => [pt[1], pt[0]]);
-                this.cachedOptimalRoadGeometry = roadCoords;
-                this.routeSummary = { distanceKm: data.routes[0].distance / 1000, durationMin: data.routes[0].duration / 60 };
+            const route = await window.TruckCarApi.routing.drivingRoute(waypoints.map(w => w.coords));
+            if (this.cachedRouteKey === routeKey) {
+                this.cachedOptimalRoadGeometry = route.geometry.coordinates.map(pt => [pt[1], pt[0]]);
                 if (this.optimalRouteLayer && this.map) this.renderRoutes();
-                this.renderRouteFigures();
             }
         } catch (err) {
-            this.routeSummaryFailed = true;
-            this.renderRouteFigures();
         } finally {
             this.isFetchingRoute = false;
         }
@@ -358,8 +320,9 @@ class MapController {
             });
 
             L.marker(alert.coords, { icon: alertIcon })
-                .bindPopup('<b>' + window.ui.escape(alert.title) + '</b><br>' + window.ui.escape(alert.description)
-                    + '<br><span class="text-xs">' + window.ui.escape(alert.upvotes) + ' confirmaciones</span>')
+                .bindPopup('<b>' + window.ui.escape(alert.title) + '</b>' + (alert.description ? '<br>' + window.ui.escape(alert.description) : '')
+                    + '<br><span class="text-xs">' + window.ui.escape(typeof alert.upvotes === 'number'
+                        ? alert.upvotes + ' confirmaciones' : 'Confirmaciones: ' + window.ui.NOT_AVAILABLE) + '</span>')
                 .addTo(this.alertMarkersLayer);
         });
     }
@@ -399,8 +362,8 @@ class MapController {
 
     fleetPopup(truck) {
         return '<b>' + window.ui.escape(truck.driverName) + ' (' + window.ui.escape(truck.plate) + ')</b><br>'
-            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(window.DriverApp.statusLabel(truck.status)) + '</b> | Vel: '
-            + truck.speed + ' km/h' + (typeof truck.heading === 'number' ? ' | Rumbo: ' + Math.round(truck.heading) + '°' : '');
+            + window.ui.escape(truck.vehicleType || '—') + '<br>Estado: <b>' + window.ui.escape(window.ui.statusLabel(truck.status)) + '</b> | '
+            + window.ui.escape(window.ui.speedText(truck.speed)) + (typeof truck.heading === 'number' ? ' | Rumbo: ' + Math.round(truck.heading) + '°' : '');
     }
 
     placeFleetMarker(truck, animate) {
@@ -576,8 +539,8 @@ class MapController {
 
     shipmentTruckPopup(truck) {
         const esc = window.ui.escape;
-        return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(window.DriverApp.statusLabel(truck.status)) + ' · '
-            + truck.speed + ' km/h · ' + esc(truck.lastCheckin);
+        return '<b>' + esc(truck.driverName) + ' (' + esc(truck.plate) + ')</b><br>' + esc(window.ui.statusLabel(truck.status)) + ' · '
+            + esc(window.ui.speedText(truck.speed)) + ' · ' + esc(truck.lastCheckin);
     }
 
     moveShipmentTruck(truck) {

@@ -1,22 +1,4 @@
 window.GeneratorPanel = (function () {
-    const CITIES = [
-        ['Bogotá', 'Cundinamarca', 4.6097, -74.0817], ['Medellín', 'Antioquia', 6.2442, -75.5812],
-        ['Cali', 'Valle del Cauca', 3.4516, -76.5320], ['Barranquilla', 'Atlántico', 10.9685, -74.7813],
-        ['Cartagena', 'Bolívar', 10.3910, -75.4794], ['Bucaramanga', 'Santander', 7.1193, -73.1227],
-        ['Cúcuta', 'Norte de Santander', 7.8939, -72.5078], ['Pereira', 'Risaralda', 4.8133, -75.6961],
-        ['Manizales', 'Caldas', 5.0703, -75.5138], ['Armenia', 'Quindío', 4.5339, -75.6811],
-        ['Ibagué', 'Tolima', 4.4389, -75.2322], ['Villavicencio', 'Meta', 4.1420, -73.6266],
-        ['Tunja', 'Boyacá', 5.5353, -73.3678], ['Sogamoso', 'Boyacá', 5.7146, -72.9339],
-        ['Neiva', 'Huila', 2.9273, -75.2819], ['Santa Marta', 'Magdalena', 11.2408, -74.1990],
-        ['Buenaventura', 'Valle del Cauca', 3.8801, -77.0312], ['Pasto', 'Nariño', 1.2136, -77.2811],
-        ['Montería', 'Córdoba', 8.7479, -75.8814], ['Valledupar', 'Cesar', 10.4631, -73.2532]
-    ].map(([city, department, latitude, longitude]) => ({ city, department, latitude, longitude }));
-
-    const TRUCK_TYPES = [
-        ['TRACTOMULA_3S3', 'Tractomula 3S3'], ['MINIMULA', 'Minimula'], ['DOBLETROQUE', 'Doble troque'],
-        ['CUATRO_MANOS', 'Cuatro manos'], ['SENCILLO', 'Sencillo'], ['TURBO', 'Turbo'], ['REFRIGERADO', 'Refrigerado']
-    ];
-
     const STATUS = {
         AVAILABLE: { label: 'Disponible', text: 'Buscando conductor', tone: '' },
         PROPOSED: { label: 'Propuesta', text: 'Propuesta a conductor', tone: '' },
@@ -27,7 +9,8 @@ window.GeneratorPanel = (function () {
         DELIVERED: { label: 'Entregada', text: 'Entregada', tone: 'ok' },
         CANCELLED: { label: 'Cancelada', text: 'Cancelada', tone: '' }
     };
-    const truckTypeLabel = (code) => (TRUCK_TYPES.find(([key]) => key === code) || [code, code || '—'])[1];
+    const truckTypeLabel = (code) => window.TruckCarService.truckTypeLabel(code) || window.ui.orNotAvailable(code);
+    const cities = () => window.TruckCarService.cityCatalog();
     const FILTERS = ['ALL', 'AVAILABLE', 'PROPOSED', 'NOTIFIED', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'];
 
     function statusKey(load) {
@@ -71,7 +54,7 @@ window.GeneratorPanel = (function () {
 
     function findCity(name) {
         const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-        return CITIES.find(c => norm(c.city) === norm(name)) || null;
+        return cities().find(c => norm(c.city) === norm(name)) || null;
     }
 
     function validate(d) {
@@ -79,11 +62,12 @@ window.GeneratorPanel = (function () {
         if (!String(d.cargoDescription || '').trim()) errors.cargoDescription = 'Describa la carga.';
         const weight = Number(d.weightTons);
         if (!(weight > 0)) errors.weightTons = 'Debe ser mayor a 0 t.';
-        else if (weight > 60) errors.weightTons = 'Máximo 60 t por vehículo.';
-        if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) >= 0)) errors.volumeM3 = 'Volumen inválido.';
-        if (!findCity(d.originCity)) errors.originCity = 'Elija una ciudad de la lista.';
-        if (!findCity(d.destinationCity)) errors.destinationCity = 'Elija una ciudad de la lista.';
-        else if (findCity(d.originCity) === findCity(d.destinationCity)) errors.destinationCity = 'Debe ser distinto del origen.';
+        if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) > 0)) errors.volumeM3 = 'Debe ser mayor a 0 m³ o quedar vacío.';
+        const from = findCity(d.originCity);
+        const to = findCity(d.destinationCity);
+        if (!from) errors.originCity = 'Elija una ciudad de la lista.';
+        if (!to) errors.destinationCity = 'Elija una ciudad de la lista.';
+        else if (from && from.city === to.city) errors.destinationCity = 'Debe ser distinto del origen.';
         if (!(Number(d.offeredBudget) >= 1000)) errors.offeredBudget = 'Mínimo 1.000 COP.';
         return errors;
     }
@@ -120,13 +104,13 @@ window.GeneratorPanel = (function () {
              ${field('cargoDescription', 'Descripción de la carga', `<input name="cargoDescription" value="${esc(d.cargoDescription)}" maxlength="255" class="login-input w-full text-xs" placeholder="Ej. Cemento ensacado, 600 bultos" enterkeyhint="next">`, { ...opts, required: true })}
              <div class="grid grid-cols-2 gap-2">
                 ${field('weightTons', 'Peso (t)', `<input name="weightTons" type="number" inputmode="decimal" min="0.1" step="0.1" value="${esc(d.weightTons)}" class="login-input w-full text-xs" placeholder="30">`, { ...opts, required: true })}
-                ${field('volumeM3', 'Volumen (m³)', `<input name="volumeM3" type="number" inputmode="decimal" min="0" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">`, opts)}
+                ${field('volumeM3', 'Volumen (m³)', `<input name="volumeM3" type="number" inputmode="decimal" min="0.1" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">`, opts)}
              </div>
-             ${field('requiredTruckType', 'Tipo de camión requerido', `<select name="requiredTruckType" class="login-input w-full text-xs">${TRUCK_TYPES.map(([value, text]) => `<option value="${value}" ${value === d.requiredTruckType ? 'selected' : ''}>${text}</option>`).join('')}</select>`, { ...opts, required: true })}`,
-            `<datalist id="truckcar-cities">${CITIES.map(c => `<option value="${c.city}">${c.department}</option>`).join('')}</datalist>
+             ${field('requiredTruckType', 'Tipo de camión requerido', `<select name="requiredTruckType" class="login-input w-full text-xs">${window.TruckCarService.truckTypes().map(t => `<option value="${t.code}" ${t.code === d.requiredTruckType ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`, { ...opts, required: true })}`,
+            `<datalist id="truckcar-cities">${cities().map(c => `<option value="${esc(c.city)}">${esc(c.department)}</option>`).join('')}</datalist>
              ${field('originCity', 'Origen', `<input name="originCity" list="truckcar-cities" value="${esc(d.originCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
              ${field('destinationCity', 'Destino', `<input name="destinationCity" list="truckcar-cities" value="${esc(d.destinationCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
-             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot"></i> ${origin && destination && origin !== destination
+             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot"></i> ${origin && destination && origin.city !== destination.city
                 ? esc(origin.city + ', ' + origin.department + ' → ' + destination.city + ', ' + destination.department)
                 : 'Las coordenadas del trayecto salen del catálogo de ciudades.'}</p>`,
             `${field('offeredBudget', 'Presupuesto ofrecido (COP)', `<input name="offeredBudget" type="number" inputmode="numeric" min="1000" step="1000" value="${esc(d.offeredBudget)}" class="login-input w-full text-xs" placeholder="5000000" enterkeyhint="done">`, { ...opts, required: true })}
@@ -242,6 +226,7 @@ window.GeneratorPanel = (function () {
         const status = STATUS[statusKey(load)];
         const cancelled = load.status === 'CANCELLED';
         const assigned = ['ASSIGNED', 'IN_TRANSIT', 'DELIVERED'].includes(load.status);
+        const allowed = window.TruckCarService.loadActions(load);
         return `
             <div class="card p-4 flex flex-col gap-3 overflow-y-auto">
                 <div class="flex items-start justify-between gap-2">
@@ -253,7 +238,7 @@ window.GeneratorPanel = (function () {
                     ${badge(load)}
                 </div>
                 <div id="generator-map-container" class="h-44 rounded-xl overflow-hidden border border-slate-800 shrink-0" aria-label="Mapa del envío"></div>
-                ${load.status === 'ASSIGNED' || load.status === 'IN_TRANSIT' ? `
+                ${allowed.trackTruck ? `
                     <div class="flex items-center justify-between gap-2 text-[10px]">
                         <p id="shipment-truck-line" class="text-slate-200 truncate">${truckLine(truck)}</p>
                         <span data-telemetry-status class="shrink-0 flex items-center gap-1 text-slate-400"></span>
@@ -274,15 +259,15 @@ window.GeneratorPanel = (function () {
                                 load.podReceiverName ? 'recibió ' + load.podReceiverName : '')}
                 </ol>
                 <div class="flex flex-col gap-2 pt-1">
-                    ${load.status === 'DELIVERED' ? `
+                    ${allowed.viewProofOfDelivery ? `
                         <button onclick="window.generatorCtrl.showProofOfDelivery(${load.backendId})" class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 text-graphite-950 rounded-xl text-xs font-bold">
                             <i class="fas fa-file-signature"></i> Ver prueba de entrega (POD)
                         </button>` : ''}
-                    ${load.status !== 'CANCELLED' ? `
+                    ${allowed.shareTracking ? `
                         <button onclick="window.generatorCtrl.shareTracking(${load.backendId})" class="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold">
                             <i class="fas fa-link"></i> Generar enlace de seguimiento público
                         </button>` : ''}
-                    ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
+                    ${allowed.cancel ? `
                         <button onclick="window.generatorCtrl.cancel(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white border border-slate-700 rounded-xl text-xs font-bold">
                             <i class="fas ${state.busyAction === 'cancel' ? 'fa-spinner fa-spin' : 'fa-ban'}"></i> Cancelar envío
                         </button>` : ''}
@@ -295,7 +280,7 @@ window.GeneratorPanel = (function () {
         const esc = window.ui.escape;
         if (!truck || !truck.coords) return '<i class="fas fa-satellite-dish"></i> Esperando la posición del camión…';
         const heading = typeof truck.heading === 'number' ? ' · rumbo ' + Math.round(truck.heading) + '°' : '';
-        return `<i class="fas fa-location-crosshairs"></i> ${esc(truck.plate)} · ${truck.speed} km/h${heading} · posición ${esc(truck.lastCheckin)}`;
+        return `<i class="fas fa-location-crosshairs"></i> ${esc(truck.plate)} · ${esc(window.ui.speedText(truck.speed))}${heading} · posición ${esc(truck.lastCheckin)}`;
     }
 
     function updateTruckLine(truck) {
@@ -309,7 +294,7 @@ window.GeneratorPanel = (function () {
     }
 
     function truckFor(load) {
-        if (!load || !load.assignedDriverId || !['ASSIGNED', 'IN_TRANSIT'].includes(load.status)) return null;
+        if (!load || !load.assignedDriverId || !window.TruckCarService.loadActions(load).trackTruck) return null;
         const tracked = (window.TruckCarData.shipmentTrucks || {})[load.assignedDriverId];
         return tracked || (window.TruckCarData.fleetVehicles || []).find(t => t.driverId === load.assignedDriverId) || null;
     }
@@ -319,7 +304,7 @@ window.GeneratorPanel = (function () {
         const loads = window.TruckCarData.publishedLoads || [];
         const load = selectedLoad(state);
         const user = state.currentUser;
-        const active = loads.filter(l => ['ASSIGNED', 'IN_TRANSIT'].includes(l.status)).length;
+        const active = loads.filter(l => window.TruckCarService.loadActions(l).trackTruck).length;
         const delivered = loads.filter(l => l.status === 'DELIVERED').length;
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
@@ -333,7 +318,7 @@ window.GeneratorPanel = (function () {
                             <p class="text-xs text-slate-400 truncate flex items-center gap-2"><span data-network-status class="lg:hidden"></span> Última ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
                         </div>
                     </div>
-                    ${state.sessionRole === 'GENERADOR' ? '' : window.CoordinatorPanel.renderTabs(state)}
+                    ${window.TruckCarService.roleAccess(state.sessionRole).shipmentsOnly ? '' : window.CoordinatorPanel.renderTabs(state)}
                     <div class="flex items-center gap-3">
                         <div class="px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                             <span class="text-xs text-slate-400 font-medium block">En curso</span>
@@ -357,7 +342,7 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    return { render, selectedLoad, truckFor, updateTruckLine, CITIES, FORM_STEPS, findCity, validate };
+    return { render, selectedLoad, truckFor, updateTruckLine, FORM_STEPS, findCity, validate };
 })();
 
 window.generatorCtrl = (function () {
@@ -373,8 +358,8 @@ window.generatorCtrl = (function () {
         try { company = localStorage.getItem('truckcar.generatorCompanyName') || ''; } catch (e) { }
         return {
             generatorCompanyName: company || (user ? (user.firstName + ' ' + user.lastName).trim() : ''),
-            cargoDescription: '', weightTons: '', volumeM3: '', requiredTruckType: 'TRACTOMULA_3S3',
-            originCity: 'Bogotá', destinationCity: 'Cali', offeredBudget: ''
+            cargoDescription: '', weightTons: '', volumeM3: '', requiredTruckType: window.TruckCarService.truckTypes()[0].code,
+            originCity: '', destinationCity: '', offeredBudget: ''
         };
     }
 
@@ -517,7 +502,6 @@ window.generatorCtrl = (function () {
             window.store.setState({ busyAction: 'publish', generatorFormError: null });
             try {
                 const created = await window.TruckCarService.publishLoad({
-                    generatorCompanyId: user ? user.id : undefined,
                     generatorCompanyName: companyName,
                     cargoDescription: d.cargoDescription.trim(),
                     weightTons: weight,
