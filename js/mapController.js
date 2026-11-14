@@ -24,8 +24,8 @@ class MapController {
         this.shipmentLayer = null;
         this.shipmentTruckMarker = null;
         this.mountKey = null;
-        this.currentCoords = [4.6752, -74.1450];
-        this.heading = 240;
+        this.currentCoords = null;
+        this.defaultCenter = [4.6097, -74.0817];
 
         this.cachedOptimalRoadGeometry = null;
         this.cachedRouteKey = null;
@@ -33,7 +33,7 @@ class MapController {
         this.bottomInset = 0;
     }
 
-    initMap(containerId, center = [4.6097, -74.0817], zoom = 8) {
+    initMap(containerId, center = null, zoom = 8) {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
@@ -63,7 +63,7 @@ class MapController {
         const container = document.getElementById(containerId);
         if (!container) return;
 
-        const defaultCenter = Array.isArray(center) ? center : (center.lat ? [center.lat, center.lng] : [4.6097, -74.0817]);
+        const defaultCenter = Array.isArray(center) ? center : (center && center.lat ? [center.lat, center.lng] : this.defaultCenter);
 
         this.map = L.map(containerId, {
             center: defaultCenter,

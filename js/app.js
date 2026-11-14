@@ -409,7 +409,7 @@ window.app = {
             if (window.mapCtrl.isMountedOn('generator-map-container')) {
                 window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load), { fit: window.mapCtrl.shipmentKey !== key });
             } else {
-                window.mapCtrl.initMap('generator-map-container', [4.6097, -74.0817], 6);
+                window.mapCtrl.initMap('generator-map-container', null, 6);
                 window.mapCtrl.drawShipment(load, window.GeneratorPanel.truckFor(load));
             }
             window.mapCtrl.shipmentKey = key;
@@ -425,14 +425,14 @@ window.app = {
         this.scheduleMapMount(() => {
             if (state.driverScreen === 'route_overview') {
                 if (!document.getElementById('overview-map-container')) return;
-                window.mapCtrl.initMap('overview-map-container', [4.6097, -74.0817], 7);
+                window.mapCtrl.initMap('overview-map-container', null, 7);
                 window.mapCtrl.observeBottomSheet(document.querySelector('[data-route-sheet]'));
                 window.mapCtrl.drawOverviewRoutes();
             } else if (state.driverScreen === 'navigation') {
                 if (!document.getElementById('live-nav-map-container')) return;
                 const point = window.DriverTelemetry.lastPoint;
                 const fix = point ? point.coords : (window.DeviceLocation.last() || {}).coords;
-                window.mapCtrl.initMap('live-nav-map-container', fix || [4.6097, -74.0817], fix ? 15 : 7);
+                window.mapCtrl.initMap('live-nav-map-container', fix || null, fix ? 15 : 7);
                 window.mapCtrl.drawLiveNavigation(fix || null);
                 window.RouteGuidance.prepare(window.TruckCarData.activeLoadOrder);
                 window.RouteGuidance.renderHud();
@@ -448,7 +448,7 @@ window.app = {
                 window.mapCtrl.renderCoordinatorFleetMarkers();
                 return;
             }
-            window.mapCtrl.initMap('coordinator-map-container', [4.4389, -75.2322], 7);
+            window.mapCtrl.initMap('coordinator-map-container', null, 7);
             window.mapCtrl.drawCoordinatorFleet();
         });
     },
