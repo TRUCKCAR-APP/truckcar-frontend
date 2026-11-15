@@ -222,8 +222,16 @@ window.app = {
             const session = await window.TruckCarApi.auth.login(form.get('email').trim(), form.get('password'));
             await this.startSession(session);
         } catch (error) {
-            window.store.setState({ busyAction: null, authError: window.ui.errorMessage(error) });
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
         }
+    },
+
+    /** Error del login o del registro. El límite de intentos del gateway (429) se explica sin detalles técnicos. */
+    authErrorMessage(error) {
+        if (error && error.isRateLimited) {
+            return window.TruckCarApi.RATE_LIMITED_MESSAGE;
+        }
+        return window.ui.errorMessage(error);
     },
 
     async submitRegister(event) {
@@ -241,7 +249,7 @@ window.app = {
             });
             await this.startSession(session);
         } catch (error) {
-            window.store.setState({ busyAction: null, authError: window.ui.errorMessage(error) });
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
         }
     },
 
@@ -271,6 +279,110 @@ window.app = {
             if (!state.isAuthenticated || !onShipments || typing || podOpen) return;
             await window.generatorCtrl.refresh(true);
         }, 10000);
+        // El conductor sin viaje en curso se entera de una propuesta sin tocar nada: tiene minutos para responder.
+        clearInterval(this.driverTimer);
+        this.driverTimer = setInterval(() => this.pollDriverProposals(), window.TruckCarConfig.driverPollingMs);
+        clearInterval(this.countdownTimer);
+        this.countdownTimer = setInterval(() => this.tickCountdowns(), 1000);
+        clearInterval(this.inboxTimer);
+        this.inboxTimer = setInterval(() => this.pollInbox(), 30000);
+        this.pollInbox();
+    },
+
+    /**
+     * Cada 30 s para el conductor: el número de nuevas en la pestaña Alertas y, mientras la cuenta esté pendiente,
+     * si un administrador ya la verificó (sin cerrar sesión).
+     */
+    async pollInbox() {
+        const state = window.store.state;
+        if (!state.isAuthenticated || state.sessionRole !== 'CONDUCTOR' || !state.currentUser) return;
+        const service = window.TruckCarService;
+        if (service.accountPending(state.currentUser)) {
+            try {
+                const user = await service.loadCurrentUser();
+                if (user && user.status === 'ACTIVE') {
+                    window.ui.toast('Su cuenta fue verificada', 'success', { description: 'Ya puede recibir cargas.' });
+                }
+            } catch (error) {
+                // sin señal: se vuelve a consultar en la siguiente vuelta
+            }
+        }
+        const before = (window.TruckCarData.notifications || []).map(n => n.id).join();
+        try {
+            await service.loadNotifications();
+        } catch (error) {
+            return; // sin señal: se reintenta en la siguiente vuelta
+        }
+        const changed = before !== (window.TruckCarData.notifications || []).map(n => n.id).join();
+        const viewing = state.activeRole === 'driver' && state.driverScreen === 'alerts' && state.alertsView === 'inbox';
+        if (viewing) service.markNotificationsSeen();
+        const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+        if (changed && !typing && !document.querySelector('.sheet-backdrop')) window.store.setState({});
+    },
+
+    async openInbox() {
+        window.store.setState({ alertsView: 'inbox', inboxStatus: 'loading' });
+        try {
+            await window.TruckCarService.loadNotifications();
+            window.TruckCarService.markNotificationsSeen();
+            window.store.setState({ inboxStatus: 'ready' });
+        } catch (error) {
+            window.store.setState({ inboxStatus: 'error' });
+        }
+    },
+
+    async pollDriverProposals() {
+        const state = window.store.state;
+        const current = window.TruckCarData.activeLoadOrder;
+        const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+        const overlayOpen = document.querySelector('.sheet-backdrop');
+        const onTrip = current && window.TruckCarService.loadActions(current).navigate;
+        if (!state.isAuthenticated || state.activeRole !== 'driver' || state.sessionRole !== 'CONDUCTOR'
+            || state.busyAction || typing || overlayOpen || onTrip || this.pollingProposals) return;
+        this.pollingProposals = true;
+        try {
+            const key = (l) => (l ? [l.backendId, l.status, l.assignmentStatus].join(':') : '');
+            await window.TruckCarService.loadDriverAssignment();
+            const after = window.TruckCarData.activeLoadOrder;
+            const change = window.DriverApp.proposalChange(current, after);
+            if (change === 'new') this.announceProposal(after);
+            if (change === 'gone') {
+                window.ui.toast('La propuesta ya no está disponible', 'info',
+                    { description: 'Venció o se asignó a otro conductor. Le avisaremos cuando llegue otra.' });
+            }
+            if (key(current) !== key(after)) window.store.setState(change === 'new' && window.store.state.driverScreen !== 'navigation'
+                ? { driverScreen: 'assigned_load' } : {});
+        } finally {
+            this.pollingProposals = false;
+        }
+    },
+
+    /** Nueva propuesta: aviso visible, vibración y voz (el conductor puede no estar mirando el teléfono). */
+    announceProposal(load) {
+        const route = (load.origin.city || 'Origen') + ' → ' + (load.destination.city || 'destino');
+        const minutes = window.TruckCarConfig.assignmentResponseMinutes;
+        window.ui.toast('Nueva carga propuesta', 'success',
+            { description: route + ' · ' + load.netWeight + ' t. Tiene ' + minutes + ' minutos para responder.' });
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        window.voiceEngine.speak('Nueva carga propuesta: ' + route.replace('→', 'a') + ', ' + load.netWeight
+            + ' toneladas. Tiene ' + minutes + ' minutos para responder.');
+    },
+
+    /** Actualiza la cuenta regresiva de la propuesta sin redibujar la pantalla; al vencer, consulta de nuevo. */
+    tickCountdowns() {
+        document.querySelectorAll('[data-deadline]').forEach((el) => {
+            const text = el.querySelector('[data-countdown-text]');
+            const left = window.DriverApp.countdownText(Number(el.dataset.deadline));
+            if (left) {
+                const b = text.querySelector('b');
+                if (b) b.textContent = left;
+                return;
+            }
+            if (el.dataset.expired) return;
+            el.dataset.expired = '1';
+            text.textContent = 'El plazo venció · el motor la ofrecerá a otro conductor';
+            this.pollDriverProposals();
+        });
     },
 
     async reloadData() {
@@ -327,9 +439,9 @@ window.app = {
             || (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments');
 
         if (window.TruckCarService.roleAccess(state.sessionRole).roadBlockages && (onTower || state.activeRole === 'driver')) {
-            live.followRoadBlockages((payload) => this.onRoadBlockage(payload));
+            live.followBlockages((payload) => this.onRoadBlockage(payload));
         } else {
-            live.unfollowRoadBlockages();
+            live.unfollowBlockages();
         }
 
         if (onTower) {
@@ -355,14 +467,21 @@ window.app = {
         }
     },
 
+    notifyBlockage(blockage, onDriver) {
+        const what = blockage.description || blockage.title || 'bloqueo vial';
+        const confidence = Number.isFinite(blockage.confidence) ? ' (confianza ' + Math.round(blockage.confidence * 100) + ' %)' : '';
+        const by = blockage.source === 'COMMUNITY' ? 'Confirmado por la comunidad' : 'Alerta procesada por IA' + confidence;
+        window.ui.toast(by + ': ' + what + '.' + (onDriver ? '' : ' Los conductores en esa vía recalculan su ruta.'), 'warning');
+    },
+
     async onRoadBlockage(payload) {
+        if (!payload) return;
+        const onDriver = window.store.state.activeRole === 'driver';
+        const rerouting = onDriver ? window.RouteGuidance.handleBlockage(payload) : false;
         const blockage = await window.TruckCarService.handleRoadBlockage(payload);
+        const announcedByGuidance = await rerouting;
         if (!blockage) return;
-        const title = window.ui.orNotAvailable(blockage.title);
-        window.ui.toast('Bloqueo vial: ' + title, 'warning', { description: blockage.corridor || blockage.reason || undefined });
-        if (window.store.state.activeRole === 'driver') {
-            window.voiceEngine.speak('Atención. Bloqueo vial reportado: ' + title + '.', true);
-        }
+        if (!announcedByGuidance) this.notifyBlockage(payload, onDriver);
         window.store.setState({});
     },
 
@@ -399,6 +518,7 @@ window.app = {
     setCoordinatorTab(tab) {
         window.store.setState({ coordinatorTab: tab });
         if (tab === 'shipments') window.generatorCtrl.refresh(true);
+        if (['restrictions', 'users', 'templates'].includes(tab)) window.TowerAdmin.load(tab);
     },
 
     handleGeneratorMapMount(state) {
@@ -491,6 +611,46 @@ window.app = {
         }, 350);
     },
 
+    // ------------------------------------------------------------------ conductor
+    /** Posición para el registro del vehículo: la del GPS reciente, o una lectura nueva (null sin permiso o señal). */
+    async currentCoords() {
+        const recent = window.DeviceLocation.last(2 * 60 * 1000);
+        if (recent) return recent.coords;
+        const fix = await window.DeviceLocation.fix({ timeoutMs: 6000 });
+        return fix ? fix.coords : null;
+    },
+
+    async openVehicleForm() {
+        const driver = window.TruckCarData.currentDriver;
+        if (!driver) return;
+        const firstTime = !driver.state;
+        const saved = await window.VehicleForm.open(driver, async (vehicle) => {
+            await window.TruckCarService.saveVehicle(vehicle, await this.currentCoords());
+        });
+        if (!saved) return;
+        window.store.setState({});
+        const pending = window.DriverApp.accountPending(window.store.state);
+        window.ui.toast(!firstTime ? 'Vehículo actualizado.'
+            : pending ? 'Vehículo registrado. Recibirá cargas cuando un administrador verifique su cuenta.'
+                : 'Vehículo registrado: ya puede recibir cargas.', 'success');
+    },
+
+    async toggleAvailability() {
+        const driver = window.TruckCarData.currentDriver;
+        if (!driver || !driver.state) return;
+        const available = !window.TruckCarService.driverAvailable(driver);
+        window.store.setState({ busyAction: 'availability' });
+        try {
+            await window.TruckCarService.setAvailability(available, available ? await this.currentCoords() : null);
+            window.ui.toast(available ? 'Disponible: el motor le puede proponer cargas.' : 'No disponible: no recibirá propuestas.',
+                available ? 'success' : 'info');
+        } catch (error) {
+            window.ui.failure('No se pudo cambiar la disponibilidad', error, 'cambiar la disponibilidad');
+        } finally {
+            window.store.setState({ busyAction: null });
+        }
+    },
+
     async handleAcceptTrip() {
         window.store.setState({ busyAction: 'accept' });
         try {
@@ -568,7 +728,7 @@ window.app = {
         if (!delivered) return;
         window.voiceEngine.speak('Entrega registrada. Viaje finalizado.');
         window.ui.toast('Entrega registrada (DELIVERED) con firma y prueba de entrega.', 'success');
-        window.RouteGuidance.reset();
+        window.RouteGuidance.forget(load.backendId);
         window.store.setState({ busyAction: null, driverScreen: 'assigned_load' });
     },
 

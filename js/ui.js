@@ -11,6 +11,11 @@ window.ui = {
         return value === null || value === undefined || value === '' ? this.NOT_AVAILABLE : value;
     },
 
+    number(value, digits, unit) {
+        if (typeof value !== 'number' || Number.isNaN(value)) return this.NOT_AVAILABLE;
+        return value.toLocaleString('es-CO', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + (unit ? ' ' + unit : '');
+    },
+
     speedText(speed) {
         return typeof speed === 'number' ? speed + ' km/h' : 'Velocidad: ' + this.NOT_AVAILABLE;
     },

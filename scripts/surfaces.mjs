@@ -23,13 +23,16 @@ export const SURFACES = {
   driver: [
     "js/podEvidence.js",
     "js/geolocation.js",
+    "js/routeStore.js",
     "js/navigation.js",
     "js/views/driverApp.js",
     "js/views/driverActions.js",
+    "js/views/vehicleForm.js",
     "js/surfaces/driver.js",
   ],
   panel: [
     "js/views/coordinatorPanel.js",
+    "js/views/towerAdmin.js",
     "js/views/generatorPanel.js",
     "js/views/sosMonitor.js",
     "js/surfaces/panel.js",

@@ -48,6 +48,9 @@
     const withKey = (url) => mapApiKey ? url + '?' + provider.keyParam + '=' + encodeURIComponent(mapApiKey) : url;
     const tileUrl = withKey(provider.url);
 
+    const responseTag = document.querySelector('meta[name="truckcar-assignment-response-minutes"]');
+    const injectedResponseMinutes = Number(window.TRUCKCAR_ASSIGNMENT_RESPONSE_MINUTES || (responseTag && responseTag.content));
+
     const demoTools = new URLSearchParams(window.location.search).get('demo') === '1';
     if (demoTools) document.documentElement.dataset.demo = '1';
 
@@ -61,6 +64,10 @@
         routingUrl: 'https://router.project-osrm.org/route/v1/driving/',
         requestTimeoutMs: 15000,
         pollingIntervalMs: 30000,
+        // El conductor sin viaje consulta sus propuestas con esta frecuencia (ms): la propuesta vence en minutos.
+        driverPollingMs: 10000,
+        // Plazo para responder una propuesta NOTIFIED (Load-Allocation TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES).
+        assignmentResponseMinutes: injectedResponseMinutes > 0 ? injectedResponseMinutes : 5,
         storageKeys: {
             session: 'truckcar.session'
         }

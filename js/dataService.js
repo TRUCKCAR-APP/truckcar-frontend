@@ -103,6 +103,19 @@
         };
     }
 
+    function demoSession() {
+        const session = api.session && api.session.get ? api.session.get() : null;
+        return Boolean(window.TruckCarConfig && window.TruckCarConfig.demoTools && session && session.demo === true);
+    }
+
+    function accountPending(user) {
+        return Boolean(user && user.status === 'PENDING_VERIFICATION');
+    }
+
+    function driverAvailable(driver) {
+        return String(driver && driver.status).toUpperCase() !== 'INACTIVO';
+    }
+
     function fleetStatus({ status, restRequiredAlert, currentLoadStatus }) {
         if (restRequiredAlert) return 'DESCANSO';
         if (currentLoadStatus === 'IN_TRANSIT') return 'EN_TRANSITO';
@@ -171,10 +184,27 @@
         if (load && loadActions(load).transmitPosition && driver && driver.id) {
             window.DriverTelemetry.start(load, driver.id);
             window.RouteGuidance.prepare(load);
+        } else if (load && loadActions(load).startTrip && driver && driver.id && window.RouteGuidance.prefetch) {
+            // Aceptada: la ruta queda guardada en el dispositivo por si el viaje empieza sin señal.
+            window.RouteGuidance.prefetch(load);
+            if (window.DriverTelemetry.isRunning) {
+                window.DriverTelemetry.stop();
+                window.RouteGuidance.reset();
+            }
         } else if (window.DriverTelemetry.isRunning) {
             window.DriverTelemetry.stop();
             window.RouteGuidance.reset();
         }
+    }
+
+    /**
+     * Viaje guardado en el dispositivo (routeStore.js) para reabrir la app sin red: solo si el fallo es de red y el
+     * viaje estaba aceptado o en curso.
+     */
+    async function savedTrip(driverId) {
+        if (!window.RouteStore) return null;
+        const saved = await window.RouteStore.latest(driverId);
+        return saved && saved.load && loadActions(saved.load).navigate ? saved : null;
     }
 
     function recordError(section, error) {
@@ -228,7 +258,10 @@
                 runtValid: Boolean(state.runtValid),
                 badges: state.activeBadges || []
             } : null,
-            coords: state ? coordsOrNull(state.currentLatitude, state.currentLongitude) : null
+            coords: state ? coordsOrNull(state.currentLatitude, state.currentLongitude) : null,
+            // Estado tal como lo guarda fleets-drivers: al editar el vehículo se reenvía completo para no perder
+            // calificación, viajes ni horas de conducción.
+            state: state || null
         };
     }
 
@@ -378,6 +411,7 @@
     function mapEvaluation(load, decisions) {
         return {
             loadId: load ? load.id : null,
+            latestExplanation: decisions && decisions[0] ? given(decisions[0], 'explanation') : null,
             candidates: (decisions || []).map(d => mapDecision(load, d))
         };
     }
@@ -444,6 +478,8 @@
         mapLoad,
         loadActions,
         roleAccess,
+        accountPending,
+        driverAvailable,
         truckTypes,
         truckTypeLabel,
         cityCatalog,
@@ -475,6 +511,8 @@
                     data.currentDriver = mapDriver(user, null);
                     clearError('driver');
                 } else {
+                    const saved = error.isNetworkError && !data.currentDriver ? await savedTrip(driverId) : null;
+                    if (saved && saved.driver) data.currentDriver = { ...saved.driver, restoredOffline: true };
                     recordError('driver', error);
                 }
             }
@@ -490,6 +528,12 @@
                 syncDriverTelemetry();
                 clearError('loads');
             } catch (error) {
+                const saved = error.isNetworkError && !data.activeLoadOrder ? await savedTrip(driver.id) : null;
+                if (saved) {
+                    // Sin red: el viaje en curso sigue desde lo guardado (la guía restaura su ruta de IndexedDB).
+                    data.activeLoadOrder = { ...mapLoad(saved.load), restoredOffline: true };
+                    syncDriverTelemetry();
+                }
                 recordError('loads', error);
             }
         },
@@ -816,6 +860,121 @@
             return api.loads.publicTrackingLink(loadId);
         },
 
+        /**
+         * El conductor registra o edita su vehículo (fleets-drivers acepta el estado propio del CONDUCTOR). Queda
+         * ACTIVO y con la posición del GPS si la hay: así el motor de asignación ya lo considera para las cargas.
+         */
+        async saveVehicle(vehicle, coords) {
+            const driver = data.currentDriver;
+            if (!driver || !driver.id) throw new Error('No se encontró el perfil del conductor');
+            const position = coords ? { currentLatitude: coords[0], currentLongitude: coords[1] } : {};
+            const user = window.store.state.currentUser;
+            const fullName = user ? [user.firstName, user.lastName].filter(Boolean).join(' ') : '';
+            await api.fleet.patchState(driver.id, { ...(fullName ? { driverName: fullName } : {}), ...vehicle, ...position });
+            await this.loadDriverProfile();
+            return data.currentDriver;
+        },
+
+        /** Disponible (ACTIVO) o no disponible (INACTIVO) para recibir cargas. */
+        async setAvailability(available, coords) {
+            const driver = data.currentDriver;
+            if (!driver || !driver.state) throw new Error('Registre primero su vehículo');
+            const position = coords ? { currentLatitude: coords[0], currentLongitude: coords[1] } : {};
+            await api.fleet.patchState(driver.id, { ...position, status: available ? 'ACTIVO' : 'INACTIVO' });
+            await this.loadDriverProfile();
+            return data.currentDriver;
+        },
+
+        /**
+         * Bandeja del usuario. El servidor no guarda "leída": se marca en el teléfono con la hora de la notificación
+         * más nueva que el usuario ya vio (truckcar.inbox.seen.<usuario>).
+         */
+        async loadNotifications() {
+            const userId = window.store.state.currentUser && window.store.state.currentUser.id;
+            if (!userId) return [];
+            if (demoSession()) return (data.notifications = []);
+            const page = await api.notifications.forUser(userId);
+            data.notifications = ((page && page.content) || (Array.isArray(page) ? page : [])).map(n => ({
+                id: n.id,
+                category: n.category,
+                text: n.payload || '',
+                status: n.status,
+                failureReason: n.failureReason,
+                audioUrl: /^https:\/\//.test(n.audioUrl || '') ? n.audioUrl : null,
+                createdAt: n.createdAt,
+                timeAgo: timeAgo(n.createdAt)
+            }));
+            return data.notifications;
+        },
+
+        inboxSeenKey() {
+            const user = window.store.state.currentUser;
+            return 'truckcar.inbox.seen.' + (user ? user.id : '');
+        },
+
+        unreadNotifications() {
+            let seen = 0;
+            try { seen = Number(localStorage.getItem(this.inboxSeenKey())) || 0; } catch (e) { /* sin almacenamiento */ }
+            return (data.notifications || []).filter(n => new Date(n.createdAt).getTime() > seen).length;
+        },
+
+        markNotificationsSeen() {
+            const newest = Math.max(0, ...(data.notifications || []).map(n => new Date(n.createdAt).getTime() || 0));
+            try { localStorage.setItem(this.inboxSeenKey(), String(newest)); } catch (e) { /* sin almacenamiento */ }
+        },
+
+        async loadTemplates() {
+            if (demoSession()) return (data.templates = []);
+            const list = await api.templates.list();
+            data.templates = (Array.isArray(list) ? list : []).slice()
+                .sort((a, b) => (a.category + a.channel).localeCompare(b.category + b.channel));
+            return data.templates;
+        },
+
+        async updateTemplate(id, templateText) {
+            const updated = await api.templates.update(id, templateText);
+            data.templates = (data.templates || []).map(t => (t.id === id ? { ...t, ...updated } : t));
+            return updated;
+        },
+
+        async loadUsers() {
+            if (demoSession()) return (data.users = []);
+            const page = await api.users.list();
+            data.users = Array.isArray(page) ? page : ((page && page.content) || []);
+            return data.users;
+        },
+
+        async changeUserRole(userId, role) {
+            const updated = await api.users.changeRole(userId, role);
+            data.users = (data.users || []).map(u => (u.id === userId ? { ...u, ...updated } : u));
+            return updated;
+        },
+
+        async changeUserStatus(userId, status) {
+            const updated = await api.users.changeStatus(userId, status);
+            data.users = (data.users || []).map(u => (u.id === userId ? { ...u, ...updated } : u));
+            return updated;
+        },
+
+        async loadRestrictions() {
+            if (demoSession()) return (data.restrictions = []);
+            const list = await api.restrictions.listActive();
+            data.restrictions = (Array.isArray(list) ? list : ((list && list.content) || []))
+                .filter(r => r.isActive !== false);
+            return data.restrictions;
+        },
+
+        async createRestriction(restriction) {
+            const created = await api.restrictions.create(restriction);
+            await this.loadRestrictions();
+            return created;
+        },
+
+        async deactivateRestriction(id) {
+            await api.restrictions.deactivate(id);
+            data.restrictions = (data.restrictions || []).filter(r => r.id !== id);
+        },
+
         reset() {
             data.activeSos = [];
             data.currentDriver = null;
@@ -831,6 +990,10 @@
             data.publishedLoads = [];
             data.shipmentTrucks = {};
             data.lastDelivery = null;
+            data.users = [];
+            data.restrictions = [];
+            data.notifications = [];
+            data.templates = [];
         }
     };
 

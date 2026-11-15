@@ -7,6 +7,7 @@ window.DemoSession = {
         const isDriver = role === 'driver';
         const session = {
             accessToken: 'demo-token',
+            demo: true,
             userId: isDriver ? 'abc27ef4-1e64-4b94-809a-9605ddc3d2e5' : 'coord-1',
             email: isDriver ? 'conductor@truckcar.demo' : 'torre@truckcar.demo',
             role: isDriver ? 'CONDUCTOR' : 'COORDINADOR',

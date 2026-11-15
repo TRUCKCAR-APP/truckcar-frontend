@@ -322,7 +322,7 @@ test("la ruta por carretera se pide en un solo punto del front, con la URL de la
   assert.equal(urls[0], "https://rutas.example.test/route/v1/driving/-74,4.6;-73.99,4.61?overview=full&geometries=geojson&steps=true");
   assert.equal(route.geometry.coordinates.length, 2);
   for (const file of ["js/navigation.js", "js/mapController.js", "js/telemetry.js"]) {
-    assert.doesNotMatch(readFileSync(file, "utf8"), /router\.project-osrm|fetch\(/, file + " no llama al servicio de rutas por su cuenta");
+    assert.doesNotMatch(readFileSync(file, "utf8"), /router\.project-osrm|(?<![A-Za-z])fetch\(/, file + " no llama al servicio de rutas por su cuenta");
   }
 });
 

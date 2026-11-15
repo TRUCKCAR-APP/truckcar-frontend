@@ -19,6 +19,11 @@ siguientes requieren contratos de backend antes de conectarse.
   y configuración de entrega en backend. Para Web Push se necesita una clave pública VAPID; para Android, proyecto y
   `google-services.json` de Firebase Cloud Messaging. No se solicita permiso ni se registra un token automáticamente
   mientras la entrega no esté configurada.
+- **Plazo de la propuesta de carga:** `GET /loads/mine` no devuelve la hora límite para responder una propuesta
+  `NOTIFIED`. La cuenta regresiva del conductor se calcula con `assignmentStatusChangedAt` más un plazo fijo de 5 minutos
+  (el valor por defecto de `truckcar.assignment.response-timeout-minutes` en Load-Allocation). Si el despliegue usa otro
+  valor en `TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES`, debe declararse el mismo en la etiqueta meta
+  `truckcar-assignment-response-minutes` de `index.html`; lo correcto es que el backend entregue la hora límite.
 
 ## Android
 

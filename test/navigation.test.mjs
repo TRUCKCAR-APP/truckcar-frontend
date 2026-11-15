@@ -145,7 +145,8 @@ test("el gálibo y el peso de la ruta real llegan de Routing-Restrictions y se a
   await w.RouteGuidance.prepare(LOAD);
   await sleep(5);
 
-  assert.equal(requests.length, 1);
+  assert.equal(requests.filter((r) => !r.corridorMeters).length, 1, "una validación de la ruta");
+  assert.ok(requests.filter((r) => r.corridorMeters).every((r) => r.corridorMeters === 500), "y la del corredor ampliado (vecinas)");
   assert.equal(JSON.stringify(requests[0].path), "[[4.6,-74],[4.61,-74],[4.61,-73.99]]", "la geometría de OSRM, no texto del corredor");
   assert.equal(requests[0].heightMeters, 4.1);
   assert.equal(requests[0].grossWeightTons, 40);
@@ -153,10 +154,9 @@ test("el gálibo y el peso de la ruta real llegan de Routing-Restrictions y se a
   w.RouteGuidance.update({ coords: [4.6, -74.0], speed: 50, source: "gps" });
   const doc = w.document;
   assert.equal(doc.querySelector("[data-nav-clearance]").hidden, false);
-  assert.equal(doc.querySelector("[data-nav-clearance-text]").textContent,
-    "Altura del camión (4,10 m) supera el gálibo de 3,80 m en Puente de la Calle 26", "el motivo es el texto de RouteRestrictionHit.reason");
-  assert.equal(doc.querySelector("[data-nav-clearance-sub]").textContent, "· en 1,4 km");
-  assert.ok(spoken.some((t) => /Atención: .*Altura del camión \(4,10 m\) supera el gálibo de 3,80 m/.test(t)), "se anuncia una vez a 3 km o menos");
+  assert.equal(doc.querySelector("[data-nav-clearance-text]").textContent, "Gálibo de 3,80 m en 1,4 km");
+  assert.equal(doc.querySelector("[data-nav-clearance-sub]").textContent, "· su vehículo mide 4,10 m");
+  assert.ok(spoken.some((t) => /Atención: .*gálibo de 3,80 metros; su vehículo mide 4,10/.test(t)), "se anuncia una vez a 3 km o menos");
 
   w.RouteGuidance.update({ coords: [4.61, -73.995], speed: 40, source: "gps" });
   assert.equal(doc.querySelector("[data-nav-clearance]").hidden, true);

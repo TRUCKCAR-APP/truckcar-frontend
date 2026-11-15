@@ -16,9 +16,13 @@
     });
 
     app.registerView('coordinator', {
-        render: (state) => state.coordinatorTab === 'shipments'
-            ? window.GeneratorPanel.render(state)
-            : window.CoordinatorPanel.render(state),
+        render: (state) => {
+            if (state.coordinatorTab === 'shipments') return window.GeneratorPanel.render(state);
+            const tab = window.CoordinatorPanel.activeTab(state);
+            return ['restrictions', 'users', 'templates'].includes(tab)
+                ? window.TowerAdmin.render(state, tab)
+                : window.CoordinatorPanel.render(state);
+        },
         mountMap,
         screen: (state) => state.coordinatorTab,
         keepAliveMaps

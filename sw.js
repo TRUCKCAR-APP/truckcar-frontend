@@ -1,6 +1,6 @@
 ﻿importScripts('js/tileStore.js');
 
-const VERSION = 'v23';
+const VERSION = 'v24';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v2';
@@ -38,6 +38,7 @@ const SHELL = [
     'js/dataService.js',
     'js/geolocation.js',
     'js/telemetry.js',
+    'js/routeStore.js',
     'js/navigation.js',
     'js/ui/native.js',
     'js/speechEngine.js',
@@ -47,6 +48,8 @@ const SHELL = [
     'js/views/driverActions.js',
     'js/views/coordinatorPanel.js',
     'js/views/podModals.js',
+    'js/views/vehicleForm.js',
+    'js/views/towerAdmin.js',
     'js/views/generatorPanel.js',
     'js/views/sosMonitor.js',
     'js/views/publicTracking.js',

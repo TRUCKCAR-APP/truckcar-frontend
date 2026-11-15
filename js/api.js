@@ -1,22 +1,34 @@
 (function () {
     const config = window.TruckCarConfig;
 
+    /** Texto para el usuario cuando el gateway corta por el límite de intentos de /api/v1/auth (429). */
+    const RATE_LIMITED_MESSAGE = 'Demasiados intentos, espere unos segundos';
+
     class ApiError extends Error {
-        constructor(message, { status = 0, details = null, correlationId = null, path = '' } = {}) {
+        constructor(message, { status = 0, details = null, correlationId = null, path = '', retryAfterSeconds = null } = {}) {
             super(message);
             this.name = 'ApiError';
             this.status = status;
             this.details = details;
             this.correlationId = correlationId;
             this.path = path;
+            /** Segundos que pide esperar el gateway (cabecera Retry-After de un 429); null si no la envió. */
+            this.retryAfterSeconds = retryAfterSeconds;
         }
 
         get isUnauthorized() { return this.status === 401; }
         get isForbidden() { return this.status === 403; }
         get isNotFound() { return this.status === 404; }
+        get isRateLimited() { return this.status === 429; }
         get isNetworkError() { return this.status === 0; }
     }
 
+    function retryAfterOf(response) {
+        const seconds = Number.parseInt(response.headers.get('Retry-After'), 10);
+        return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+    }
+
+    // ---------------------------------------------------------------- sesión
     const session = {
         get() {
             try {
@@ -144,6 +156,7 @@
             403: 'No tiene permisos para esta operación',
             404: 'Recurso no encontrado',
             409: 'Conflicto con el estado actual del recurso',
+            429: RATE_LIMITED_MESSAGE,
             502: 'El servicio de destino no está disponible',
             503: 'Servicio temporalmente no disponible',
             504: 'El servicio tardó demasiado en responder'
@@ -214,12 +227,18 @@
                 status: response.status,
                 details: payload,
                 correlationId: responseCorrelation,
-                path
+                path,
+                retryAfterSeconds: response.status === 429 ? retryAfterOf(response) : null
             });
             if (error.isUnauthorized && auth && !retried && session.isRenewable()) {
                 try {
                     await refreshSession();
                 } catch (refreshError) {
+                    // /auth/refresh limitado (429): la sesión sigue siendo válida, solo hay que esperar. Cerrarla aquí
+                    // sacaría al conductor de la app por una ráfaga de renovaciones.
+                    if (refreshError && refreshError.isRateLimited) {
+                        throw refreshError;
+                    }
                     session.clear();
                     window.dispatchEvent(new CustomEvent('truckcar:unauthorized', { detail: error }));
                     throw error;
@@ -254,6 +273,7 @@
     const DRIVER_STATE_FIELDS = ['driverName', 'licenseCategory', 'rating', 'totalTrips', 'netCargoWeightTons',
         'drivingHoursToday', 'mandatoryRestLocation', 'hazmatAuthorized', 'coldChainCertified', 'runtValid',
         'electronicTollTagActive', 'activeBadges', 'currentLatitude', 'currentLongitude', 'currentSpeedKmH', 'status'];
+    const VEHICLE_STATE_FIELDS = ['vehiclePlate', 'vehicleModel', 'vehicleType', 'maxHeightMeters', 'maxPayloadTons', 'tareWeightTons'];
 
     function finiteOrUndefined(value) {
         if (value === null || value === undefined || value === '') return undefined;
@@ -261,7 +281,7 @@
         return Number.isFinite(number) ? number : undefined;
     }
 
-    async function registerVehicle(driverId, vehicleData) {
+    async function patchDriverState(driverId, changes) {
         let current = null;
         try {
             current = await http.get('/fleets-drivers/drivers/' + enc(driverId));
@@ -269,12 +289,14 @@
             if (!error.isNotFound) throw error;
         }
         const kept = {};
-        DRIVER_STATE_FIELDS.forEach(field => {
+        DRIVER_STATE_FIELDS.concat(VEHICLE_STATE_FIELDS).forEach(field => {
             if (current && current[field] !== null && current[field] !== undefined) kept[field] = current[field];
         });
-        return http.post('/fleets-drivers/state', {
-            ...kept,
-            driverId,
+        return http.post('/fleets-drivers/state', { ...kept, driverId, ...changes });
+    }
+
+    function registerVehicle(driverId, vehicleData) {
+        return patchDriverState(driverId, {
             vehiclePlate: vehicleData.plate ? String(vehicleData.plate).toUpperCase().trim() : undefined,
             vehicleModel: vehicleData.model ? String(vehicleData.model).trim() : undefined,
             vehicleType: vehicleData.type || undefined,
@@ -284,21 +306,26 @@
         });
     }
 
-    async function drivingRoute(points, { steps = false } = {}) {
+    async function drivingRoutes(points, { steps = false, alternatives = false } = {}) {
         const url = config.routingUrl + points.map(c => c[1] + ',' + c[0]).join(';')
-            + '?overview=full&geometries=geojson' + (steps ? '&steps=true' : '');
+            + '?overview=full&geometries=geojson' + (steps ? '&steps=true' : '') + (alternatives ? '&alternatives=true' : '');
         const response = await fetch(url);
         if (!response.ok) throw new ApiError('El servicio de rutas respondió ' + response.status, { status: response.status, path: 'routing' });
         const json = await response.json();
-        const best = json.routes && json.routes[0];
-        if (!best || !best.geometry || !best.geometry.coordinates) {
+        const routes = (json.routes || []).filter(r => r && r.geometry && r.geometry.coordinates);
+        if (!routes.length) {
             throw new ApiError('El servicio de rutas no devolvió una ruta', { status: 502, path: 'routing' });
         }
-        return best;
+        return routes;
+    }
+
+    async function drivingRoute(points, options) {
+        return (await drivingRoutes(points, options))[0];
     }
 
     window.TruckCarApi = {
         ApiError,
+        RATE_LIMITED_MESSAGE,
         session,
         ensureFreshSession,
         decodeJwt,
@@ -321,7 +348,11 @@
         users: {
             me: () => http.get('/users/me'),
             updateMe: (data) => http.put('/users/me', data),
-            getById: (id) => http.get('/users/' + enc(id))
+            getById: (id) => http.get('/users/' + enc(id)),
+            /** ADMIN: cuentas paginadas (Spring Page: { content, totalElements }), opcionalmente por rol o estado. */
+            list: ({ role, status, size = 200 } = {}) => http.get('/users', { query: { role, status, size, sort: 'createdAt,desc' } }),
+            changeRole: (id, role) => http.patch('/users/' + enc(id) + '/role', { role }),
+            changeStatus: (id, status) => http.patch('/users/' + enc(id) + '/status', { status })
         },
 
         fleet: {
@@ -329,7 +360,8 @@
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
             getVehicle: (plate) => http.get('/fleets-drivers/vehicles/' + enc(plate)),
             updateState: (state) => http.post('/fleets-drivers/state', state),
-            registerVehicle
+            registerVehicle,
+            patchState: patchDriverState
         },
 
         loads: {
@@ -359,7 +391,8 @@
         },
 
         routing: {
-            drivingRoute
+            drivingRoute,
+            drivingRoutes
         },
 
         routes: {
@@ -378,8 +411,24 @@
             acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
         },
 
+        /** Notifications: plantillas de texto por categoría, canal e idioma (solo ADMIN; el gateway responde 403 a otro rol). */
+        templates: {
+            list: () => http.get('/templates'),
+            update: (id, templateText) => http.put('/templates/' + enc(id), { templateText })
+        },
+
+        /** Notifications: lo que se le envió al usuario (push y voz), la más reciente primero. */
+        notifications: {
+            forUser: (userId, size = 30) =>
+                http.get('/notifications/user/' + enc(userId), { query: { size, sort: 'createdAt,desc' } })
+        },
+
+        /** Routing-Restrictions: restricciones y cierres viales */
         restrictions: {
             listActive: (query) => http.get('/restrictions', { query }),
+            /** Torre de control (COORDINADOR/ADMIN): registra un gálibo, un límite de peso o un cierre. */
+            create: (restriction) => http.post('/restrictions', restriction),
+            deactivate: (id) => http.patch('/restrictions/' + enc(id) + '/deactivate'),
             validateCompatibility: (request) => http.post('/restrictions/validate-compatibility', request),
             validateRoute: (request) => http.post('/restrictions/validate-route', request, { timeoutMs: 8000 })
         }

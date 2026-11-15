@@ -17,8 +17,11 @@
     });
 
     app.onSessionEnd(() => {
+        clearInterval(app.driverTimer);
+        clearInterval(app.countdownTimer);
+        clearInterval(app.inboxTimer);
         window.DriverTelemetry.stop();
-        window.RouteGuidance.reset();
+        window.RouteGuidance.forget(null);
         window.DeviceLocation.forget();
     });
 
