@@ -276,18 +276,18 @@ window.CoordinatorPanel = {
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
-                        <form id="vehicle-registration-form" onsubmit="window.coordinatorCtrl.submitVehicleForm(event)" class="space-y-3 text-xs">
+                        <form id="vehicle-registration-form" onsubmit="window.coordinatorCtrl.submitVehicleForm(event)" class="space-y-3 text-xs" novalidate>
                             <div>
-                                <label class="block font-bold text-slate-300 mb-1">Conductor</label>
+                                <label for="veh-driver-id" class="block font-bold text-slate-300 mb-1">Conductor</label>
                                 <select id="veh-driver-id" class="login-input w-full text-xs" required></select>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
-                                    <label class="block font-bold text-slate-300 mb-1">Placa del vehículo</label>
+                                    <label for="veh-plate" class="block font-bold text-slate-300 mb-1">Placa del vehículo</label>
                                     <input id="veh-plate" type="text" placeholder="Ej: TDK-410" required maxlength="10" class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
-                                    <label class="block font-bold text-slate-300 mb-1">Tipo de camión</label>
+                                    <label for="veh-type" class="block font-bold text-slate-300 mb-1">Tipo de camión</label>
                                     <select id="veh-type" class="login-input w-full text-xs" required>
                                         <option value="" disabled>Seleccione el tipo</option>
                                         ${window.TruckCarService.truckTypes().map(t => `<option value="${t.code}">${esc(t.label)}</option>`).join('')}
@@ -295,20 +295,20 @@ window.CoordinatorPanel = {
                                 </div>
                             </div>
                             <div>
-                                <label class="block font-bold text-slate-300 mb-1">Marca y Modelo</label>
+                                <label for="veh-model" class="block font-bold text-slate-300 mb-1">Marca y Modelo</label>
                                 <input id="veh-model" type="text" placeholder="Ej: Kenworth T800 2021" required class="login-input w-full text-xs">
                             </div>
                             <div class="grid grid-cols-3 gap-2.5">
                                 <div>
-                                    <label class="block font-bold text-slate-300 mb-1">Gálibo (m)</label>
+                                    <label for="veh-height" class="block font-bold text-slate-300 mb-1">Gálibo (m)</label>
                                     <input id="veh-height" type="number" step="0.05" min="0" required class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
-                                    <label class="block font-bold text-slate-300 mb-1">Tara (t)</label>
+                                    <label for="veh-tare" class="block font-bold text-slate-300 mb-1">Tara (t)</label>
                                     <input id="veh-tare" type="number" step="0.1" min="0" required class="login-input w-full text-xs font-mono">
                                 </div>
                                 <div>
-                                    <label class="block font-bold text-slate-300 mb-1">Capacidad (t)</label>
+                                    <label for="veh-payload" class="block font-bold text-slate-300 mb-1">Capacidad (t)</label>
                                     <input id="veh-payload" type="number" step="0.1" min="0.1" required class="login-input w-full text-xs font-mono">
                                 </div>
                             </div>
@@ -559,15 +559,21 @@ window.coordinatorCtrl = {
     },
 
     async cancelLoad(loadId) {
-        const reason = prompt('Motivo de la cancelación de la carga #' + loadId + ' (obligatorio):');
+        const reason = await window.Sheet.prompt({
+            title: 'Cancelar la carga #' + loadId,
+            message: 'Esta acción no se puede deshacer. Indique el motivo de la cancelación.',
+            label: 'Motivo de la cancelación',
+            placeholder: 'Motivo de la cancelación',
+            confirmLabel: 'Cancelar carga',
+            cancelLabel: 'Volver',
+            requiredMessage: 'Indique el motivo de la cancelación.',
+            tone: 'danger',
+            icon: 'fa-ban'
+        });
         if (reason === null) return;
-        if (!reason.trim()) {
-            window.ui.toast('Indique el motivo de la cancelación.', 'warning');
-            return;
-        }
         window.store.setState({ busyAction: 'cancel' });
         try {
-            await window.TruckCarService.cancelLoad(loadId, reason.trim());
+            await window.TruckCarService.cancelLoad(loadId, reason);
             window.ui.toast('Carga #' + loadId + ' cancelada.', 'success');
         } catch (error) {
             window.ui.failure('No se pudo cancelar la carga', error, 'cancelar la carga');
@@ -790,10 +796,13 @@ window.coordinatorCtrl = {
     closeVehicleModal() {
         const modal = document.getElementById('vehicle-registration-modal');
         if (modal) modal.classList.add('hidden');
+        const form = document.getElementById('vehicle-registration-form');
+        if (form) window.ui.clearFormProblem(form);
     },
 
     async submitVehicleForm(event) {
         event.preventDefault();
+        if (window.ui.reportFormProblem(event.target)) return;
         const btn = document.getElementById('veh-submit-btn');
         const select = document.getElementById('veh-driver-id');
         const plate = document.getElementById('veh-plate').value.trim().toUpperCase();

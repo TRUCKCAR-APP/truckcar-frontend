@@ -216,6 +216,7 @@ window.app = {
 
     async submitLogin(event) {
         event.preventDefault();
+        if (window.ui.reportFormProblem(event.target)) return;
         const form = new FormData(event.target);
         window.store.setState({ busyAction: 'auth', authError: null });
         try {
@@ -235,6 +236,7 @@ window.app = {
 
     async submitRegister(event) {
         event.preventDefault();
+        if (window.ui.reportFormProblem(event.target)) return;
         const form = new FormData(event.target);
         window.store.setState({ busyAction: 'auth', authError: null });
         try {
