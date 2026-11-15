@@ -1,16 +1,3 @@
-/**
- * Telemetría GPS en tiempo real (STOMP 1.2 sobre WebSocket) a través del api-gateway: ws://<gateway>/ws-telemetry.
- *
- * - TruckCarTelemetry: cliente STOMP mínimo (sin dependencias) con reconexión, heartbeats y re-suscripción.
- * - DriverTelemetry: el conductor transmite su posición cada 3 s mientras la carga está IN_TRANSIT con el GPS real del
- *   dispositivo. La simulación sobre la ruta OSRM solo se usa si se activa en las herramientas de prueba.
- * - LiveTracking: la torre de control (/topic/fleet-locations, un arreglo agregado cada pocos segundos) y "Mis envíos"
- *   (/topic/trip.{loadId}) mueven los marcadores del mapa sin recargar la vista ni consultar la API por HTTP.
- *
- * El navegador no puede enviar cabeceras al abrir un WebSocket, y un JWT en la URL quedaría en los logs del balanceador
- * y de nginx. Por eso, antes de cada conexión se pide por HTTP (con el JWT en Authorization) un ticket de un solo uso y
- * 30 s de vida: POST /api/v1/telemetry/ws-ticket. El socket se abre con ?ticket=, que el gateway canjea y retira.
- */
 (function () {
     const config = window.TruckCarConfig;
     const api = window.TruckCarApi;
@@ -18,12 +5,11 @@
     const HEARTBEAT_MS = 10000;
     const MAX_RETRY_MS = 15000;
 
-    // =================================================================== cliente STOMP
     const listeners = new Set();
-    const subscriptions = new Map();   // id -> { destination, handler, onDenied }
+    const subscriptions = new Map();
     let ws = null;
-    let status = 'offline';            // offline | connecting | online | reconnecting
-    let publishers = 0;                // emisores activos (conductor) que necesitan la conexión
+    let status = 'offline';
+    let publishers = 0;
     let retryDelay = 2000;
     let retryTimer = null;
     let heartbeatTimer = null;
@@ -32,11 +18,10 @@
     function setStatus(next) {
         if (status === next) return;
         status = next;
-        listeners.forEach(listener => { try { listener(status); } catch (e) { /* listener roto */ } });
+        listeners.forEach(listener => { try { listener(status); } catch (e) { } });
         document.querySelectorAll('[data-telemetry-status]').forEach(renderStatusBadge);
     }
 
-    /** Badges de estado ("En vivo" / "Reconectando") actualizados por DOM, sin re-render de la vista. */
     function renderStatusBadge(el) {
         const labels = { online: 'En vivo', connecting: 'Conectando…', reconnecting: 'Reconectando…', offline: 'Sin conexión en vivo' };
         const colors = { online: 'bg-emerald-500', connecting: 'bg-amber-400', reconnecting: 'bg-amber-400', offline: 'bg-slate-500' };
@@ -65,8 +50,6 @@
             return;
         }
         setStatus(status === 'reconnecting' ? 'reconnecting' : 'connecting');
-        // El ticket se emite con el JWT vigente: al reconectar tras 15 min hay que renovarlo antes. Cada intento pide
-        // un ticket nuevo, porque el anterior ya se usó o venció.
         opening = true;
         api.ensureFreshSession()
             .catch(() => null)
@@ -108,14 +91,13 @@
             clearInterval(heartbeatTimer);
             retryLater();
         };
-        // Los errores del socket terminan en onclose, que decide si reconectar.
         socket.onerror = () => {};
     }
 
     function handleData(data) {
         data.split('\0').forEach(raw => {
             const text = raw.replace(/^[\r\n]+/, '');
-            if (!text) return;                                   // heartbeat del servidor
+            if (!text) return;
             const split = text.indexOf('\n\n');
             const head = split >= 0 ? text.slice(0, split) : text;
             const body = split >= 0 ? text.slice(split + 2) : '';
@@ -145,11 +127,9 @@
         try {
             sub.handler(JSON.parse(body));
         } catch (e) {
-            // Mensaje no JSON o error del manejador: se ignora para no cortar el flujo.
         }
     }
 
-    /** El servidor cierra la sesión tras un ERROR; una suscripción denegada no se vuelve a intentar. */
     function onServerError(message) {
         const denied = /suscribirse a (\S+)/.exec(message || '');
         if (denied) {
@@ -175,7 +155,6 @@
             document.querySelectorAll('[data-telemetry-status]').forEach(renderStatusBadge);
         },
 
-        /** Suscribe y devuelve la función para cancelar. Se re-suscribe sola tras cada reconexión. */
         subscribe(destination, handler, onDenied) {
             const id = 'sub-' + (++sequence);
             subscriptions.set(id, { destination, handler, onDenied });
@@ -203,7 +182,6 @@
             if (!wanted()) TruckCarTelemetry.disconnect(false);
         },
 
-        /** Cierra la conexión; con clearAll también olvida suscripciones y emisores (cierre de sesión). */
         disconnect(clearAll = true) {
             if (clearAll) {
                 subscriptions.clear();
@@ -215,13 +193,12 @@
             if (socket && socket.readyState === WebSocket.OPEN) frame('DISCONNECT');
             ws = null;
             if (socket) {
-                try { socket.close(); } catch (e) { /* ya cerrado */ }
+                try { socket.close(); } catch (e) { }
             }
             setStatus('offline');
         }
     };
 
-    // =================================================================== geometría
     const toRad = (deg) => deg * Math.PI / 180;
 
     function distanceKm(a, b) {
@@ -238,7 +215,6 @@
         return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
 
-    /** Punto a una distancia (km) a lo largo de la polilínea, con el rumbo del tramo. */
     function pointAlong(path, cumulative, km) {
         const total = cumulative[cumulative.length - 1];
         const target = Math.max(0, Math.min(km, total));
@@ -251,16 +227,10 @@
         return { coords: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], heading: bearing(a, b), atEnd: target >= total };
     }
 
-    // =================================================================== emisor del conductor
-    /**
-     * Fuente de posición: el GPS real del dispositivo (window.DeviceLocation). Sin señal no se inventa nada: no se
-     * transmite y el indicador lo dice. La simulación sobre la ruta solo existe como interruptor explícito de las
-     * herramientas de prueba (barra de escritorio, "Simular GPS") y queda marcada como tal en la interfaz.
-     */
-    const SIMULATION_KM_PER_TICK = 1.2;    // avance por envío en la simulación de prueba (recorrido acelerado)
-    const GPS_FRESH_MS = 10000;          // lectura de los últimos 10 s: el vehículo se está moviendo con señal
-    const GPS_STALE_MS = 2 * 60 * 1000;  // una lectura detenida vale como posición hasta 2 min; después, "Sin posición"
-    const STATIONARY_KMH = 3;            // velocidad medida por el GPS por debajo de la cual el camión está detenido
+    const SIMULATION_KM_PER_TICK = 1.2;
+    const GPS_FRESH_MS = 10000;
+    const GPS_STALE_MS = 2 * 60 * 1000;
+    const STATIONARY_KMH = 3;
     const MODE_KEY = 'truckcar.telemetryMode';
 
     const driver = {
@@ -281,16 +251,9 @@
         const guided = window.RouteGuidance && window.RouteGuidance.route;
         if (guided && guided.geometry.length > 1) return guided.geometry;
         try {
-            const url = 'https://router.project-osrm.org/route/v1/driving/'
-                + waypoints.map(c => c[1] + ',' + c[0]).join(';') + '?overview=full&geometries=geojson';
-            const response = await fetch(url);
-            if (response.ok) {
-                const json = await response.json();
-                const coords = json.routes && json.routes[0] && json.routes[0].geometry.coordinates;
-                if (coords && coords.length > 1) return coords.map(pt => [pt[1], pt[0]]);
-            }
+            const best = await api.routing.drivingRoute(waypoints);
+            if (best.geometry.coordinates.length > 1) return best.geometry.coordinates.map(pt => [pt[1], pt[0]]);
         } catch (e) {
-            // Sin OSRM: se recorren los tramos rectos entre los puntos de la ruta.
         }
         return waypoints;
     }
@@ -320,10 +283,6 @@
             driver.mode = 'simulation';
             return nextSimulatedPoint();
         }
-        // El navegador solo entrega lecturas nuevas cuando el teléfono se mueve. Una lectura de más de 10 s sigue siendo
-        // la posición real solo si el propio GPS la midió detenida (velocidad ≈0): entonces se conserva hasta
-        // GPS_STALE_MS y se pide una lectura nueva para confirmarla. Si iba en movimiento, o el dispositivo no informó
-        // la velocidad, una lectura vieja ya no dice dónde está el camión: "Sin posición".
         const fix = window.DeviceLocation.last(GPS_STALE_MS);
         const stale = fix && Date.now() - fix.time > GPS_FRESH_MS;
         const stoppedWhenRead = fix && fix.speedKmH != null && fix.speedKmH <= STATIONARY_KMH;
@@ -356,9 +315,9 @@
             return;
         }
         driver.lastPoint = point;
-        // Con la red caída (o la simulación de pérdida de señal) no se intenta el envío en vivo.
+        const simulated = point.source === 'simulation';
         const offline = window.OfflineQueue && window.OfflineQueue.isOffline();
-        const sent = !offline && TruckCarTelemetry.send('/app/telemetry', {
+        const sent = !simulated && !offline && TruckCarTelemetry.send('/app/telemetry', {
             driverId: driver.driverId,
             latitude: Math.round(point.coords[0] * 1e6) / 1e6,
             longitude: Math.round(point.coords[1] * 1e6) / 1e6,
@@ -368,7 +327,8 @@
         });
         if (sent) {
             driver.lastSent = Date.now();
-        } else {
+            if (driver.rejection && Date.now() - driver.rejection.at > REJECTION_VISIBLE_MS) driver.rejection = null;
+        } else if (!simulated) {
             queueOfflinePosition(point);
         }
         if (window.RouteGuidance) window.RouteGuidance.update(point);
@@ -378,10 +338,16 @@
         renderDriverBadge();
     }
 
-    /**
-     * Sin conexión en vivo la posición va a la cola durable (máx. 1 cada 15 s para acotar el almacenamiento): al
-     * reconectar se sincroniza el recorrido completo y el mapa recibe solo la última posición.
-     */
+    const REJECTION_VISIBLE_MS = 15000;
+
+    function onTelemetryRejected(payload) {
+        const message = (payload && payload.message) || window.ui.NOT_AVAILABLE;
+        const first = !driver.rejection || driver.rejection.message !== message;
+        driver.rejection = { message, code: payload && payload.error, at: Date.now() };
+        if (first) window.ui.toast('La torre rechazó su posición', 'warning', { description: message });
+        renderDriverBadge();
+    }
+
     const OFFLINE_POSITION_INTERVAL_MS = 15000;
     function queueOfflinePosition(point) {
         if (!window.OfflineQueue || !driver.driverId) return;
@@ -394,14 +360,13 @@
             speedKmH: point.speed,
             heading: point.heading == null ? null : Math.round(point.heading),
             loadId: driver.loadId
-        }, { tripId: driver.loadId }).catch(() => { /* sin IndexedDB: la posición se pierde como antes */ });
+        }, { tripId: driver.loadId }).catch(() => { });
     }
 
     function renderDriverBadge() {
         const el = document.getElementById('driver-telemetry-badge');
         if (!el) return;
         paintDriverBadge(el);
-        // La fila del GPS cuenta en la pila de avisos del HUD (máximo dos a la vista).
         if (window.RouteGuidance && window.RouteGuidance.layoutAlerts) window.RouteGuidance.layoutAlerts();
     }
 
@@ -415,11 +380,19 @@
                 <span class="telemetry-sub">· ${window.ui.escape(reason)}</span>`;
             return;
         }
-        const source = driver.mode === 'gps'
-            ? 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '')
-            : '<b>Simulación de prueba</b>';
-        // Transmitiendo: punto verde. Sin transmitir es una advertencia: triángulo y texto. El HUD de navegación
-        // solo muestra esta fila cuando hay algo que advertir (data-state="warn").
+        if (driver.mode === 'simulation') {
+            el.dataset.state = 'warn';
+            el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Sin transmitir</span>
+                <span class="telemetry-sub">· <b>Simulación de prueba</b> · no se envía a la torre${p ? ' · ' + p.speed + ' km/h' : ''}</span>`;
+            return;
+        }
+        if (driver.rejection) {
+            el.dataset.state = 'warn';
+            el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Posición rechazada</span>
+                <span class="telemetry-sub">· ${window.ui.escape(driver.rejection.message)}</span>`;
+            return;
+        }
+        const source = 'GPS del dispositivo' + (p && p.accuracy ? ' ±' + Math.round(p.accuracy) + ' m' : '') + (p && p.resting ? ' · detenido' : '');
         el.dataset.state = live ? 'ok' : 'warn';
         el.innerHTML = `
             ${live ? '<span class="dot ok" aria-hidden="true"></span><span class="telemetry-main">Transmitiendo</span>'
@@ -443,9 +416,8 @@
         get lastPoint() { return driver.lastPoint; },
         get simulating() { return simulating(); },
 
-        /** Inicia (o mantiene) la transmisión de una carga IN_TRANSIT. Idempotente para la misma carga. */
         async start(load, driverId) {
-            if (!load || load.status !== 'IN_TRANSIT' || !driverId) return;
+            if (!load || !window.TruckCarService.loadActions(load).transmitPosition || !driverId) return;
             if (driver.timer && driver.loadId === load.backendId) return;
             this.stop();
             driver.loadId = load.backendId;
@@ -453,35 +425,37 @@
             driver.driverId = driverId;
             driver.travelledKm = 0;
             driver.timer = setInterval(tick, 3000);
+            driver.rejection = null;
+            driver.errorsUnsubscribe = TruckCarTelemetry.subscribe('/user/queue/errors', onTelemetryRejected);
             TruckCarTelemetry.acquirePublisher();
             window.DeviceLocation.watch();
             if (simulating()) await prepareSimulation();
-            if (driver.loadId !== load.backendId) return;    // se detuvo mientras se calculaba la ruta
+            if (driver.loadId !== load.backendId) return;
             tick();
         },
 
         stop() {
             if (driver.timer) {
                 clearInterval(driver.timer);
+                if (driver.errorsUnsubscribe) driver.errorsUnsubscribe();
                 TruckCarTelemetry.releasePublisher();
             }
             Object.assign(driver, { loadId: null, load: null, timer: null, path: null, cumulative: null, lastSent: null,
-                lastPoint: null, mode: null });
+                lastPoint: null, mode: null, rejection: null, errorsUnsubscribe: null });
         },
 
-        /** Herramientas de prueba: alterna la simulación de movimiento sobre la ruta (por defecto, GPS real). */
         async toggleSimulation() {
             const next = !simulating();
             try {
                 if (next) localStorage.setItem(MODE_KEY, 'simulation');
                 else localStorage.removeItem(MODE_KEY);
-            } catch (e) { /* sin almacenamiento */ }
+            } catch (e) { }
             driver.lastPoint = null;
             renderSimulationToggle();
             window.ui.toast(next ? 'Simulación de GPS activada (herramienta de prueba)' : 'GPS real del dispositivo',
                 next ? 'warning' : 'success', {
                     description: next
-                        ? 'La telemetría y la guía avanzan sobre la ruta. El SOS y los reportes siguen usando solo el GPS real.'
+                        ? 'La guía avanza sobre la ruta solo en este dispositivo: la posición simulada no se envía a la torre. El SOS y los reportes siguen usando solo el GPS real.'
                         : 'La telemetría y la guía usan la ubicación del teléfono.'
                 });
             if (next) await prepareSimulation();
@@ -493,10 +467,9 @@
         renderSimulationToggle
     };
 
-    // =================================================================== receptores (torre y generador)
     let fleetUnsubscribe = null;
-    const tripSubscriptions = new Map();   // loadId -> unsubscribe
-    const statusSubscriptions = new Map(); // loadId -> unsubscribe (cambios de estado, KAN-47)
+    const tripSubscriptions = new Map();
+    const statusSubscriptions = new Map();
     let statusHandler = null;
     let blockageUnsubscribe = null;
     let blockageHandler = null;
@@ -508,25 +481,33 @@
         let truck = fleet.find(t => t.driverId === msg.driverId);
         if (!truck) {
             truck = { id: msg.driverId, driverId: msg.driverId, driverName: msg.driverName || msg.driverId,
-                      plate: msg.vehiclePlate, vehicleType: '—', hoursActive: '—' };
+                      plate: msg.vehiclePlate, vehicleType: window.ui.NOT_AVAILABLE, hoursActive: window.ui.NOT_AVAILABLE };
             fleet.push(truck);
         }
         Object.assign(truck, {
             coords,
-            speed: Math.round(msg.speedKmH || 0),
+            speed: typeof msg.speedKmH === 'number' ? Math.round(msg.speedKmH) : null,
             heading: msg.heading,
-            status: (msg.speedKmH || 0) > 0 || msg.loadStatus === 'IN_TRANSIT' ? 'EN_TRANSITO' : truck.status || 'DISPONIBLE',
-            lastCheckin: 'ahora',
+            status: liveStatus(truck, msg),
+            currentLoadStatus: msg.loadStatus || null,
+            lastSeenAt: msg.timestamp || null,
+            lastCheckin: lastSeenLabel(msg.timestamp),
             currentLoadId: msg.loadId
         });
         return truck;
     }
 
+    function liveStatus(truck, msg) {
+        return window.TruckCarService.fleetStatus({
+            status: truck.backendStatus, restRequiredAlert: truck.restRequired, currentLoadStatus: msg.loadStatus
+        });
+    }
+
+    function lastSeenLabel(timestamp) {
+        return window.ui.orNotAvailable(timestamp ? window.TruckCarService.timeAgo(timestamp) : null);
+    }
+
     const LiveTracking = {
-        /**
-         * Torre de control: posiciones de toda la flota. fleets-drivers las agrega y envía cada pocos segundos un
-         * arreglo con las que cambiaron; también se acepta una sola posición (servidores anteriores al agregado).
-         */
         followFleet(onUpdate) {
             if (fleetUnsubscribe) return;
             fleetUnsubscribe = TruckCarTelemetry.subscribe('/topic/fleet-locations', (payload) => {
@@ -543,7 +524,6 @@
             fleetUnsubscribe = null;
         },
 
-        /** "Mis envíos": mantiene una suscripción por cada carga aceptada o en ruta. */
         followTrips(loadIds, onUpdate) {
             const wantedIds = new Set(loadIds);
             tripSubscriptions.forEach((unsubscribe, loadId) => {
@@ -561,10 +541,11 @@
                         driverName: msg.driverName || msg.driverId,
                         plate: msg.vehiclePlate,
                         coords: [msg.latitude, msg.longitude],
-                        speed: Math.round(msg.speedKmH || 0),
+                        speed: typeof msg.speedKmH === 'number' ? Math.round(msg.speedKmH) : null,
                         heading: msg.heading,
-                        status: (msg.speedKmH || 0) > 0 ? 'EN_TRANSITO' : 'DISPONIBLE',
-                        lastCheckin: 'ahora'
+                        status: liveStatus(trucks[msg.driverId] || {}, msg),
+                        lastSeenAt: msg.timestamp || null,
+                        lastCheckin: lastSeenLabel(msg.timestamp)
                     });
                     trucks[msg.driverId] = truck;
                     if (onUpdate) onUpdate(truck, msg);
@@ -576,12 +557,6 @@
             this.followTrips([]);
         },
 
-        /**
-         * "Mis envíos" (KAN-47): cambios de estado de cada carga abierta por /topic/trip.{id}.status (aceptada, en ruta,
-         * rechazada, sin conductores...). fleets-drivers los reenvía desde los eventos de Load-Allocation, así la línea
-         * de tiempo no espera al polling. Mismo permiso que las posiciones: el generador dueño o la torre de control.
-         * Llamar de nuevo ajusta las suscripciones y cambia el manejador.
-         */
         followStatuses(loadIds, onStatus) {
             statusHandler = onStatus;
             const wantedIds = new Set(loadIds);
@@ -603,11 +578,6 @@
             this.followStatuses([], null);
         },
 
-        /**
-         * Bloqueos viales que la IA de route-ai-agent detectó en las alertas de la comunidad (fleets-drivers los
-         * reenvía por /topic/road-blockages). El conductor recalcula si caen en su ruta; la torre los ve como aviso.
-         * Una sola suscripción por sesión: llamar de nuevo solo cambia el manejador.
-         */
         followBlockages(onBlockage) {
             blockageHandler = onBlockage;
             if (blockageUnsubscribe) return;

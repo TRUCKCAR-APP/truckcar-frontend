@@ -1,5 +1,3 @@
-// Autoservicio en el despliegue: el conductor registra su vehículo y su disponibilidad, y la torre registra
-// restricciones y administra cuentas, sin scripts ni llamadas directas a la API.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -7,25 +5,48 @@ import { JSDOM } from "jsdom";
 
 function windowWith(files, setup = () => {}) {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
-  w.ui = { escape: (v) => String(v ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`), errorMessage: (e) => e.message };
+  w.eval(readFileSync("js/ui.js", "utf8"));
   setup(w);
   for (const file of files) w.eval(readFileSync(file, "utf8"));
+  if (!w.TruckCarService) {
+    w.store = w.store || { state: { dataStatus: { errors: {} } }, setState() {} };
+    w.TruckCarData = w.TruckCarData || {};
+    w.TruckCarApi = w.TruckCarApi || {};
+    w.eval(readFileSync("js/dataService.js", "utf8"));
+  }
   return w;
 }
-// Los objetos creados dentro de jsdom tienen otro Object.prototype: se comparan por su contenido.
 const same = (actual, expected, message) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected, message);
 const text = (html) => new JSDOM(html).window.document.body.textContent.replace(/\s+/g, " ");
 
 const VALID_VEHICLE = {
   vehiclePlate: "tdk 410", vehicleType: "TRACTOMULA_3S3", vehicleModel: " Kenworth T800 ", licenseCategory: "C3",
-  maxHeightMeters: "4,10", maxPayloadTons: "34", tareWeightTons: "15", runtValid: true, location: "gps"
+  maxHeightMeters: "4,10", maxPayloadTons: "34", tareWeightTons: "15", runtValid: true
 };
+const TRUCK_TYPES = [{ code: "TRACTOMULA_3S3", label: "Tractomula 3S3" }, { code: "TURBO", label: "Turbo" }];
+
+function fleetApi(stored, requests) {
+  const w = windowWith(["js/api.js"], (win) => {
+    win.TruckCarConfig = { apiBaseUrl: "http://localhost:8000/api/v1", gatewayUrl: "http://localhost:8000", requestTimeoutMs: 5000, storageKeys: { session: "truckcar.session" } };
+    win.fetch = async (url, options) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      if (options.method === "POST") { requests.push(body); stored.state = { ...body }; }
+      const found = stored.state !== null;
+      return {
+        ok: found, status: found ? 200 : 404,
+        headers: { get: (name) => name === "Content-Type" ? "application/json" : null },
+        text: async () => JSON.stringify(found ? stored.state : { message: "sin estado" })
+      };
+    };
+  });
+  return w.TruckCarApi.fleet;
+}
 
 test("el vehículo se valida antes de enviarlo: placa normalizada, cifras con coma y tipos que una carga puede pedir", () => {
-  const { VehicleForm } = windowWith(["js/views/generatorPanel.js", "js/views/vehicleForm.js"]);
+  const { VehicleForm } = windowWith(["js/views/vehicleForm.js"], (win) => { win.TruckCarService = { truckTypes: () => TRUCK_TYPES }; });
   const ok = VehicleForm.validate(VALID_VEHICLE);
   same(ok.errors, {});
-  assert.equal(ok.location, "gps");
+  assert.equal("location" in ok, false, "el formulario no declara una posición: solo se envía la del GPS real");
   assert.equal(ok.vehicle.vehiclePlate, "TDK-410");
   assert.equal(ok.vehicle.vehicleModel, "Kenworth T800");
   assert.equal(ok.vehicle.maxHeightMeters, 4.1);
@@ -35,13 +56,8 @@ test("el vehículo se valida antes de enviarlo: placa normalizada, cifras con co
   const bad = VehicleForm.validate({ ...VALID_VEHICLE, vehiclePlate: "AB12", vehicleType: "TRACTOMULA_3S2", maxHeightMeters: "7", tareWeightTons: "" });
   assert.equal(bad.vehicle, null);
   same(Object.keys(bad.errors).sort(), ["maxHeightMeters", "tareWeightTons", "vehiclePlate", "vehicleType"]);
-  assert.ok(!VehicleForm.TRUCK_TYPES.some(([code]) => code === "TRACTOMULA_3S2"), "un tipo que ninguna carga pide no se ofrece");
-
-  // Sin GPS (un computador), la ciudad del catálogo da la posición: sin ella el motor casi nunca lo elegiría.
-  const inCity = VehicleForm.validate({ ...VALID_VEHICLE, location: "bogota" });
-  assert.equal(inCity.location, "bogota");
-  same(VehicleForm.cityCoords("Bogotá"), [4.6097, -74.0817]);
-  assert.ok(VehicleForm.validate({ ...VALID_VEHICLE, location: "Atlantis" }).errors.location);
+  assert.doesNotMatch(readFileSync("js/views/vehicleForm.js", "utf8"), /TRACTOMULA|cityCoords|findCity/,
+    "los tipos salen del catálogo único del servicio y no hay posición por ciudad");
 });
 
 test("sin vehículo, la pestaña Vehículo invita a registrarlo; con vehículo, muestra la disponibilidad y deja editarlo", () => {
@@ -74,21 +90,19 @@ test("sin vehículo, la pestaña Vehículo invita a registrarlo; con vehículo, 
   assert.equal(inTrip.querySelector('[role="switch"]').disabled, true, "con la carga a bordo no se puede apagar");
 });
 
-test("editar el vehículo reenvía el estado completo: no se pierden calificación, viajes, horas ni posición", async () => {
+test("editar el vehículo conserva lo que devuelve el backend: calificación, viajes, horas, posición y estado", async () => {
   const sent = [];
-  const state = {
+  const stored = { state: {
     driverId: "d-1", driverName: "Andrés Rojas", rating: 4.8, totalTrips: 126, drivingHoursToday: 3.5, vehiclePlate: "TDK-410",
     vehicleType: "TRACTOMULA_3S3", maxHeightMeters: 4.1, maxPayloadTons: 34, tareWeightTons: 15, netCargoWeightTons: 0,
-    runtValid: true, currentLatitude: 4.6, currentLongitude: -74.08, status: "ACTIVO"
-  };
+    runtValid: true, currentLatitude: 4.6, currentLongitude: -74.08, status: "INACTIVO"
+  } };
+  const fleet = fleetApi(stored, sent);
   const w = windowWith(["js/dataService.js"], (win) => {
     win.store = { state: { currentUser: { id: "d-1", firstName: "Andrés", lastName: "Rojas" }, dataStatus: { errors: {} } }, setState() {} };
     win.TruckCarData = {};
-    win.TruckCarApi = {
-      session: { get: () => ({ userId: "d-1" }) },
-      users: { me: async () => ({}) },
-      fleet: { updateState: async (body) => { sent.push(body); }, getDriver: async () => ({ ...state, ...sent.at(-1) }) }
-    };
+    win.TruckCarApi = { session: { get: () => ({ userId: "d-1" }) }, users: { me: async () => ({}) },
+      fleet: { patchState: fleet.patchState, getDriver: async () => stored.state } };
   });
   await w.TruckCarService.loadDriverProfile();
   await w.TruckCarService.saveVehicle({ vehiclePlate: "TDK-410", vehicleType: "TRACTOMULA_3S3", maxHeightMeters: 4.2, maxPayloadTons: 34, tareWeightTons: 15 }, null);
@@ -97,35 +111,36 @@ test("editar el vehículo reenvía el estado completo: no se pierden calificaci�
   assert.equal(edit.rating, 4.8);
   assert.equal(edit.totalTrips, 126);
   assert.equal(edit.drivingHoursToday, 3.5);
-  assert.equal(edit.currentLatitude, 4.6, "sin GPS se conserva la última posición");
-  assert.equal(edit.status, "ACTIVO");
+  assert.equal(edit.currentLatitude, 4.6, "sin GPS se conserva la última posición que tiene el backend");
+  assert.equal(edit.status, "INACTIVO", "editar el vehículo no cambia la disponibilidad");
 
-  await w.TruckCarService.setAvailability(false, null);
-  assert.equal(sent[1].status, "INACTIVO");
+  await w.TruckCarService.setAvailability(true, null);
+  assert.equal(sent[1].status, "ACTIVO", "la disponibilidad solo cambia con el interruptor");
   assert.equal(sent[1].vehiclePlate, "TDK-410");
+  assert.equal(sent[1].maxHeightMeters, 4.2);
 });
 
-test("el primer registro deja al conductor ACTIVO y con la posición del GPS para el motor de asignación", async () => {
+test("el primer registro envía solo lo digitado: sin estado, viajes ni horas inventados; la posición solo si hay GPS real", async () => {
   const sent = [];
+  const stored = { state: null };
+  const fleet = fleetApi(stored, sent);
   const w = windowWith(["js/dataService.js"], (win) => {
     win.store = { state: { currentUser: { id: "d-2", firstName: "Laura", lastName: "Méndez" }, dataStatus: { errors: {} } }, setState() {} };
     win.TruckCarData = {};
-    win.TruckCarApi = {
-      session: { get: () => ({ userId: "d-2" }) },
-      fleet: {
-        updateState: async (body) => { sent.push(body); },
-        getDriver: async () => { if (!sent.length) throw Object.assign(new Error("404"), { isNotFound: true }); return sent.at(-1); }
-      }
-    };
+    win.TruckCarApi = { session: { get: () => ({ userId: "d-2" }) },
+      fleet: { patchState: fleet.patchState,
+        getDriver: async () => { if (!stored.state) throw Object.assign(new Error("404"), { isNotFound: true }); return stored.state; } } };
   });
   await w.TruckCarService.loadDriverProfile();
   assert.equal(w.TruckCarData.currentDriver.state, null);
-  await w.TruckCarService.saveVehicle({ vehiclePlate: "SNT-238", vehicleType: "TURBO", maxHeightMeters: 3.4, maxPayloadTons: 4.5, tareWeightTons: 3.5 }, [4.71, -74.07]);
-  assert.equal(sent[0].driverId, "d-2");
-  assert.equal(sent[0].driverName, "Laura Méndez");
-  assert.equal(sent[0].status, "ACTIVO");
-  same([sent[0].currentLatitude, sent[0].currentLongitude], [4.71, -74.07]);
+  const vehicle = { vehiclePlate: "SNT-238", vehicleType: "TURBO", maxHeightMeters: 3.4, maxPayloadTons: 4.5, tareWeightTons: 3.5 };
+  await w.TruckCarService.saveVehicle(vehicle, null);
+  same(sent[0], { driverId: "d-2", driverName: "Laura Méndez", ...vehicle }, "ACTIVO lo pone fleets-drivers cuando status no llega");
   assert.equal(w.TruckCarData.currentDriver.vehicle.plate, "SNT-238");
+
+  await w.TruckCarService.saveVehicle(vehicle, [4.71, -74.07]);
+  same([sent[1].currentLatitude, sent[1].currentLongitude], [4.71, -74.07]);
+  assert.equal("status" in sent[1], false);
 });
 
 test("una restricción necesita tipo, valor según el tipo, corredor y un punto en el mapa", () => {

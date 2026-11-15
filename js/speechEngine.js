@@ -3,6 +3,7 @@ class VoiceGuidanceEngine {
         this.synth = window.speechSynthesis;
         this.voice = null;
         this.enabled = true;
+        this.unlocked = false;
         this.initVoice();
     }
 
@@ -38,14 +39,10 @@ class VoiceGuidanceEngine {
         this.synth.speak(utterance);
     }
 
-    /**
-     * Tono de alerta (dos notas cortas) y vibración, para avisos de seguridad como un bloqueo detectado por la IA.
-     * Suena aunque la voz esté silenciada: es un aviso de la vía, no una instrucción de navegación.
-     */
     alert() {
         try {
             if (navigator.vibrate) navigator.vibrate([180, 90, 180]);
-        } catch (e) { /* sin vibración */ }
+        } catch (e) { }
         try {
             const Ctx = window.AudioContext || window.webkitAudioContext;
             if (!Ctx) return;
@@ -62,7 +59,7 @@ class VoiceGuidanceEngine {
                 osc.start(ctx.currentTime + at);
                 osc.stop(ctx.currentTime + at + 0.21);
             });
-        } catch (e) { /* sin audio */ }
+        } catch (e) { }
     }
 
     cancel() {
@@ -71,9 +68,23 @@ class VoiceGuidanceEngine {
         }
     }
 
+    unlockAudio() {
+        if (!this.synth || this.unlocked) return;
+        try {
+            const silent = new SpeechSynthesisUtterance('');
+            silent.volume = 0;
+            this.synth.speak(silent);
+            this.unlocked = true;
+        } catch (e) {}
+    }
+
     test() {
         this.speak('Sistema TruckCar activo. Guía de voz para transporte de carga pesada configurada con éxito.', true);
     }
 }
 
 window.voiceEngine = new VoiceGuidanceEngine();
+if (typeof document !== 'undefined') {
+    document.addEventListener('touchstart', () => window.voiceEngine && window.voiceEngine.unlockAudio(), { once: true, passive: true });
+    document.addEventListener('click', () => window.voiceEngine && window.voiceEngine.unlockAudio(), { once: true, passive: true });
+}

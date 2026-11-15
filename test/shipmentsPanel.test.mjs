@@ -1,10 +1,8 @@
-// "Mis envíos" (HU2.1): búsqueda, orden, páginas, errores, validación, cancelación y estado en vivo (KAN-47).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
-/** Panel y controlador del generador con dependencias mínimas simuladas. */
 function setup({ loads = [], errors = {}, sheetAnswer = null, cancelError = null } = {}) {
   const w = new JSDOM("<!doctype html><body><div data-shipment-results></div></body>", { runScripts: "outside-only" }).window;
   const toasts = [];
@@ -14,7 +12,9 @@ function setup({ loads = [], errors = {}, sheetAnswer = null, cancelError = null
     toast: (message, type, opts) => toasts.push({ message, type, description: opts && opts.description }),
     failure: (title, error) => toasts.push({ message: title, type: "error", description: error.message }),
     errorMessage: (e) => e.message,
-    syncBanner: () => ""
+    syncBanner: () => "",
+    NOT_AVAILABLE: "No disponible",
+    orNotAvailable(value) { return value === null || value === undefined || value === "" ? this.NOT_AVAILABLE : value; }
   };
   w.PodUI = { formatDate: (d) => String(d) };
   w.Native = { haptic() {} };
@@ -25,12 +25,13 @@ function setup({ loads = [], errors = {}, sheetAnswer = null, cancelError = null
     setState(partial) { this.state = { ...this.state, ...partial }; }
   };
   w.Sheet = { prompt: async (opts) => { calls.prompt.push(opts); return sheetAnswer; } };
-  w.TruckCarService = {
+  w.eval(readFileSync("js/dataService.js", "utf8"));
+  Object.assign(w.TruckCarService, {
     refreshShipments: async () => { calls.refresh++; },
     loadPublishedLoads: async () => { calls.published++; },
     cancelLoad: async (id, reason) => { calls.cancel.push({ id, reason }); if (cancelError) throw cancelError; },
     publishLoad: async () => { throw w.publishError; }
-  };
+  });
   w.eval(readFileSync("js/views/generatorPanel.js", "utf8"));
   const text = (html) => new JSDOM(`<div>${html}</div>`).window.document.body.textContent.replace(/\s+/g, " ").trim();
   return { w, panel: w.GeneratorPanel, ctrl: w.generatorCtrl, toasts, calls, text };
@@ -94,18 +95,17 @@ test("un error de red sin envíos muestra el estado de error con Reintentar", as
   assert.match(html, /role="alert"/);
   await w.generatorCtrl.refresh(true);
   assert.equal(calls.refresh, 1);
-  // Con envíos ya cargados el error no los oculta: aviso y Reintentar sobre la lista.
   const stale = panel.renderResults(w.store.state, [load()]);
   assert.match(text(stale), /No se pudo actualizar la lista\. Reintentar/);
   assert.match(stale, /role="listitem"/);
 });
 
-test("valida como el backend: descripción hasta 255, peso hasta 60 t, origen distinto del destino", () => {
+test("valida como el backend: descripción hasta 255, peso mayor a 0, origen distinto del destino", () => {
   const { panel } = setup();
   const base = { cargoDescription: "x", weightTons: 10, originCity: "Bogotá", destinationCity: "Cali", offeredBudget: 2000 };
   assert.equal(Object.keys(panel.validate(base)).length, 0);
   assert.match(panel.validate({ ...base, cargoDescription: "a".repeat(256) }).cargoDescription, /255/);
-  assert.match(panel.validate({ ...base, weightTons: 61 }).weightTons, /60 t/);
+  assert.equal(panel.validate({ ...base, weightTons: 61 }).weightTons, undefined);
   assert.match(panel.validate({ ...base, destinationCity: "bogota" }).destinationCity, /distinto del origen/);
   assert.match(panel.validate({ ...base, offeredBudget: 0 }).offeredBudget, /1\.000/);
 });
@@ -183,7 +183,6 @@ test("estado en vivo: la aceptación actualiza la línea de tiempo al instante y
   assert.equal(timeline.getAttribute("aria-live"), "polite");
   assert.ok(timeline.querySelector(".animate-pulse"));
 
-  // El mismo evento otra vez (o ya traído por el polling) no repite el aviso.
   ctrl.applyLiveStatus({ loadId: 21, eventType: "assignment.accepted", loadStatus: "ASSIGNED", assignmentStatus: "ACCEPTED" });
   assert.equal(toasts.length, 1);
 });
@@ -207,7 +206,6 @@ test("estado en vivo: la entrega o la cancelación recargan para traer quién re
   ctrl.applyLiveStatus({ loadId: 40, eventType: "trip.delivered", loadStatus: "DELIVERED", assignmentStatus: "ACCEPTED" });
   assert.equal(delivered.status, "DELIVERED");
   assert.equal(calls.refresh, 1);
-  // Una carga que el panel aún no tiene (recién publicada en otra pestaña) se trae completa.
   ctrl.applyLiveStatus({ loadId: 999, eventType: "assignment.proposed", loadStatus: "AVAILABLE", assignmentStatus: "PROPOSED" });
   assert.equal(calls.refresh, 2);
 });

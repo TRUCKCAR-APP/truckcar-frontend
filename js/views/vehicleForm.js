@@ -1,37 +1,13 @@
-/**
- * Formulario del vehículo del conductor: registrarlo la primera vez o editarlo. Con el vehículo registrado, el conductor
- * queda ACTIVO y el motor de asignación ya lo considera (tipo, capacidad y posición). Usa la misma estructura que el
- * formulario de entrega (podModals.js): cabecera con cerrar, campos que se desplazan y el botón principal fijo abajo.
- *
- *  VehicleForm.open(driver, onSubmit) -> Promise<boolean>   true si se guardó, false si se cerró sin guardar.
- *      onSubmit(vehicle, coords): coords es la ciudad elegida, o null si eligió el GPS (lo lee quien llama).
- *  VehicleForm.validate(values)       -> { errors, vehicle } la validación pura, también la usan las pruebas.
- */
 window.VehicleForm = (function () {
     const esc = (value) => window.ui.escape(value);
     const OVERLAY_ID = 'vehicle-form-modal';
 
-    // Los tipos que una carga puede pedir (Load-Allocation TruckTypeRequired): con otro tipo el motor nunca lo elige.
-    const TRUCK_TYPES = [
-        ['TRACTOMULA_3S3', 'Tractocamión 3S3'], ['MINIMULA', 'Minimula'], ['DOBLETROQUE', 'Doble troque'],
-        ['CUATRO_MANOS', 'Cuatro manos'], ['SENCILLO', 'Sencillo'], ['TURBO', 'Turbo']
-    ];
+    const truckTypes = () => window.TruckCarService.truckTypes();
     const LICENSES = ['C1', 'C2', 'C3'];
 
-    /** "abc123" o "ABC 123" -> "ABC-123". Placas de servicio público y particular: 3 letras y 3 dígitos. */
     function normalizePlate(value) {
         const compact = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
         return /^[A-Z]{3}\d{3}$/.test(compact) ? compact.slice(0, 3) + '-' + compact.slice(3) : null;
-    }
-
-    /** Coordenadas de una ciudad del catálogo del generador (las mismas de origen y destino de las cargas). */
-    function cityCoords(name) {
-        const city = window.GeneratorPanel && window.GeneratorPanel.findCity(name);
-        return city ? [city.latitude, city.longitude] : null;
-    }
-
-    function cities() {
-        return (window.GeneratorPanel && window.GeneratorPanel.CITIES) || [];
     }
 
     function number(value) {
@@ -43,7 +19,7 @@ window.VehicleForm = (function () {
         const errors = {};
         const plate = normalizePlate(values.vehiclePlate);
         if (!plate) errors.vehiclePlate = 'Escriba la placa con 3 letras y 3 números (ej. TDK-410).';
-        const type = TRUCK_TYPES.some(([code]) => code === values.vehicleType) ? values.vehicleType : null;
+        const type = truckTypes().some(t => t.code === values.vehicleType) ? values.vehicleType : null;
         if (!type) errors.vehicleType = 'Elija el tipo de vehículo.';
         const height = number(values.maxHeightMeters);
         if (height == null || height < 2 || height > 5) errors.maxHeightMeters = 'La altura va entre 2 y 5 m.';
@@ -51,12 +27,8 @@ window.VehicleForm = (function () {
         if (payload == null || payload <= 0 || payload > 60) errors.maxPayloadTons = 'La capacidad va entre 0,1 y 60 t.';
         const tare = number(values.tareWeightTons);
         if (tare == null || tare <= 0 || tare > 30) errors.tareWeightTons = 'La tara va entre 0,1 y 30 t.';
-        // "gps" o el nombre de una ciudad del catálogo: sin posición, la cercanía no suma y el motor casi nunca lo elige.
-        const location = values.location === 'gps' ? 'gps' : (cityCoords(values.location) ? values.location : null);
-        if (!location) errors.location = 'Elija el GPS o la ciudad donde está.';
         return {
             errors,
-            location,
             vehicle: Object.keys(errors).length ? null : {
                 vehiclePlate: plate,
                 vehicleModel: String(values.vehicleModel || '').trim() || null,
@@ -122,7 +94,7 @@ window.VehicleForm = (function () {
                     ${field('vehiclePlate', 'Placa', `<input name="vehiclePlate" value="${esc(s.vehiclePlate || '')}" maxlength="8" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" class="field-input" placeholder="TDK-410">`)}
                     ${field('vehicleType', 'Tipo de vehículo', `<select name="vehicleType" class="field-input">
                         <option value="">Elija el tipo</option>
-                        ${TRUCK_TYPES.map(([code, text]) => `<option value="${code}" ${code === s.vehicleType ? 'selected' : ''}>${text}</option>`).join('')}
+                        ${truckTypes().map(t => `<option value="${t.code}" ${t.code === s.vehicleType ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}
                     </select>`)}
                     ${field('vehicleModel', 'Marca y modelo', `<input name="vehicleModel" value="${esc(s.vehicleModel || '')}" maxlength="80" autocomplete="off" class="field-input" placeholder="Kenworth T800">`, false)}
                     ${field('maxHeightMeters', 'Altura total (m)', num('maxHeightMeters', s.maxHeightMeters, '4,10', '0.01'))}
@@ -143,11 +115,7 @@ window.VehicleForm = (function () {
                         </div>
                         <span class="field-help">Sin RUNT vigente el vehículo no recibe cargas.</span>
                     </div>
-                    ${field('location', 'Dónde está ahora', `<select name="location" class="field-input">
-                        <option value="gps">GPS de este dispositivo</option>
-                        ${cities().map(c => `<option value="${esc(c.city)}">${esc(c.city)} · ${esc(c.department)}</option>`).join('')}
-                    </select>`)}
-                    <p class="field-help">El motor de asignación prefiere al conductor más cercano al origen de la carga. ${editing ? '' : 'Al guardar queda disponible para recibir cargas.'}</p>
+                    <p class="field-help">El motor de asignación prefiere al conductor más cercano al origen de la carga: su posición se envía solo si el GPS de este dispositivo está activo. ${editing ? '' : 'Al guardar queda disponible para recibir cargas.'}</p>
                 </div>
 
                 <div class="pod-footer">
@@ -178,18 +146,16 @@ window.VehicleForm = (function () {
                 const values = Object.fromEntries(new FormData(form).entries());
                 ['runtValid', 'electronicTollTagActive', 'coldChainCertified', 'hazmatAuthorized']
                     .forEach(name => { values[name] = form.elements[name].checked; });
-                const { errors, vehicle, location } = validate(values);
+                const { errors, vehicle } = validate(values);
                 showErrors(errors);
                 if (!vehicle) return;
                 submit.disabled = true;
-                submit.querySelector('span').textContent = location === 'gps' ? 'Leyendo el GPS…' : 'Guardando…';
+                submit.querySelector('span').textContent = 'Guardando…';
                 try {
-                    await onSubmit(vehicle, location === 'gps' ? null : cityCoords(location));
+                    await onSubmit(vehicle);
                     close(overlay);
                     resolve(true);
                 } catch (error) {
-                    // El error va junto al campo que lo causa (el GPS, en "Dónde está ahora") o arriba del formulario, y
-                    // se desplaza a la vista: en el teléfono el botón queda abajo y un aviso fuera de pantalla no se ve.
                     let shown;
                     if (error && error.field && form.querySelector(`[data-error-for="${error.field}"]`)) {
                         showErrors({ [error.field]: error.message });
@@ -209,5 +175,5 @@ window.VehicleForm = (function () {
         });
     }
 
-    return { open, validate, normalizePlate, cityCoords, TRUCK_TYPES };
+    return { open, validate, normalizePlate };
 })();

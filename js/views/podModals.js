@@ -1,8 +1,3 @@
-/**
- * Prueba de entrega (POD): formulario del conductor (firma en lienzo + foto) y visor del recibo firmado.
- * Los modales se montan directamente en <body>, fuera de #app-mount: las vistas se re-renderizan completas en
- * cada setState y eso borraría la firma que el receptor está dibujando.
- */
 window.PodUI = (function () {
     const PHOTO_MAX_SIDE = 1280;
     const PHOTO_QUALITY = 0.72;
@@ -15,10 +10,6 @@ window.PodUI = (function () {
         return isNaN(date) ? String(value) : date.toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
     }
 
-    /**
-     * Hoja inferior (diálogo centrado en pantallas anchas) con la animación de js/ui/sheet.js. Sin arrastre para
-     * cerrar: un gesto accidental no debe descartar una firma a medio hacer.
-     */
     function mountOverlay(id, innerHtml) {
         closeOverlay(id, false);
         const overlay = document.createElement('div');
@@ -45,8 +36,6 @@ window.PodUI = (function () {
         setTimeout(() => existing.remove(), 430);
     }
 
-    // ------------------------------------------------------------------ firma
-    /** Lienzo de firma con Pointer Events (mouse, lápiz y dedo). Fondo blanco para que se lea en el recibo. */
     function createSignaturePad(canvas, onStroke) {
         const ctx = canvas.getContext('2d');
         let drawing = false;
@@ -117,8 +106,6 @@ window.PodUI = (function () {
         };
     }
 
-    // ------------------------------------------------------------------ foto
-    /** Reduce la foto (cámara o archivo) a JPEG de máx. 1280 px para no exceder el límite del backend. */
     function compressPhoto(file) {
         return new Promise((resolve, reject) => {
             if (!file || !file.type.startsWith('image/')) {
@@ -144,7 +131,6 @@ window.PodUI = (function () {
         });
     }
 
-    /** Evidencia simulada (sin cámara): imagen con los datos de la carga, útil en escritorio y demos. */
     function simulatedPhoto(load) {
         const canvas = document.createElement('canvas');
         canvas.width = 960;
@@ -168,15 +154,8 @@ window.PodUI = (function () {
         return canvas.toDataURL('image/jpeg', PHOTO_QUALITY);
     }
 
-    // ------------------------------------------------------------------ formulario de entrega
-    /**
-     * Abre el formulario de entrega. onSubmit(pod) se llama al confirmar; si falla, el formulario sigue abierto
-     * con el error para no perder la firma. Devuelve una promesa: true si se registró, false si se canceló.
-     */
     function openDeliveryForm(load, onSubmit) {
         return new Promise((resolve) => {
-            // Estructura del prototipo B: cabecera con cerrar, campos que se desplazan y "Confirmar entrega" fijo abajo
-            // (siempre visible). Los nombres, ids y data-action no cambian: la lógica de la entrega es la misma.
             const icon = (name) => `<svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
             const overlay = mountOverlay('pod-delivery-modal', `
                 <form id="pod-form" class="pod-form" novalidate aria-labelledby="pod-title">
@@ -231,7 +210,7 @@ window.PodUI = (function () {
                             </div>
                             <figure id="pod-photo-figure" class="pod-photo hidden">
                                 <img id="pod-photo-preview" alt="Vista previa de la foto de entrega">
-                                <figcaption><span data-hash="photo" class="pod-hash" title=""></span></figcaption>
+                                <figcaption><span data-hash="photo" class="pod-hash" title=""></span><span data-photo-simulated class="field-help hidden">Foto simulada para la presentación: no se envía como evidencia.</span></figcaption>
                             </figure>
                         </div>
                         <p class="field-help">La firma y la foto se envían cifradas. Sin señal se guardan en el teléfono y se envían al reconectar.</p>
@@ -246,7 +225,6 @@ window.PodUI = (function () {
             const form = overlay.querySelector('#pod-form');
             const preview = overlay.querySelector('#pod-photo-preview');
             const figure = overlay.querySelector('#pod-photo-figure');
-            /** Huella SHA-256 (la misma que Load-Allocation verifica en el almacenamiento): 12 dígitos visibles. */
             const showHash = async (kind, dataUrl) => {
                 const chip = overlay.querySelector('[data-hash="' + kind + '"]');
                 if (!dataUrl) {
@@ -267,20 +245,23 @@ window.PodUI = (function () {
             const errorBox = overlay.querySelector('#pod-error');
             const submitBtn = form.querySelector('button[type="submit"]');
             let photoDataUrl = null;
+            let photoSimulated = false;
+            const simulatedNote = overlay.querySelector('[data-photo-simulated]');
 
-            // Error con triángulo y texto; la firma y la foto siguen en el formulario.
             const showError = (message, title = 'Falta un dato obligatorio') => {
                 errorBox.querySelector('[data-error-title]').textContent = title;
                 errorBox.querySelector('[data-error-text]').textContent = message;
                 errorBox.classList.toggle('hidden', !message);
                 if (message) errorBox.scrollIntoView({ block: 'nearest' });
             };
-            const setPhoto = (dataUrl) => {
+            const setPhoto = (dataUrl, simulated = false) => {
                 photoDataUrl = dataUrl;
+                photoSimulated = Boolean(dataUrl) && simulated;
+                simulatedNote.classList.toggle('hidden', !photoSimulated);
                 preview.src = dataUrl || '';
                 figure.classList.toggle('hidden', !dataUrl);
                 removeBtn.classList.toggle('hidden', !dataUrl);
-                showHash('photo', dataUrl);
+                showHash('photo', photoSimulated ? null : dataUrl);
             };
             const finish = (result) => {
                 document.removeEventListener('keydown', onKey);
@@ -295,7 +276,7 @@ window.PodUI = (function () {
                 pad.clear();
                 showHash('signature', null);
             });
-            overlay.querySelector('[data-action="simulate-photo"]').addEventListener('click', () => setPhoto(simulatedPhoto(load)));
+            overlay.querySelector('[data-action="simulate-photo"]').addEventListener('click', () => setPhoto(simulatedPhoto(load), true));
             removeBtn.addEventListener('click', () => { setPhoto(null); form.elements.photoFile.value = ''; });
             form.elements.photoFile.addEventListener('change', async () => {
                 const file = form.elements.photoFile.files[0];
@@ -317,13 +298,12 @@ window.PodUI = (function () {
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Registrando…</span>';
                 try {
-                    // Imágenes binarias (Blob): se suben al almacenamiento con URL prefirmada, nunca en Base64.
                     await onSubmit({
                         receiverName,
                         receiverDocument: form.elements.receiverDocument.value.trim() || null,
                         notes: form.elements.notes.value.trim() || null,
                         signatureBlob: await window.PodEvidence.dataUrlToBlob(pad.toDataUrl()),
-                        photoBlob: photoDataUrl ? await window.PodEvidence.dataUrlToBlob(photoDataUrl) : null
+                        photoBlob: photoDataUrl && !photoSimulated ? await window.PodEvidence.dataUrlToBlob(photoDataUrl) : null
                     });
                     finish(true);
                 } catch (error) {
@@ -337,11 +317,6 @@ window.PodUI = (function () {
         });
     }
 
-    // ------------------------------------------------------------------ recibo
-    /**
-     * Tarjeta del recibo firmado. pod usa los campos de GET /loads/{id}/proof-of-delivery: signatureUrl y photoUrl
-     * son URLs prefirmadas de vida corta (o URLs locales de los Blobs si la entrega aún no se sincronizó).
-     */
     function receiptHtml(pod, load) {
         const route = load && load.origin ? esc(load.origin.city) + ' → ' + esc(load.destination.city) : '';
         return `
@@ -377,7 +352,6 @@ window.PodUI = (function () {
         `;
     }
 
-    /** Visor del POD (torre de control y conductor): pide la prueba completa al backend. */
     async function showProofOfDelivery(loadId, load) {
         const overlay = mountOverlay('pod-viewer-modal', `
             <div class="overflow-y-auto px-4 pt-1 space-y-3">

@@ -1,4 +1,3 @@
-// Propuesta en vivo al conductor: cuándo avisar y cuánto le queda para responder.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -8,6 +7,12 @@ function driverApp() {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
   w.ui = { escape: (v) => String(v ?? "") };
   w.TruckCarConfig = { assignmentResponseMinutes: 5 };
+  if (!w.TruckCarService) {
+    w.store = w.store || { state: { dataStatus: { errors: {} } }, setState() {} };
+    w.TruckCarData = w.TruckCarData || {};
+    w.TruckCarApi = w.TruckCarApi || {};
+    w.eval(readFileSync("js/dataService.js", "utf8"));
+  }
   w.eval(readFileSync("js/views/driverApp.js", "utf8"));
   return w.DriverApp;
 }

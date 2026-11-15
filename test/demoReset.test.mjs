@@ -1,4 +1,3 @@
-// Script de datos de la demo local (scripts/demo/reset-demo.mjs): sus comprobaciones de seguridad y el SQL acotado.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -69,7 +68,6 @@ test("la cronología del seguimiento público queda en orden: publicado, asignad
   const ordered = { published_at: "2026-11-01T10:00:00", assigned_at: "2026-11-01T11:00:00", trip_started_at: "2026-11-01T13:00:00" };
   assert.equal(chronologyOk(ordered), true);
   assert.deepEqual(loadDiff(load, { ...row, ...ordered }, [], "2026-11-01T22:40:00"), []);
-  // El caso real de la demo: "Conductor asignado 2:46 p. m." antes de "Envío publicado 4:45 p. m.".
   const broken = { published_at: "2026-11-01T16:45:50", assigned_at: "2026-11-01T14:46:00", trip_started_at: "2026-11-01T21:40:32" };
   assert.equal(chronologyOk(broken), false);
   assert.match(loadDiff(load, { ...row, ...broken }, [], "2026-11-02T06:17:00").join(" "), /cronología/);

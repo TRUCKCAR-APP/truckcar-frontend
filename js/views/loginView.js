@@ -1,7 +1,3 @@
-/**
- * Inicio de sesión y registro (prototipo B): título grande, campos con su rótulo y "Entrar" en ámbar plano. Sin
- * degradado, halo ni fondo con tinte. Los nombres de los campos y los manejadores no cambian.
- */
 window.LoginView = {
     render(state) {
         const isRegister = state.authMode === 'register';
@@ -14,11 +10,19 @@ window.LoginView = {
         return `
             <div data-screen class="login-screen">
                 <form onsubmit="window.app.${isRegister ? 'submitRegister' : 'submitLogin'}(event)" class="login-form">
-                    <img src="assets/icon.svg" alt="" class="login-mark">
+                    <span class="brand-logo login-mark">
+                        <img src="assets/brand/truckcar-logo.png" alt="TruckCar" class="brand-logo-light" width="854" height="831">
+                        <img src="assets/brand/truckcar-logo-blanco.png" alt="TruckCar" class="brand-logo-dark" width="854" height="831">
+                    </span>
                     <h1>${isRegister ? 'Cree su cuenta en TruckCar' : 'Inicie sesión en TruckCar'}</h1>
                     <p class="login-lead">${isRegister
                         ? 'Para conductores y empresas que generan carga.'
                         : 'Cargas, ruta segura para su vehículo y entregas con prueba, incluso sin señal.'}</p>
+
+                    ${config.gatewayUrl ? '' : `
+                        <div class="notice login-error" role="alert">
+                            <div class="warn-line">${icon('warning-fill')}<span>Esta instalación no tiene configurada la dirección del servidor. Pida una versión actualizada de la aplicación.</span></div>
+                        </div>`}
 
                     ${state.authError ? `
                         <div class="notice login-error" role="alert">
@@ -59,7 +63,17 @@ window.LoginView = {
                         <button type="button" onclick="window.store.setState({ authMode: '${isRegister ? 'login' : 'register'}', authError: null })">${isRegister ? 'Iniciar sesión' : 'Registrarse'}</button>
                     </p>
 
-                    ${config.demoTools ? `<p class="login-api">API: ${esc(config.apiBaseUrl)}</p>` : ''}
+                    ${config.demoTools ? `<p class="login-api">API: ${esc(config.apiBaseUrl)}</p><div class="pt-4 mt-4 border-t border-slate-800 text-center space-y-2">
+                        <span class="text-xs text-slate-400 block font-medium">Modo demostración rápido (sin backend):</span>
+                        <div class="flex items-center justify-center gap-2 flex-wrap">
+                            <button type="button" onclick="window.app.startDemoSession('driver')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                                <i class="fas fa-mobile-screen"></i> Ver como Conductor
+                            </button>
+                            <button type="button" onclick="window.app.startDemoSession('coordinator')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                                <i class="fas fa-tower-broadcast"></i> Ver como Torre de Control
+                            </button>
+                        </div>
+                    </div>` : ''}
                 </form>
             </div>
         `;

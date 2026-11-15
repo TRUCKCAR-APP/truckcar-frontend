@@ -1,4 +1,3 @@
-// Cola durable offline (js/offlineQueue.js) sobre una IndexedDB real en memoria (fake-indexeddb).
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -13,7 +12,6 @@ let posts;
 let online;
 let respond;
 
-/** Carga el script como en el navegador, con un api-gateway simulado que registra cada lote enviado. */
 function load() {
   posts = [];
   online = false;
@@ -105,7 +103,6 @@ test("los duplicados y rechazados salen de la cola; lo que el servidor no confir
   await queue.flush();
 
   assert.equal(queue.status().pending, 1);
-  // Array.from: el arreglo viene del contexto vm (otro realm) y deepEqual compara prototipos.
   assert.deepEqual(Array.from(queue.status().rejected, (r) => r.reason), ["Coordenadas inválidas"]);
 
   respond = (endpoint, body) => ({ accepted: [], duplicates: body.events.map((e) => e.clientEventId), rejected: [] });
@@ -168,4 +165,15 @@ test("un SOS guardado sin señal sale primero, en su propio lote, antes que el v
   assert.deepEqual(posts[0].body.events.map((e) => e.clientEventId), [sos.clientEventId]);
   assert.equal(posts[0].body.events[0].kind, "alert.sos");
   assert.equal(queue.status().pending, 0);
+});
+
+test("el SOS encolado conserva el clientEventId del envío en línea y lo manda en el lote", async () => {
+  const id = globalThis.crypto.randomUUID();
+  const event = await queue.enqueue("alert.sos", { latitude: 4.6, longitude: -74.1 }, { tripId: 30, clientEventId: id });
+  assert.equal(event.clientEventId, id);
+  assert.match(queue.uuid(), UUID_V4);
+  online = true;
+  await queue.flush();
+  const batch = posts.find((p) => p.endpoint === "/alerts/sync/batch");
+  assert.deepEqual(batch.body.events.map((e) => e.clientEventId), [id]);
 });

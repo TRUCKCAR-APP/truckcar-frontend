@@ -1,4 +1,3 @@
-// Bandeja "Para usted" del conductor: qué cuenta como nuevo y cómo se muestra cada notificación.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -60,4 +59,16 @@ test("sin notificaciones, la bandeja explica qué llegará aquí", () => {
   const text = new JSDOM(w.DriverApp.renderInbox({})).window.document.body.textContent;
   assert.match(text, /Sin notificaciones/);
   assert.match(text, /cargas que le propongan/);
+});
+
+test("en la sesión de demostración la bandeja queda vacía y no consulta el servidor", async () => {
+  const w = windowWith([N("a", 1)]);
+  let calls = 0;
+  w.TruckCarConfig = { demoTools: true };
+  w.TruckCarApi.session = { get: () => ({ accessToken: "demo-token", demo: true }) };
+  w.TruckCarApi.notifications.forUser = async () => { calls++; return { content: [N("a", 1)] }; };
+  assert.equal((await w.TruckCarService.loadNotifications()).length, 0);
+  assert.equal(calls, 0);
+  w.TruckCarApi.session = { get: () => ({ accessToken: "real" }) };
+  assert.equal((await w.TruckCarService.loadNotifications()).length, 1, "una sesión real sí consulta, también con ?demo=1");
 });

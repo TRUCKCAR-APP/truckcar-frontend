@@ -1,6 +1,3 @@
-// Comprueba que cada enlace relativo de la documentación apunte a un archivo que existe: los de Markdown
-// ([texto](ruta)) y los src/href de HTML en línea. Ignora URLs absolutas, correo y anclas de la misma página.
-// Uso: node scripts/check-doc-links.mjs [archivo.md ...]   (sin argumentos: docs/redesign/*.md y todos los README.md)
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 

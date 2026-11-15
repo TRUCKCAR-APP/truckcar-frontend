@@ -1,4 +1,3 @@
-// Seguimiento del envío ("Mis envíos"): entre publicar y aceptar se ve qué está haciendo el motor de asignación.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -25,7 +24,7 @@ test("muestra a quién se le propuso la carga y que se espera su respuesta", () 
 test("explica por qué se busca otro conductor o por qué no hay ninguno", () => {
   assert.match(step(load("REJECTED")), /Buscando otro conductor.*la rechazó/);
   assert.match(step(load("TIMEOUT")), /Buscando otro conductor.*no respondió a tiempo/);
-  assert.match(step(load("UNASSIGNED_NO_DRIVERS")), /Sin conductores disponibles.*cada 2 minutos/);
+  assert.match(step(load("UNASSIGNED_NO_DRIVERS")), /Sin conductores disponibles.*el motor vuelve a intentar$/);
   assert.match(step(load(null)), /Buscando conductor/);
 });
 

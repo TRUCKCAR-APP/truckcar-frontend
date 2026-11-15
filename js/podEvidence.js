@@ -1,7 +1,3 @@
-/**
- * Evidencias de entrega (firma y foto) con URLs prefirmadas: el archivo binario va directo al almacenamiento S3 y a
- * la API solo llegan su clave, tipo, tamaño y SHA-256. La URL de subida solo acepta exactamente ese contenido.
- */
 (function () {
     const api = () => window.TruckCarApi;
 
@@ -10,15 +6,10 @@
         return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    /** data URL (canvas de la firma, foto comprimida) a Blob binario. */
     async function dataUrlToBlob(dataUrl) {
         return (await fetch(dataUrl)).blob();
     }
 
-    /**
-     * El almacenamiento se sirve en /pod-media/ del mismo origen que la app (nginx), así que se usa la ruta firmada
-     * contra el origen actual: funciona igual si la app se abrió como localhost o 127.0.0.1.
-     */
     function sameOrigin(url) {
         const parsed = new URL(url, window.location.href);
         return parsed.pathname.startsWith('/pod-media/')
@@ -26,10 +17,6 @@
             : parsed.toString();
     }
 
-    /**
-     * Sube los Blobs { signature, photo } de una carga y devuelve sus referencias para la entrega:
-     * { signature: { objectKey, sha256, contentType, sizeBytes }, photo: {...} }.
-     */
     async function upload(loadId, blobs) {
         const entries = Object.entries(blobs || {}).filter(([, blob]) => blob);
         if (!entries.length) return {};
@@ -67,7 +54,6 @@
         return references;
     }
 
-    /** Entrega en línea: sube las evidencias y registra la entrega con sus referencias. */
     async function deliver(loadId, pod, blobs) {
         const references = await upload(loadId, blobs);
         return api().loads.deliver(loadId, { ...pod, ...references });
