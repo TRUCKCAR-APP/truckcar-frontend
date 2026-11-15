@@ -11,6 +11,7 @@ module.exports = {
     ...(hostname ? { hostname } : {})
   },
   android: {
+    backgroundColor: "#0C0E12",
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false

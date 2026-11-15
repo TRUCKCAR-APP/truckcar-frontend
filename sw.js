@@ -1,6 +1,6 @@
 ﻿importScripts('js/tileStore.js');
 
-const VERSION = 'v24';
+const VERSION = 'v25';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v2';
@@ -11,7 +11,9 @@ const SHELL = [
     './',
     'index.html',
     'manifest.webmanifest',
-    'assets/icon.svg',
+    'assets/favicon-16.png',
+    'assets/favicon-32.png',
+    'assets/favicon-48.png',
     'assets/icon-192.png',
     'assets/icon-512.png',
     'assets/icon-maskable-512.png',
