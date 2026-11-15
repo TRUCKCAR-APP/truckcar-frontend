@@ -351,6 +351,7 @@
 
         fleet: {
             listActive: () => http.get('/fleets-drivers/active'),
+            listAvailable: () => http.get('/fleets-drivers/available'),
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
             getVehicle: (plate) => http.get('/fleets-drivers/vehicles/' + enc(plate)),
             updateState: (state) => http.post('/fleets-drivers/state', state),
@@ -366,6 +367,8 @@
             publish: (load) => http.post('/loads', load),
             accept: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/accept'),
             reject: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/reject'),
+            assign: (loadId, driver) => http.patch('/loads/' + enc(loadId) + '/assign', driver),
+            notifyAssignment: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/notify'),
             mine: () => http.get('/loads/mine'),
             startTrip: (loadId) => http.patch('/loads/' + enc(loadId) + '/trip/start'),
             deliver: (loadId, pod) => http.patch('/loads/' + enc(loadId) + '/trip/deliver', pod),

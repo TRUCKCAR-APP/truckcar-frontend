@@ -33,6 +33,7 @@ export const SURFACES = {
   panel: [
     "js/views/coordinatorPanel.js",
     "js/views/towerAdmin.js",
+    "js/views/towerLoads.js",
     "js/views/generatorPanel.js",
     "js/views/sosMonitor.js",
     "js/surfaces/panel.js",

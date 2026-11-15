@@ -9,6 +9,7 @@ window.CoordinatorPanel = {
         const loads = data.availableLoads || [];
         const deliveries = data.deliveredLoads || [];
         const notices = this.buildNotices(fleet, alerts);
+        const dispatcher = window.TruckCarService.roleAccess(state.sessionRole).controlTower;
 
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
@@ -40,6 +41,10 @@ window.CoordinatorPanel = {
                                         <span class="font-bold text-white text-right">${esc(load.cargoType)} (${esc(load.netWeight)} Ton)</span>
                                     </div>
                                     <div class="flex justify-between gap-2">
+                                        <span class="text-slate-400 font-medium">Generador:</span>
+                                        <span class="font-semibold text-white text-right">${esc(window.ui.orNotAvailable(load.customer))}</span>
+                                    </div>
+                                    <div class="flex justify-between gap-2">
                                         <span class="text-slate-400 font-medium">Trayecto:</span>
                                         <span class="font-semibold text-white text-right">${esc(load.origin.city)} → ${esc(load.destination.city)}</span>
                                     </div>
@@ -59,6 +64,19 @@ window.CoordinatorPanel = {
                                     <button onclick="window.coordinatorCtrl.requestMatching(${load.backendId})" ${state.busyAction === 'matching' ? 'disabled' : ''} class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 disabled:opacity-60 text-graphite-950 rounded-xl text-xs font-bold transition">
                                         <i class="fas ${state.busyAction === 'matching' ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'}"></i> Ejecutar matching automático
                                     </button>
+                                ` : ''}
+
+                                ${dispatcher && window.TruckCarService.loadActions(load).assignManually ? `
+                                    <button onclick="window.coordinatorCtrl.openManualAssignment(${load.backendId})" ${state.busyAction ? 'disabled' : ''} class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white border border-slate-700 rounded-xl text-xs font-bold transition">
+                                        <i class="fas fa-user-check"></i> Asignar manualmente
+                                    </button>
+                                ` : ''}
+
+                                ${dispatcher && window.TruckCarService.loadActions(load).notifyDriver ? `
+                                    <button onclick="window.coordinatorCtrl.notifyDriver(${load.backendId})" ${state.busyAction === 'notify' ? 'disabled' : ''} class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 disabled:opacity-60 text-graphite-950 rounded-xl text-xs font-bold transition">
+                                        <i class="fas ${state.busyAction === 'notify' ? 'fa-spinner fa-spin' : 'fa-bell'}"></i> Notificar al conductor
+                                    </button>
+                                    <p class="text-[11px] text-slate-400 leading-snug">El conductor solo puede aceptar o rechazar después de ser notificado.</p>
                                 ` : ''}
 
                                 <div class="space-y-2">
@@ -374,6 +392,7 @@ window.CoordinatorPanel = {
         return `
             <nav class="flex items-center gap-1 p-1 bg-slate-950/60 border border-slate-800 rounded-xl" role="tablist" aria-label="Vistas del coordinador">
                 ${item('fleet', 'fa-tower-broadcast', 'Torre de control')}
+                ${item('loads', 'fa-truck-ramp-box', 'Cargas')}
                 ${item('shipments', 'fa-boxes-stacked', 'Mis envíos')}
                 ${item('restrictions', 'fa-road-barrier', 'Restricciones')}
                 ${state.sessionRole === 'ADMIN' ? item('users', 'fa-users', 'Usuarios') + item('templates', 'fa-message', 'Plantillas') : ''}
@@ -392,7 +411,7 @@ window.CoordinatorPanel = {
     activeTab(state) {
         const tab = state.coordinatorTab;
         if (tab === 'users' || tab === 'templates') return state.sessionRole === 'ADMIN' ? tab : 'fleet';
-        return ['shipments', 'restrictions'].includes(tab) ? tab : 'fleet';
+        return ['loads', 'shipments', 'restrictions'].includes(tab) ? tab : 'fleet';
     },
 
     initials(user) {
@@ -567,6 +586,121 @@ window.coordinatorCtrl = {
             window.ui.toast(message, result && result.selectedDriverName ? 'success' : 'warning');
         } catch (error) {
             window.ui.failure('No se pudo ejecutar el matching', error, 'ejecutar el matching');
+        } finally {
+            window.store.setState({ busyAction: null });
+        }
+    },
+
+    assignmentCandidatesHtml(candidates) {
+        const esc = window.ui.escape;
+        if (!candidates.length) {
+            return '<p class="p-3 rounded-xl border border-dashed border-slate-700 text-xs text-slate-400 text-center">No hay conductores disponibles.</p>';
+        }
+        return '<ul class="space-y-2">' + candidates.map((c, i) => {
+            const capacity = typeof c.maxPayloadTons === 'number' ? window.ui.number(c.maxPayloadTons, 1, 't') : null;
+            const vehicle = [c.vehiclePlate, c.vehicleType, capacity].filter(Boolean).join(' · ');
+            return `
+                <li>
+                    <button type="button" data-candidate="${i}" ${c.assignable ? '' : 'disabled'} class="w-full text-left p-3 rounded-xl border border-slate-700/60 bg-slate-800/50 hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed transition">
+                        <span class="block font-bold text-sm text-white">${esc(c.driverName || c.driverId || window.ui.NOT_AVAILABLE)}</span>
+                        <span class="block text-xs text-slate-300 mt-0.5">${esc(vehicle || window.ui.NOT_AVAILABLE)}</span>
+                        ${c.blockedReason ? `<span class="block text-xs text-warn-500 mt-1">${esc(c.blockedReason)}</span>` : ''}
+                    </button>
+                </li>`;
+        }).join('') + '</ul>';
+    },
+
+    async openManualAssignment(loadId) {
+        const load = (window.TruckCarData.availableLoads || []).find(l => l.backendId === Number(loadId));
+        if (!load) return;
+        const service = window.TruckCarService;
+        const body = document.createElement('div');
+        body.className = 'space-y-3';
+        body.innerHTML = '<p data-assign-error class="hidden p-3 rounded-xl bg-slate-800 border border-warn-500/50 text-xs text-warn-500" role="alert"></p><div data-assign-list></div>';
+        const errorBox = body.querySelector('[data-assign-error]');
+        const list = body.querySelector('[data-assign-list]');
+        const showError = (text) => {
+            errorBox.textContent = text;
+            errorBox.classList.toggle('hidden', !text);
+        };
+        let target = load;
+        let candidates = [];
+        let busy = false;
+        let close = () => {};
+        const loadCandidates = async () => {
+            list.innerHTML = '<p class="p-3 text-xs text-slate-400 text-center"><i class="fas fa-spinner fa-spin"></i> Consultando conductores disponibles…</p>';
+            try {
+                candidates = await service.listAssignableDrivers(target);
+                list.innerHTML = this.assignmentCandidatesHtml(candidates);
+            } catch (error) {
+                candidates = [];
+                list.innerHTML = '<div class="p-3 rounded-xl border border-dashed border-slate-700 text-xs text-slate-400 text-center">'
+                    + '<p class="font-bold text-slate-200">' + window.ui.escape(window.ui.NOT_AVAILABLE) + '</p>'
+                    + '<p class="mt-1">' + window.ui.escape(window.ui.errorMessage(error)) + '</p>'
+                    + '<button type="button" data-assign-retry class="mt-3 px-4 py-2 bg-slate-800 rounded-xl text-xs font-bold text-white">Reintentar</button></div>';
+            }
+        };
+        list.addEventListener('click', async (event) => {
+            if (event.target.closest('[data-assign-retry]')) {
+                showError('');
+                await loadCandidates();
+                return;
+            }
+            const button = event.target.closest('[data-candidate]');
+            const candidate = button && candidates[Number(button.dataset.candidate)];
+            if (!candidate || !candidate.assignable || busy) return;
+            busy = true;
+            showError('');
+            list.querySelectorAll('button').forEach(b => { b.disabled = true; });
+            try {
+                await service.assignDriver(target.backendId, candidate);
+                close(true);
+                window.ui.toast('Propuesta creada para ' + candidate.driverName, 'success',
+                    { description: 'Queda en espera del aviso al conductor: solo podrá responder cuando esté notificado.' });
+                window.store.setState({});
+            } catch (error) {
+                busy = false;
+                if (error && error.status === 409) {
+                    showError(error.message || 'La carga no admite esta asignación.');
+                    await service.loadCoordinatorLoad().catch(() => {});
+                    window.store.setState({});
+                    const current = (window.TruckCarData.availableLoads || []).find(l => l.backendId === target.backendId);
+                    if (current && service.loadActions(current).assignManually) {
+                        target = current;
+                        await loadCandidates();
+                    } else {
+                        list.innerHTML = '';
+                    }
+                    return;
+                }
+                close(false);
+                window.ui.failure('No se pudo asignar la carga', error, 'asignar la carga');
+            }
+        });
+        const opened = window.Sheet.open({
+            title: 'Asignar manualmente',
+            subtitle: load.id + ' · ' + (load.origin.city || '') + ' → ' + (load.destination.city || ''),
+            icon: 'fa-user-check',
+            body,
+            actions: [{ label: 'Cerrar', tone: 'secondary', value: false }],
+            onMount: (sheet, closeSheet) => { close = closeSheet; }
+        });
+        await loadCandidates();
+        return opened;
+    },
+
+    async notifyDriver(loadId) {
+        window.store.setState({ busyAction: 'notify' });
+        try {
+            await window.TruckCarService.notifyProposedDriver(loadId);
+            window.ui.toast('Conductor notificado', 'success', { description: 'Ya puede aceptar o rechazar la carga #' + loadId + '.' });
+        } catch (error) {
+            if (error && error.status === 409) {
+                window.ui.toast('No se pudo notificar al conductor', 'warning', { description: error.message });
+                await window.TruckCarService.loadCoordinatorLoad().catch(() => {});
+            } else {
+                window.ui.failure('No se pudo notificar al conductor', error, 'notificar al conductor');
+            }
         } finally {
             window.store.setState({ busyAction: null });
         }

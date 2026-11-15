@@ -43,11 +43,33 @@ class VoiceGuidanceEngine {
         try {
             if (navigator.vibrate) navigator.vibrate([180, 90, 180]);
         } catch (e) { }
+        this.tone();
+    }
+
+    proposalAlert() {
+        if (window.store.getState().alertSoundEnabled === false) return false;
+        try {
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        } catch (e) { }
+        return this.tone();
+    }
+
+    resumeAudio() {
         try {
             const Ctx = window.AudioContext || window.webkitAudioContext;
             if (!Ctx) return;
             this.audio = this.audio || new Ctx();
+            if (this.audio.state !== 'running' && this.audio.resume) {
+                const resumed = this.audio.resume();
+                if (resumed && resumed.catch) resumed.catch(() => {});
+            }
+        } catch (e) { }
+    }
+
+    tone() {
+        try {
             const ctx = this.audio;
+            if (!ctx || ctx.state !== 'running') return false;
             [[880, 0], [660, 0.22]].forEach(([freq, at]) => {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
@@ -59,7 +81,10 @@ class VoiceGuidanceEngine {
                 osc.start(ctx.currentTime + at);
                 osc.stop(ctx.currentTime + at + 0.21);
             });
-        } catch (e) { }
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     cancel() {
@@ -69,6 +94,7 @@ class VoiceGuidanceEngine {
     }
 
     unlockAudio() {
+        this.resumeAudio();
         if (!this.synth || this.unlocked) return;
         try {
             const silent = new SpeechSynthesisUtterance('');
@@ -85,6 +111,6 @@ class VoiceGuidanceEngine {
 
 window.voiceEngine = new VoiceGuidanceEngine();
 if (typeof document !== 'undefined') {
-    document.addEventListener('touchstart', () => window.voiceEngine && window.voiceEngine.unlockAudio(), { once: true, passive: true });
-    document.addEventListener('click', () => window.voiceEngine && window.voiceEngine.unlockAudio(), { once: true, passive: true });
+    document.addEventListener('touchend', () => window.voiceEngine && window.voiceEngine.unlockAudio(), { passive: true });
+    document.addEventListener('click', () => window.voiceEngine && window.voiceEngine.unlockAudio(), { passive: true });
 }

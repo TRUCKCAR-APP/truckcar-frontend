@@ -173,7 +173,7 @@ window.DriverApp = {
         return '<span class="spinner" aria-hidden="true"></span>';
     },
 
-    renderEmptyState(icon, title, text, actionHtml = '') {
+    renderEmptyState(icon, title, text, actionHtml = '', afterHtml = '') {
         return `
             <div class="screen-scroll">
                 <div class="empty-state">
@@ -182,6 +182,7 @@ window.DriverApp = {
                     <p>${text}</p>
                     ${actionHtml}
                 </div>
+                ${afterHtml}
             </div>
         `;
     },
@@ -382,7 +383,8 @@ window.DriverApp = {
                 this.accountPending(state)
                     ? 'Su cuenta está pendiente de verificación: recibirá cargas cuando un administrador la verifique.'
                     : 'Cuando el sistema le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
-                `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`);
+                `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`,
+                this.alertSoundSettingHtml(state));
         }
         const raw = load.raw || {};
         const allowed = window.TruckCarService.loadActions(load);
@@ -398,10 +400,7 @@ window.DriverApp = {
         const busyIcon = (action, icon) => (busy === action ? this.spinner() : this.icon(icon));
 
         const actions = allowed.awaitNotification ? `
-                <div class="notice">${this.warnLine('Propuesta en proceso de notificación', '· podrá aceptarla o rechazarla cuando llegue la notificación.')}</div>
-                <div class="screen-actions">
-                    <button onclick="window.app.refreshAssignment()" class="btn-accent">${this.icon('arrows-clockwise')}Consultar estado</button>
-                </div>`
+                <div class="notice" role="status">${this.warnLine('Esperando aviso', '· podrá aceptarla o rechazarla cuando el sistema le avise. Esta pantalla se actualiza sola.')}</div>`
             : allowed.respond ? `
                 <div class="screen-actions">
                     <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('accept', 'check-circle')}Aceptar carga y ver ruta</button>
@@ -420,7 +419,7 @@ window.DriverApp = {
 
         return `
             <div class="screen-scroll">
-                <p class="status-line">${this.dotText(this.statusLabel(statusCode), inTransit ? 'ok' : '')}<span class="status-sub"> · ${esc(load.id)}${esc(startedAt)}</span></p>
+                <p class="status-line">${this.dotText(allowed.awaitNotification ? 'Esperando aviso' : this.statusLabel(statusCode), inTransit ? 'ok' : '')}<span class="status-sub"> · ${esc(load.id)}${esc(startedAt)}</span></p>
                 ${this.isOpenProposal(load) ? this.renderCountdown(load) : ''}
 
                 <div class="trip">
@@ -453,8 +452,22 @@ window.DriverApp = {
                     ${inTransit ? this.listRow('Posición', '<span id="driver-telemetry-badge" class="telemetry-inline" aria-live="polite">Preparando la telemetría…</span>') : ''}
                 </div>
                 ${actions}
+                ${pending ? this.alertSoundSettingHtml(state) : ''}
             </div>
         `;
+    },
+
+    alertSoundSettingHtml(state) {
+        const on = state.alertSoundEnabled !== false;
+        return `
+            <div class="availability">
+                <div class="availability-text">
+                    <b id="alert-sound-label">Sonido de avisos</b>
+                    <span>${on ? 'Suena y vibra cuando llega una propuesta con la aplicación abierta.' : 'Silenciado: las propuestas llegan sin sonido ni vibración.'}</span>
+                </div>
+                <button type="button" role="switch" aria-checked="${on}" aria-labelledby="alert-sound-label"
+                        onclick="window.app.toggleAlertSound()" class="switch"></button>
+            </div>`;
     },
 
     routeFactsHtml(opt) {

@@ -19,6 +19,7 @@
         render: (state) => {
             if (state.coordinatorTab === 'shipments') return window.GeneratorPanel.render(state);
             const tab = window.CoordinatorPanel.activeTab(state);
+            if (tab === 'loads') return window.TowerLoads.render(state);
             return ['restrictions', 'users', 'templates'].includes(tab)
                 ? window.TowerAdmin.render(state, tab)
                 : window.CoordinatorPanel.render(state);
