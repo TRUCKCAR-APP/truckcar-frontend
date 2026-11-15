@@ -7,7 +7,7 @@
     "check": "node scripts/check-syntax.mjs",
     "check:links": "node scripts/check-doc-links.mjs",
     "lint": "eslint .",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.mjs",
     "ci": "npm run check && npm run lint && npm test",
     "cap:add:android": "cap add android",
     "cap:sync": "cap sync",
