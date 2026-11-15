@@ -305,8 +305,6 @@ window.CoordinatorPanel = {
         `;
     },
 
-    /** Pestañas del rol COORDINADOR: torre de control (toda la flota) y panel del generador (sus envíos). */
-    /** Cabecera de la torre: título, pestañas, indicadores y sesión. La comparten Restricciones y Usuarios. */
     renderHeader(state) {
         const esc = window.ui.escape;
         const fleet = window.TruckCarData.fleetVehicles || [];
@@ -320,7 +318,6 @@ window.CoordinatorPanel = {
                 <div class="w-10 h-10 shrink-0 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100">
                     <i class="fas fa-tower-broadcast text-lg"></i>
                 </div>
-                <!-- min-w-0: en 390 px la columna se encoge y sus filas se apilan en lugar de montarse una sobre otra. -->
                 <div class="min-w-0 flex-1">
                     <h1 class="text-base font-bold text-white tracking-tight leading-tight flex items-center gap-x-2 gap-y-0.5 flex-wrap">
                         <span>Central de monitoreo de flota</span>
@@ -369,7 +366,6 @@ window.CoordinatorPanel = {
 
     renderTabs(state) {
         const tab = this.activeTab(state);
-        // En el teléfono solo los íconos: cuatro pestañas con texto no caben en 390 px. El nombre queda en aria-label.
         const item = (key, icon, text) => `
             <button onclick="window.app.setCoordinatorTab('${key}')" role="tab" aria-selected="${tab === key}" aria-label="${text}" title="${text}"
                     class="px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${tab === key ? 'bg-accent-500/15 text-accent-500' : 'text-slate-300 hover:bg-slate-800'}">
@@ -393,7 +389,6 @@ window.CoordinatorPanel = {
         return parts.join(' · ');
     },
 
-    /** Pestaña visible: "Usuarios" y "Plantillas" son solo del ADMIN; cualquier otro valor vuelve a la torre. */
     activeTab(state) {
         const tab = state.coordinatorTab;
         if (tab === 'users' || tab === 'templates') return state.sessionRole === 'ADMIN' ? tab : 'fleet';

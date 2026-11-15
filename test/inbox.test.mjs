@@ -1,4 +1,3 @@
-// Bandeja "Para usted" del conductor: qué cuenta como nuevo y cómo se muestra cada notificación.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

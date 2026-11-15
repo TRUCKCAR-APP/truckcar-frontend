@@ -1,12 +1,3 @@
-/**
- * Formulario del vehículo del conductor: registrarlo la primera vez o editarlo. Con el vehículo registrado, el conductor
- * queda ACTIVO y el motor de asignación ya lo considera (tipo, capacidad y posición). Usa la misma estructura que el
- * formulario de entrega (podModals.js): cabecera con cerrar, campos que se desplazan y el botón principal fijo abajo.
- *
- *  VehicleForm.open(driver, onSubmit) -> Promise<boolean>   true si se guardó, false si se cerró sin guardar.
- *      onSubmit(vehicle, coords): coords es la ciudad elegida, o null si eligió el GPS (lo lee quien llama).
- *  VehicleForm.validate(values)       -> { errors, vehicle } la validación pura, también la usan las pruebas.
- */
 window.VehicleForm = (function () {
     const esc = (value) => window.ui.escape(value);
     const OVERLAY_ID = 'vehicle-form-modal';
@@ -14,7 +5,6 @@ window.VehicleForm = (function () {
     const truckTypes = () => window.TruckCarService.truckTypes();
     const LICENSES = ['C1', 'C2', 'C3'];
 
-    /** "abc123" o "ABC 123" -> "ABC-123". Placas de servicio público y particular: 3 letras y 3 dígitos. */
     function normalizePlate(value) {
         const compact = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
         return /^[A-Z]{3}\d{3}$/.test(compact) ? compact.slice(0, 3) + '-' + compact.slice(3) : null;
@@ -166,8 +156,6 @@ window.VehicleForm = (function () {
                     close(overlay);
                     resolve(true);
                 } catch (error) {
-                    // El error va junto al campo que lo causa (el GPS, en "Dónde está ahora") o arriba del formulario, y
-                    // se desplaza a la vista: en el teléfono el botón queda abajo y un aviso fuera de pantalla no se ve.
                     let shown;
                     if (error && error.field && form.querySelector(`[data-error-for="${error.field}"]`)) {
                         showErrors({ [error.field]: error.message });

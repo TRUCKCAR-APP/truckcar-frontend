@@ -226,7 +226,6 @@ window.app = {
         }
     },
 
-    /** Error del login o del registro. El límite de intentos del gateway (429) se explica sin detalles técnicos. */
     authErrorMessage(error) {
         if (error && error.isRateLimited) {
             return window.TruckCarApi.RATE_LIMITED_MESSAGE;
@@ -279,7 +278,6 @@ window.app = {
             if (!state.isAuthenticated || !onShipments || typing || podOpen) return;
             await window.generatorCtrl.refresh(true);
         }, 10000);
-        // El conductor sin viaje en curso se entera de una propuesta sin tocar nada: tiene minutos para responder.
         clearInterval(this.driverTimer);
         this.driverTimer = setInterval(() => this.pollDriverProposals(), window.TruckCarConfig.driverPollingMs);
         clearInterval(this.countdownTimer);
@@ -289,10 +287,6 @@ window.app = {
         this.pollInbox();
     },
 
-    /**
-     * Cada 30 s para el conductor: el número de nuevas en la pestaña Alertas y, mientras la cuenta esté pendiente,
-     * si un administrador ya la verificó (sin cerrar sesión).
-     */
     async pollInbox() {
         const state = window.store.state;
         if (!state.isAuthenticated || state.sessionRole !== 'CONDUCTOR' || !state.currentUser) return;
@@ -304,14 +298,13 @@ window.app = {
                     window.ui.toast('Su cuenta fue verificada', 'success', { description: 'Ya puede recibir cargas.' });
                 }
             } catch (error) {
-                // sin señal: se vuelve a consultar en la siguiente vuelta
             }
         }
         const before = (window.TruckCarData.notifications || []).map(n => n.id).join();
         try {
             await service.loadNotifications();
         } catch (error) {
-            return; // sin señal: se reintenta en la siguiente vuelta
+            return;
         }
         const changed = before !== (window.TruckCarData.notifications || []).map(n => n.id).join();
         const viewing = state.activeRole === 'driver' && state.driverScreen === 'alerts' && state.alertsView === 'inbox';
@@ -357,7 +350,6 @@ window.app = {
         }
     },
 
-    /** Nueva propuesta: aviso visible, vibración y voz (el conductor puede no estar mirando el teléfono). */
     announceProposal(load) {
         const route = (load.origin.city || 'Origen') + ' → ' + (load.destination.city || 'destino');
         const minutes = window.TruckCarConfig.assignmentResponseMinutes;
@@ -368,7 +360,6 @@ window.app = {
             + ' toneladas. Tiene ' + minutes + ' minutos para responder.');
     },
 
-    /** Actualiza la cuenta regresiva de la propuesta sin redibujar la pantalla; al vencer, consulta de nuevo. */
     tickCountdowns() {
         document.querySelectorAll('[data-deadline]').forEach((el) => {
             const text = el.querySelector('[data-countdown-text]');
@@ -611,8 +602,6 @@ window.app = {
         }, 350);
     },
 
-    // ------------------------------------------------------------------ conductor
-    /** Posición para el registro del vehículo: la del GPS reciente, o una lectura nueva (null sin permiso o señal). */
     async currentCoords() {
         const recent = window.DeviceLocation.last(2 * 60 * 1000);
         if (recent) return recent.coords;

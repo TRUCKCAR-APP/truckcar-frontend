@@ -1,4 +1,3 @@
-// Propuesta en vivo al conductor: cuándo avisar y cuánto le queda para responder.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

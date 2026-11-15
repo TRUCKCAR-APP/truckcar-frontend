@@ -185,7 +185,6 @@
             window.DriverTelemetry.start(load, driver.id);
             window.RouteGuidance.prepare(load);
         } else if (load && loadActions(load).startTrip && driver && driver.id && window.RouteGuidance.prefetch) {
-            // Aceptada: la ruta queda guardada en el dispositivo por si el viaje empieza sin señal.
             window.RouteGuidance.prefetch(load);
             if (window.DriverTelemetry.isRunning) {
                 window.DriverTelemetry.stop();
@@ -197,10 +196,6 @@
         }
     }
 
-    /**
-     * Viaje guardado en el dispositivo (routeStore.js) para reabrir la app sin red: solo si el fallo es de red y el
-     * viaje estaba aceptado o en curso.
-     */
     async function savedTrip(driverId) {
         if (!window.RouteStore) return null;
         const saved = await window.RouteStore.latest(driverId);
@@ -259,8 +254,6 @@
                 badges: state.activeBadges || []
             } : null,
             coords: state ? coordsOrNull(state.currentLatitude, state.currentLongitude) : null,
-            // Estado tal como lo guarda fleets-drivers: al editar el vehículo se reenvía completo para no perder
-            // calificación, viajes ni horas de conducción.
             state: state || null
         };
     }
@@ -530,7 +523,6 @@
             } catch (error) {
                 const saved = error.isNetworkError && !data.activeLoadOrder ? await savedTrip(driver.id) : null;
                 if (saved) {
-                    // Sin red: el viaje en curso sigue desde lo guardado (la guía restaura su ruta de IndexedDB).
                     data.activeLoadOrder = { ...mapLoad(saved.load), restoredOffline: true };
                     syncDriverTelemetry();
                 }
@@ -860,10 +852,6 @@
             return api.loads.publicTrackingLink(loadId);
         },
 
-        /**
-         * El conductor registra o edita su vehículo (fleets-drivers acepta el estado propio del CONDUCTOR). Queda
-         * ACTIVO y con la posición del GPS si la hay: así el motor de asignación ya lo considera para las cargas.
-         */
         async saveVehicle(vehicle, coords) {
             const driver = data.currentDriver;
             if (!driver || !driver.id) throw new Error('No se encontró el perfil del conductor');
@@ -875,7 +863,6 @@
             return data.currentDriver;
         },
 
-        /** Disponible (ACTIVO) o no disponible (INACTIVO) para recibir cargas. */
         async setAvailability(available, coords) {
             const driver = data.currentDriver;
             if (!driver || !driver.state) throw new Error('Registre primero su vehículo');
@@ -885,10 +872,6 @@
             return data.currentDriver;
         },
 
-        /**
-         * Bandeja del usuario. El servidor no guarda "leída": se marca en el teléfono con la hora de la notificación
-         * más nueva que el usuario ya vio (truckcar.inbox.seen.<usuario>).
-         */
         async loadNotifications() {
             const userId = window.store.state.currentUser && window.store.state.currentUser.id;
             if (!userId) return [];
@@ -914,13 +897,13 @@
 
         unreadNotifications() {
             let seen = 0;
-            try { seen = Number(localStorage.getItem(this.inboxSeenKey())) || 0; } catch (e) { /* sin almacenamiento */ }
+            try { seen = Number(localStorage.getItem(this.inboxSeenKey())) || 0; } catch (e) { }
             return (data.notifications || []).filter(n => new Date(n.createdAt).getTime() > seen).length;
         },
 
         markNotificationsSeen() {
             const newest = Math.max(0, ...(data.notifications || []).map(n => new Date(n.createdAt).getTime() || 0));
-            try { localStorage.setItem(this.inboxSeenKey(), String(newest)); } catch (e) { /* sin almacenamiento */ }
+            try { localStorage.setItem(this.inboxSeenKey(), String(newest)); } catch (e) { }
         },
 
         async loadTemplates() {

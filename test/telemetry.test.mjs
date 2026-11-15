@@ -226,7 +226,7 @@ test("bloqueos de la IA: una sola suscripción a /topic/road-blockages que se ca
   const received = [];
 
   w.LiveTracking.followBlockages((b) => received.push("conductor:" + b.alertId));
-  w.LiveTracking.followBlockages((b) => received.push("torre:" + b.alertId));   // cambia el manejador, no re-suscribe
+  w.LiveTracking.followBlockages((b) => received.push("torre:" + b.alertId));
   deliver({ alertId: 21, latitude: 4.6, longitude: -74.0 });
   w.LiveTracking.stopAll();
 

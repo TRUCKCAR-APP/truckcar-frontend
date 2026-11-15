@@ -1,4 +1,3 @@
-// Seguimiento del envío ("Mis envíos"): entre publicar y aceptar se ve qué está haciendo el motor de asignación.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

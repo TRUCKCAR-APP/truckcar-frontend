@@ -213,7 +213,6 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    /** Paso en curso: aún no ocurrió, pero sí se sabe qué está pasando (no solo "Pendiente"). */
     function progressItem(icon, title, when, detail) {
         const esc = window.ui.escape;
         return `
@@ -227,10 +226,6 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    /**
-     * Entre publicar y aceptar: a quién se le propuso, si se busca otro conductor o si no hay disponibles. Lo decide
-     * el motor de asignación (Load-Allocation assignmentStatus); "Mis envíos" se refresca cada 10 s.
-     */
     function matchingStep(load) {
         if (load.status !== 'AVAILABLE') return '';
         const raw = load.raw || {};

@@ -201,7 +201,6 @@ async function api(gateway, path, { token, method = "GET", body } = {}) {
       headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
       body: body ? JSON.stringify(body) : undefined
     });
-    // El gateway limita los intentos en /api/v1/auth (KAN-31): con 429 se espera lo que pide Retry-After y se reintenta.
     if (res.status !== 429 || attempt >= 8) break;
     await res.text();
     const seconds = Number.parseInt(res.headers.get("retry-after"), 10);

@@ -1,5 +1,3 @@
-// KAN-31: el gateway limita /api/v1/auth/login, /register y /refresh y responde 429 con Retry-After. La PWA muestra
-// "Demasiados intentos, espere unos segundos" y un 429 al renovar la sesión no la cierra.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -8,7 +6,6 @@ import { JSDOM } from "jsdom";
 const SESSION_KEY = "truckcar.test.session";
 const RATE_LIMITED = "Demasiados intentos, espere unos segundos";
 
-/** Respuesta mínima de fetch: lo que api.js lee (status, ok, headers.get, text). */
 function reply(status, body = "", headers = {}) {
   const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
   if (body && !lower["content-type"]) lower["content-type"] = "application/json";
@@ -16,7 +13,6 @@ function reply(status, body = "", headers = {}) {
     text: async () => body };
 }
 
-/** routes: { "POST /auth/login": () => reply(...) }. Devuelve la ventana y las llamadas hechas. */
 function browser(routes) {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", { runScripts: "outside-only", url: "http://localhost:5500/" });
   const w = dom.window;

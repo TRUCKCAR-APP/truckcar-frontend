@@ -76,7 +76,6 @@ window.DriverApp = {
         return `<span data-offline-badge><span class="driver-tab-count" aria-hidden="true">${pending > 99 ? '99+' : pending}</span><span class="sr-only">, ${text}</span></span>`;
     },
 
-    /** Notificaciones nuevas sobre la pestaña Alertas (la bandeja "Para usted" vive en esa pantalla). */
     inboxBadgeHtml() {
         const service = window.TruckCarService;
         const unread = service && service.unreadNotifications ? service.unreadNotifications() : 0;
@@ -90,7 +89,6 @@ window.DriverApp = {
         CIERRE_VIAL: 'Cierre vial', MENSAJE_DESPACHADOR: 'Mensaje de la torre', EMERGENCIA_SOS: 'SOS'
     },
 
-    /** Bandeja "Para usted": lo que la plataforma le notificó, con el audio si la voz se generó. */
     renderInbox(state) {
         const esc = window.ui.escape;
         const items = window.TruckCarData.notifications || [];
@@ -127,7 +125,6 @@ window.DriverApp = {
             </div>`;
     },
 
-    /** Actualiza el contador de la pestaña Offline en sitio (la cola cambia sin que se repinte la pantalla). */
     renderOfflineBadge() {
         document.querySelectorAll('[data-offline-badge]').forEach(el => { el.outerHTML = this.offlineBadgeHtml(); });
     },
@@ -289,20 +286,14 @@ window.DriverApp = {
         return !routes.planForLoadId || (load && routes.planForLoadId === load.backendId) ? routes.optimal : null;
     },
 
-    /** Cuenta del conductor aún sin verificar por un administrador: el motor de asignación no le propone cargas. */
     accountPending(state) {
         return window.TruckCarService.accountPending(state && state.currentUser);
     },
 
-    /** Propuesta que el conductor ya puede aceptar o rechazar (Load-Allocation la dejó NOTIFIED). */
     isOpenProposal(load) {
         return Boolean(load && window.TruckCarService.loadActions(load).respond);
     },
 
-    /**
-     * Qué cambió entre dos consultas de /loads/mine: 'new' si llegó una propuesta que no estaba, 'gone' si la que
-     * estaba ya no está (venció, la rechazó o se asignó a otro), null si nada que avisar.
-     */
     proposalChange(before, after) {
         const open = (l) => this.isOpenProposal(l);
         if (open(after) && !(open(before) && before.backendId === after.backendId)) return 'new';
@@ -310,17 +301,12 @@ window.DriverApp = {
         return null;
     },
 
-    /**
-     * Hora límite (ms) para responder: el servidor vence la propuesta cuando lleva assignmentResponseMinutes en
-     * NOTIFIED. assignmentStatusChangedAt es hora local del servidor (TZ America/Bogota), como la del teléfono.
-     */
     proposalDeadline(load, minutes) {
         const changed = load && load.raw && load.raw.assignmentStatusChangedAt;
         const start = changed ? new Date(changed).getTime() : NaN;
         return Number.isFinite(start) ? start + minutes * 60 * 1000 : null;
     },
 
-    /** Plazo para responder la propuesta; window.app.tickCountdowns actualiza el texto cada segundo sin re-render. */
     renderCountdown(load) {
         const config = window.TruckCarConfig || {};
         const deadline = this.proposalDeadline(load, config.assignmentResponseMinutes || 5);
@@ -333,17 +319,12 @@ window.DriverApp = {
             </div>`;
     },
 
-    /** "4:05" para lo que falta, o null si ya venció. */
     countdownText(deadline, now = Date.now()) {
         const left = Math.ceil((deadline - now) / 1000);
         if (left <= 0) return null;
         return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
     },
 
-    /**
-     * Disponible para cargas (ACTIVO) o no (INACTIVO). Con un viaje en curso no se puede apagar: la carga ya va a
-     * bordo y la torre lo sigue viendo en ruta.
-     */
     renderAvailability(driver, load, state) {
         const available = window.TruckCarService.driverAvailable(driver);
         const inTrip = Boolean(load && window.TruckCarService.loadActions(load).navigate);
@@ -361,7 +342,6 @@ window.DriverApp = {
             </div>`;
     },
 
-    /** Distancia por carretera de la ruta (OSRM, la misma línea del mapa), si ya se calculó. */
     roadDistanceKm() {
         const plan = this.plannedRoute();
         return plan && typeof plan.totalDistanceKm === 'number' ? Math.round(plan.totalDistanceKm) : null;

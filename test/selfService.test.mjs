@@ -1,5 +1,3 @@
-// Autoservicio en el despliegue: el conductor registra su vehículo y su disponibilidad, y la torre registra
-// restricciones y administra cuentas, sin scripts ni llamadas directas a la API.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -18,7 +16,6 @@ function windowWith(files, setup = () => {}) {
   }
   return w;
 }
-// Los objetos creados dentro de jsdom tienen otro Object.prototype: se comparan por su contenido.
 const same = (actual, expected, message) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected, message);
 const text = (html) => new JSDOM(html).window.document.body.textContent.replace(/\s+/g, " ");
 

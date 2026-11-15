@@ -1,4 +1,3 @@
-// Plantillas de notificación (torre, solo ADMIN) y cuenta pendiente de verificación (app del conductor).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

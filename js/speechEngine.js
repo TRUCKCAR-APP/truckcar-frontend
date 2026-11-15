@@ -39,14 +39,10 @@ class VoiceGuidanceEngine {
         this.synth.speak(utterance);
     }
 
-    /**
-     * Tono de alerta (dos notas cortas) y vibración, para avisos de seguridad como un bloqueo detectado por la IA.
-     * Suena aunque la voz esté silenciada: es un aviso de la vía, no una instrucción de navegación.
-     */
     alert() {
         try {
             if (navigator.vibrate) navigator.vibrate([180, 90, 180]);
-        } catch (e) { /* sin vibración */ }
+        } catch (e) { }
         try {
             const Ctx = window.AudioContext || window.webkitAudioContext;
             if (!Ctx) return;
@@ -63,7 +59,7 @@ class VoiceGuidanceEngine {
                 osc.start(ctx.currentTime + at);
                 osc.stop(ctx.currentTime + at + 0.21);
             });
-        } catch (e) { /* sin audio */ }
+        } catch (e) { }
     }
 
     cancel() {

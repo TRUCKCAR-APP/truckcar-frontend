@@ -192,10 +192,6 @@ class MapController {
         else this.map.setView(position, Math.max(this.map.getZoom(), 12), { animate: true });
     }
 
-    /**
-     * Línea de la ruta que sigue la guía (la del plan o la recalculada desde la posición actual). Las alternativas que la
-     * guía descartó por gálibo o peso se dibujan debajo, en gris discontinuo, para que se vea qué se evitó.
-     */
     drawGuidanceLine(geometry, discarded = []) {
         if (!this.map || !geometry || geometry.length < 2 || !document.getElementById('live-nav-map-container')) return;
         if (this.guidanceLayer) {
@@ -296,21 +292,15 @@ class MapController {
         }
     }
 
-    /**
-     * La ruta que eligió la guía (la primera alternativa sin gálibo ni peso incumplidos) es la que se muestra en Rutas:
-     * misma línea, distancia y tiempo que la navegación.
-     */
     useGuidedRoute(guided) {
         if (!guided || !guided.geometry || guided.geometry.length < 2) return;
         this.cachedOptimalRoadGeometry = guided.geometry;
         if (this.optimalRouteLayer && this.map) this.renderRoutes();
     }
 
-    /** Geometría vial real entre los puntos de la ruta (OSRM público); si falla se mantienen tramos rectos. */
     async fetchRealRoadGeometry(waypoints, routeKey) {
         const guided = window.RouteGuidance && window.RouteGuidance.route;
         if (guided && guided.choice) {
-            // La guía ya eligió la ruta apta para el camión: no se pide otra a OSRM que podría pasar bajo el puente.
             this.useGuidedRoute(guided);
             return;
         }

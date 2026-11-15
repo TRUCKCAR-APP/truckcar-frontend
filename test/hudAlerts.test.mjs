@@ -1,5 +1,3 @@
-// Pila de avisos del HUD de navegación: como máximo dos a la vista, por prioridad (bloqueo de la IA > gálibo/peso >
-// fuera de ruta > GPS), el resto en "+N avisos", y sin llegar al panel de velocidad.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -65,7 +63,7 @@ test("con dos avisos o menos no hay fila +N, y al bajar de tres se repliega solo
   w.RouteGuidance.toggleAlerts();
 
   $("[data-nav-offroute]").hidden = true;
-  gps("ok", "Transmitiendo");   // transmitiendo no es un aviso
+  gps("ok", "Transmitiendo");
   w.RouteGuidance.layoutAlerts();
 
   assert.deepEqual(visible(), ["IA", "Gálibo"]);
@@ -110,10 +108,7 @@ test("si no cabe ni con el panel en fila, deja un solo aviso: el de mayor priori
   show("ai-alert", "clearance");
   const card = $(".hud-card");
   const panel = $(".hud-panel");
-  // Geometría de un teléfono de 390×844: el panel empieza en y=430; cada fila visible mide 110 px y la de
-  // altura/peso 70 px, sobre una cabecera que termina en y=240.
   Object.defineProperty(panel, "offsetHeight", { value: 320 });
-  // En fila, el panel empieza en y=450: dos avisos (hasta y=460) aún no caben.
   panel.getBoundingClientRect = () => ({ top: panel.classList.contains("is-row") ? 450 : 430, left: 300, right: 372 });
   card.getBoundingClientRect = () => {
     const rows = Array.from(card.querySelectorAll("[data-hud-alert]")).filter((el) => !el.hidden && !el.classList.contains("is-overflow") && el.textContent).length;

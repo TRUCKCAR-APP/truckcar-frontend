@@ -367,7 +367,6 @@
         const el = document.getElementById('driver-telemetry-badge');
         if (!el) return;
         paintDriverBadge(el);
-        // La fila del GPS cuenta en la pila de avisos del HUD (máximo dos a la vista).
         if (window.RouteGuidance && window.RouteGuidance.layoutAlerts) window.RouteGuidance.layoutAlerts();
     }
 
@@ -469,7 +468,7 @@
     };
 
     let fleetUnsubscribe = null;
-    const tripSubscriptions = new Map();   // loadId -> unsubscribe
+    const tripSubscriptions = new Map();
     let blockageUnsubscribe = null;
     let blockageHandler = null;
 
@@ -556,11 +555,6 @@
             this.followTrips([]);
         },
 
-        /**
-         * Bloqueos viales que la IA de route-ai-agent detectó en las alertas de la comunidad (fleets-drivers los
-         * reenvía por /topic/road-blockages). El conductor recalcula si caen en su ruta; la torre los ve como aviso.
-         * Una sola suscripción por sesión: llamar de nuevo solo cambia el manejador.
-         */
         followBlockages(onBlockage) {
             blockageHandler = onBlockage;
             if (blockageUnsubscribe) return;

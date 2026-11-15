@@ -1,7 +1,6 @@
 (function () {
     const config = window.TruckCarConfig;
 
-    /** Texto para el usuario cuando el gateway corta por el límite de intentos de /api/v1/auth (429). */
     const RATE_LIMITED_MESSAGE = 'Demasiados intentos, espere unos segundos';
 
     class ApiError extends Error {
@@ -12,7 +11,6 @@
             this.details = details;
             this.correlationId = correlationId;
             this.path = path;
-            /** Segundos que pide esperar el gateway (cabecera Retry-After de un 429); null si no la envió. */
             this.retryAfterSeconds = retryAfterSeconds;
         }
 
@@ -28,7 +26,6 @@
         return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
     }
 
-    // ---------------------------------------------------------------- sesión
     const session = {
         get() {
             try {
@@ -234,8 +231,6 @@
                 try {
                     await refreshSession();
                 } catch (refreshError) {
-                    // /auth/refresh limitado (429): la sesión sigue siendo válida, solo hay que esperar. Cerrarla aquí
-                    // sacaría al conductor de la app por una ráfaga de renovaciones.
                     if (refreshError && refreshError.isRateLimited) {
                         throw refreshError;
                     }
@@ -349,7 +344,6 @@
             me: () => http.get('/users/me'),
             updateMe: (data) => http.put('/users/me', data),
             getById: (id) => http.get('/users/' + enc(id)),
-            /** ADMIN: cuentas paginadas (Spring Page: { content, totalElements }), opcionalmente por rol o estado. */
             list: ({ role, status, size = 200 } = {}) => http.get('/users', { query: { role, status, size, sort: 'createdAt,desc' } }),
             changeRole: (id, role) => http.patch('/users/' + enc(id) + '/role', { role }),
             changeStatus: (id, status) => http.patch('/users/' + enc(id) + '/status', { status })
@@ -411,22 +405,18 @@
             acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
         },
 
-        /** Notifications: plantillas de texto por categoría, canal e idioma (solo ADMIN; el gateway responde 403 a otro rol). */
         templates: {
             list: () => http.get('/templates'),
             update: (id, templateText) => http.put('/templates/' + enc(id), { templateText })
         },
 
-        /** Notifications: lo que se le envió al usuario (push y voz), la más reciente primero. */
         notifications: {
             forUser: (userId, size = 30) =>
                 http.get('/notifications/user/' + enc(userId), { query: { size, sort: 'createdAt,desc' } })
         },
 
-        /** Routing-Restrictions: restricciones y cierres viales */
         restrictions: {
             listActive: (query) => http.get('/restrictions', { query }),
-            /** Torre de control (COORDINADOR/ADMIN): registra un gálibo, un límite de peso o un cierre. */
             create: (restriction) => http.post('/restrictions', restriction),
             deactivate: (id) => http.patch('/restrictions/' + enc(id) + '/deactivate'),
             validateCompatibility: (request) => http.post('/restrictions/validate-compatibility', request),
