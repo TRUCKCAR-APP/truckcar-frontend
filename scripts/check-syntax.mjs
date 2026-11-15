@@ -1,5 +1,3 @@
-// Comprueba que todos los scripts de la PWA (y el Service Worker) se puedan analizar: un error de sintaxis en cualquiera
-// rompe la app entera porque se cargan en orden desde index.html.
 import { execFileSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";

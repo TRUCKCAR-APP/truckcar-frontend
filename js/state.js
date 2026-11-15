@@ -1,7 +1,6 @@
 class TruckCarStore {
     constructor() {
         this.state = {
-            // Sesión y sincronización con el backend (api-gateway)
             isAuthenticated: false,
             currentUser: null,
             sessionRole: null,
@@ -22,9 +21,7 @@ class TruckCarStore {
             tripAccepted: true,
             tripCompleted: false,
             alertFilter: 'all',
-            activeModal: null,
-            // Canal de despacho local: aún no existe un servicio de mensajería en el backend.
-            chatMessages: []
+            activeModal: null
         };
         
         this.listeners = [];

@@ -1,20 +1,6 @@
-/**
- * Ruta del viaje activo guardada en el dispositivo (IndexedDB "truckcar-route"), para seguir guiando sin señal.
- *
- * Al aceptar o iniciar un viaje, la guía (navigation.js) guarda aquí la geometría, las maniobras, las restricciones de
- * gálibo y peso de la ruta elegida y las restricciones vecinas del corredor ampliado. Si la app se recarga o se abre
- * sin conexión con el viaje en curso, la guía se restaura desde este registro: siguen las instrucciones, el aviso de
- * las restricciones a 3 km (pantalla y voz) y, fuera de ruta, el aviso de los puentes bajos cercanos.
- *
- * Un registro por carga: { loadId, driverId, load, driver, key, source, geometry, steps, totalM, durationS, choice,
- * clearance, nearby, avoidPoints, savedAt }. load (la carga tal como la devolvió /loads/mine) y driver (el perfil del
- * propio conductor) permiten reabrir el viaje sin red: dataService los usa si /loads/mine o el perfil no responden.
- * Todo queda en el dispositivo del conductor y se borra al entregar o al cerrar sesión.
- */
 (function (scope) {
     const DB_NAME = 'truckcar-route';
     const STORE = 'trips';
-    // Un viaje guardado hace más de 3 días ya no es el viaje en curso.
     const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
     let dbPromise = null;
@@ -43,7 +29,6 @@
         }));
     }
 
-    /** Copia sin funciones ni referencias circulares (IndexedDB guarda con structured clone). */
     function plain(value) {
         return value == null ? null : JSON.parse(JSON.stringify(value));
     }
@@ -51,7 +36,6 @@
     const RouteStore = {
         MAX_AGE_MS,
 
-        /** Guarda (o reemplaza) la ruta del viaje de la carga. Nunca lanza: sin IndexedDB la guía sigue en memoria. */
         async save(loadId, route, extra = {}) {
             if (loadId == null || !route || !Array.isArray(route.geometry)) return false;
             try {
@@ -78,7 +62,6 @@
             }
         },
 
-        /** La ruta guardada de la carga, o null si no hay, no se puede leer o es de hace más de 3 días. */
         async load(loadId, now = Date.now()) {
             if (loadId == null) return null;
             try {
@@ -89,7 +72,6 @@
             }
         },
 
-        /** El viaje guardado más reciente del conductor (para reabrir la app sin red), o null. */
         async latest(driverId, now = Date.now()) {
             try {
                 const records = (await run('readonly', store => store.getAll())) || [];
@@ -101,13 +83,11 @@
             }
         },
 
-        /** Borra la ruta guardada (viaje entregado o cancelado). */
         async clear(loadId) {
             try {
                 if (loadId == null) await run('readwrite', store => store.clear());
                 else await run('readwrite', store => store.delete(loadId));
             } catch (e) {
-                // Sin IndexedDB no hay nada que borrar.
             }
         }
     };

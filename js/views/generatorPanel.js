@@ -1,28 +1,4 @@
-/**
- * Panel del generador de carga (rol COORDINADOR): publicar cargas y seguir sus envíos.
- * La empresa generadora es el usuario autenticado: el backend fija generatorCompanyId = X-Auth-User.
- */
 window.GeneratorPanel = (function () {
-    /** Ciudades con su departamento y coordenadas: el backend exige latitud y longitud de origen y destino. */
-    const CITIES = [
-        ['Bogotá', 'Cundinamarca', 4.6097, -74.0817], ['Medellín', 'Antioquia', 6.2442, -75.5812],
-        ['Cali', 'Valle del Cauca', 3.4516, -76.5320], ['Barranquilla', 'Atlántico', 10.9685, -74.7813],
-        ['Cartagena', 'Bolívar', 10.3910, -75.4794], ['Bucaramanga', 'Santander', 7.1193, -73.1227],
-        ['Cúcuta', 'Norte de Santander', 7.8939, -72.5078], ['Pereira', 'Risaralda', 4.8133, -75.6961],
-        ['Manizales', 'Caldas', 5.0703, -75.5138], ['Armenia', 'Quindío', 4.5339, -75.6811],
-        ['Ibagué', 'Tolima', 4.4389, -75.2322], ['Villavicencio', 'Meta', 4.1420, -73.6266],
-        ['Tunja', 'Boyacá', 5.5353, -73.3678], ['Sogamoso', 'Boyacá', 5.7146, -72.9339],
-        ['Neiva', 'Huila', 2.9273, -75.2819], ['Santa Marta', 'Magdalena', 11.2408, -74.1990],
-        ['Buenaventura', 'Valle del Cauca', 3.8801, -77.0312], ['Pasto', 'Nariño', 1.2136, -77.2811],
-        ['Montería', 'Córdoba', 8.7479, -75.8814], ['Valledupar', 'Cesar', 10.4631, -73.2532]
-    ].map(([city, department, latitude, longitude]) => ({ city, department, latitude, longitude }));
-
-    const TRUCK_TYPES = [
-        ['TRACTOMULA_3S3', 'Tractomula 3S3'], ['MINIMULA', 'Minimula'], ['DOBLETROQUE', 'Doble troque'],
-        ['CUATRO_MANOS', 'Cuatro manos'], ['SENCILLO', 'Sencillo'], ['TURBO', 'Turbo'], ['REFRIGERADO', 'Refrigerado']
-    ];
-
-    /** Status visible para el generador: mientras la carga está AVAILABLE manda el estado de la asignación. */
     const STATUS = {
         AVAILABLE: { label: 'Disponible', text: 'Buscando conductor', tone: '' },
         PROPOSED: { label: 'Propuesta', text: 'Propuesta a conductor', tone: '' },
@@ -33,7 +9,8 @@ window.GeneratorPanel = (function () {
         DELIVERED: { label: 'Entregada', text: 'Entregada', tone: 'ok' },
         CANCELLED: { label: 'Cancelada', text: 'Cancelada', tone: '' }
     };
-    const truckTypeLabel = (code) => (TRUCK_TYPES.find(([key]) => key === code) || [code, code || '—'])[1];
+    const truckTypeLabel = (code) => window.TruckCarService.truckTypeLabel(code) || window.ui.orNotAvailable(code);
+    const cities = () => window.TruckCarService.cityCatalog();
     const FILTERS = ['ALL', 'AVAILABLE', 'PROPOSED', 'NOTIFIED', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'];
 
     function statusKey(load) {
@@ -43,16 +20,11 @@ window.GeneratorPanel = (function () {
         return 'AVAILABLE';
     }
 
-    /** Los filtros agrupan "sin conductor" con AVAILABLE: ambos siguen esperando asignación. */
     function filterKey(load) {
         const key = statusKey(load);
         return key === 'NO_DRIVERS' ? 'AVAILABLE' : key;
     }
 
-    /**
-     * Conductor vigente: el de una propuesta activa o el que aceptó la carga. Tras un rechazo o vencimiento
-     * la carga conserva el último conductor propuesto, que ya no corresponde mostrar.
-     */
     function currentDriver(load) {
         const key = statusKey(load);
         const relevant = ['PROPOSED', 'NOTIFIED', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED'].includes(key)
@@ -62,7 +34,6 @@ window.GeneratorPanel = (function () {
             : null;
     }
 
-    /** Estado como texto con un punto; "sin conductor" es una advertencia: triángulo y texto. Sin chips teñidos. */
     function badge(load) {
         const status = STATUS[statusKey(load)];
         const mark = status.tone === 'warn'
@@ -81,23 +52,22 @@ window.GeneratorPanel = (function () {
         { title: 'Precio', icon: 'fa-coins', fields: ['offeredBudget'] }
     ];
 
-    /** Ciudad del catálogo por nombre, sin importar mayúsculas ni tildes (lo que se escribe en el autocompletado). */
     function findCity(name) {
         const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-        return CITIES.find(c => norm(c.city) === norm(name)) || null;
+        return cities().find(c => norm(c.city) === norm(name)) || null;
     }
 
-    /** Errores por campo (validación en vivo y al avanzar de paso). */
     function validate(d) {
         const errors = {};
         if (!String(d.cargoDescription || '').trim()) errors.cargoDescription = 'Describa la carga.';
         const weight = Number(d.weightTons);
         if (!(weight > 0)) errors.weightTons = 'Debe ser mayor a 0 t.';
-        else if (weight > 60) errors.weightTons = 'Máximo 60 t por vehículo.';
-        if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) >= 0)) errors.volumeM3 = 'Volumen inválido.';
-        if (!findCity(d.originCity)) errors.originCity = 'Elija una ciudad de la lista.';
-        if (!findCity(d.destinationCity)) errors.destinationCity = 'Elija una ciudad de la lista.';
-        else if (findCity(d.originCity) === findCity(d.destinationCity)) errors.destinationCity = 'Debe ser distinto del origen.';
+        if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) > 0)) errors.volumeM3 = 'Debe ser mayor a 0 m³ o quedar vacío.';
+        const from = findCity(d.originCity);
+        const to = findCity(d.destinationCity);
+        if (!from) errors.originCity = 'Elija una ciudad de la lista.';
+        if (!to) errors.destinationCity = 'Elija una ciudad de la lista.';
+        else if (from && from.city === to.city) errors.destinationCity = 'Debe ser distinto del origen.';
         if (!(Number(d.offeredBudget) >= 1000)) errors.offeredBudget = 'Mínimo 1.000 COP.';
         return errors;
     }
@@ -134,13 +104,13 @@ window.GeneratorPanel = (function () {
              ${field('cargoDescription', 'Descripción de la carga', `<input name="cargoDescription" value="${esc(d.cargoDescription)}" maxlength="255" class="login-input w-full text-xs" placeholder="Ej. Cemento ensacado, 600 bultos" enterkeyhint="next">`, { ...opts, required: true })}
              <div class="grid grid-cols-2 gap-2">
                 ${field('weightTons', 'Peso (t)', `<input name="weightTons" type="number" inputmode="decimal" min="0.1" step="0.1" value="${esc(d.weightTons)}" class="login-input w-full text-xs" placeholder="30">`, { ...opts, required: true })}
-                ${field('volumeM3', 'Volumen (m³)', `<input name="volumeM3" type="number" inputmode="decimal" min="0" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">`, opts)}
+                ${field('volumeM3', 'Volumen (m³)', `<input name="volumeM3" type="number" inputmode="decimal" min="0.1" step="0.1" value="${esc(d.volumeM3)}" class="login-input w-full text-xs" placeholder="Opcional">`, opts)}
              </div>
-             ${field('requiredTruckType', 'Tipo de camión requerido', `<select name="requiredTruckType" class="login-input w-full text-xs">${TRUCK_TYPES.map(([value, text]) => `<option value="${value}" ${value === d.requiredTruckType ? 'selected' : ''}>${text}</option>`).join('')}</select>`, { ...opts, required: true })}`,
-            `<datalist id="truckcar-cities">${CITIES.map(c => `<option value="${c.city}">${c.department}</option>`).join('')}</datalist>
+             ${field('requiredTruckType', 'Tipo de camión requerido', `<select name="requiredTruckType" class="login-input w-full text-xs">${window.TruckCarService.truckTypes().map(t => `<option value="${t.code}" ${t.code === d.requiredTruckType ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`, { ...opts, required: true })}`,
+            `<datalist id="truckcar-cities">${cities().map(c => `<option value="${esc(c.city)}">${esc(c.department)}</option>`).join('')}</datalist>
              ${field('originCity', 'Origen', `<input name="originCity" list="truckcar-cities" value="${esc(d.originCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
              ${field('destinationCity', 'Destino', `<input name="destinationCity" list="truckcar-cities" value="${esc(d.destinationCity)}" autocomplete="off" class="login-input w-full text-xs" placeholder="Escriba una ciudad">`, { ...opts, required: true })}
-             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot"></i> ${origin && destination && origin !== destination
+             <p class="text-[11px] text-slate-400 leading-snug"><i class="fas fa-location-dot"></i> ${origin && destination && origin.city !== destination.city
                 ? esc(origin.city + ', ' + origin.department + ' → ' + destination.city + ', ' + destination.department)
                 : 'Las coordenadas del trayecto salen del catálogo de ciudades.'}</p>`,
             `${field('offeredBudget', 'Presupuesto ofrecido (COP)', `<input name="offeredBudget" type="number" inputmode="numeric" min="1000" step="1000" value="${esc(d.offeredBudget)}" class="login-input w-full text-xs" placeholder="5000000" enterkeyhint="done">`, { ...opts, required: true })}
@@ -243,7 +213,6 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    /** Paso en curso: aún no ocurrió, pero sí se sabe qué está pasando (no solo "Pendiente"). */
     function progressItem(icon, title, when, detail) {
         const esc = window.ui.escape;
         return `
@@ -257,10 +226,6 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    /**
-     * Entre publicar y aceptar: a quién se le propuso, si se busca otro conductor o si no hay disponibles. Lo decide
-     * el motor de asignación (Load-Allocation assignmentStatus); "Mis envíos" se refresca cada 10 s.
-     */
     function matchingStep(load) {
         if (load.status !== 'AVAILABLE') return '';
         const raw = load.raw || {};
@@ -277,7 +242,7 @@ window.GeneratorPanel = (function () {
                 return progressItem('fa-rotate', 'Buscando otro conductor', changed, 'el anterior no respondió a tiempo');
             case 'UNASSIGNED_NO_DRIVERS':
                 return progressItem('fa-triangle-exclamation', 'Sin conductores disponibles', changed,
-                    'el motor vuelve a intentar cada 2 minutos');
+                    'el motor vuelve a intentar');
             default:
                 return progressItem('fa-magnifying-glass', 'Buscando conductor', null, 'el motor de asignación evalúa la flota');
         }
@@ -296,6 +261,7 @@ window.GeneratorPanel = (function () {
         const status = STATUS[statusKey(load)];
         const cancelled = load.status === 'CANCELLED';
         const assigned = ['ASSIGNED', 'IN_TRANSIT', 'DELIVERED'].includes(load.status);
+        const allowed = window.TruckCarService.loadActions(load);
         return `
             <div class="card p-4 flex flex-col gap-3 overflow-y-auto">
                 <div class="flex items-start justify-between gap-2">
@@ -307,7 +273,7 @@ window.GeneratorPanel = (function () {
                     ${badge(load)}
                 </div>
                 <div id="generator-map-container" class="h-44 rounded-xl overflow-hidden border border-slate-800 shrink-0" aria-label="Mapa del envío"></div>
-                ${load.status === 'ASSIGNED' || load.status === 'IN_TRANSIT' ? `
+                ${allowed.trackTruck ? `
                     <div class="flex items-center justify-between gap-2 text-[10px]">
                         <p id="shipment-truck-line" class="text-slate-200 truncate">${truckLine(truck)}</p>
                         <span data-telemetry-status class="shrink-0 flex items-center gap-1 text-slate-400"></span>
@@ -329,15 +295,15 @@ window.GeneratorPanel = (function () {
                                 load.podReceiverName ? 'recibió ' + load.podReceiverName : '')}
                 </ol>
                 <div class="flex flex-col gap-2 pt-1">
-                    ${load.status === 'DELIVERED' ? `
+                    ${allowed.viewProofOfDelivery ? `
                         <button onclick="window.generatorCtrl.showProofOfDelivery(${load.backendId})" class="w-full py-2.5 bg-accent-500 hover:bg-accent-600 text-graphite-950 rounded-xl text-xs font-bold">
                             <i class="fas fa-file-signature"></i> Ver prueba de entrega (POD)
                         </button>` : ''}
-                    ${load.status !== 'CANCELLED' ? `
+                    ${allowed.shareTracking ? `
                         <button onclick="window.generatorCtrl.shareTracking(${load.backendId})" class="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold">
                             <i class="fas fa-link"></i> Generar enlace de seguimiento público
                         </button>` : ''}
-                    ${load.status === 'AVAILABLE' || load.status === 'ASSIGNED' ? `
+                    ${allowed.cancel ? `
                         <button onclick="window.generatorCtrl.cancel(${load.backendId})" ${state.busyAction === 'cancel' ? 'disabled' : ''} class="w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-white border border-slate-700 rounded-xl text-xs font-bold">
                             <i class="fas ${state.busyAction === 'cancel' ? 'fa-spinner fa-spin' : 'fa-ban'}"></i> Cancelar envío
                         </button>` : ''}
@@ -346,12 +312,11 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    /** Estado del camión del envío; se actualiza por DOM con cada posición en vivo (sin re-render). */
     function truckLine(truck) {
         const esc = window.ui.escape;
         if (!truck || !truck.coords) return '<i class="fas fa-satellite-dish"></i> Esperando la posición del camión…';
         const heading = typeof truck.heading === 'number' ? ' · rumbo ' + Math.round(truck.heading) + '°' : '';
-        return `<i class="fas fa-location-crosshairs"></i> ${esc(truck.plate)} · ${truck.speed} km/h${heading} · posición ${esc(truck.lastCheckin)}`;
+        return `<i class="fas fa-location-crosshairs"></i> ${esc(truck.plate)} · ${esc(window.ui.speedText(truck.speed))}${heading} · posición ${esc(truck.lastCheckin)}`;
     }
 
     function updateTruckLine(truck) {
@@ -364,9 +329,8 @@ window.GeneratorPanel = (function () {
         return loads.find(l => l.backendId === state.selectedShipmentId) || null;
     }
 
-    /** Camión a seguir en el mapa: solo mientras la carga está aceptada o en ruta. */
     function truckFor(load) {
-        if (!load || !load.assignedDriverId || !['ASSIGNED', 'IN_TRANSIT'].includes(load.status)) return null;
+        if (!load || !load.assignedDriverId || !window.TruckCarService.loadActions(load).trackTruck) return null;
         const tracked = (window.TruckCarData.shipmentTrucks || {})[load.assignedDriverId];
         return tracked || (window.TruckCarData.fleetVehicles || []).find(t => t.driverId === load.assignedDriverId) || null;
     }
@@ -376,7 +340,7 @@ window.GeneratorPanel = (function () {
         const loads = window.TruckCarData.publishedLoads || [];
         const load = selectedLoad(state);
         const user = state.currentUser;
-        const active = loads.filter(l => ['ASSIGNED', 'IN_TRANSIT'].includes(l.status)).length;
+        const active = loads.filter(l => window.TruckCarService.loadActions(l).trackTruck).length;
         const delivered = loads.filter(l => l.status === 'DELIVERED').length;
         return `
             <div class="h-full w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
@@ -390,7 +354,7 @@ window.GeneratorPanel = (function () {
                             <p class="text-xs text-slate-400 truncate flex items-center gap-2"><span data-network-status class="lg:hidden"></span> Última ${state.dataStatus.lastSync ? new Date(state.dataStatus.lastSync).toLocaleTimeString('es-CO') : '—'}</p>
                         </div>
                     </div>
-                    ${state.sessionRole === 'GENERADOR' ? '' : window.CoordinatorPanel.renderTabs(state)}
+                    ${window.TruckCarService.roleAccess(state.sessionRole).shipmentsOnly ? '' : window.CoordinatorPanel.renderTabs(state)}
                     <div class="flex items-center gap-3">
                         <div class="px-3 py-1.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-center">
                             <span class="text-xs text-slate-400 font-medium block">En curso</span>
@@ -414,7 +378,7 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    return { render, selectedLoad, truckFor, updateTruckLine, CITIES, FORM_STEPS, findCity, validate, matchingStep };
+    return { render, selectedLoad, truckFor, updateTruckLine, FORM_STEPS, findCity, validate, matchingStep };
 })();
 
 window.generatorCtrl = (function () {
@@ -427,21 +391,19 @@ window.generatorCtrl = (function () {
     function defaultDraft() {
         const user = window.store.state.currentUser;
         let company = '';
-        try { company = localStorage.getItem('truckcar.generatorCompanyName') || ''; } catch (e) { /* sin almacenamiento */ }
+        try { company = localStorage.getItem('truckcar.generatorCompanyName') || ''; } catch (e) { }
         return {
             generatorCompanyName: company || (user ? (user.firstName + ' ' + user.lastName).trim() : ''),
-            cargoDescription: '', weightTons: '', volumeM3: '', requiredTruckType: 'TRACTOMULA_3S3',
-            originCity: 'Bogotá', destinationCity: 'Cali', offeredBudget: ''
+            cargoDescription: '', weightTons: '', volumeM3: '', requiredTruckType: window.TruckCarService.truckTypes()[0].code,
+            originCity: '', destinationCity: '', offeredBudget: ''
         };
     }
 
     const city = (name) => window.GeneratorPanel.findCity(name);
 
     return {
-        /** Borrador del formulario: sobrevive a los re-render del refresco automático. */
         draft() {
             if (!draft) draft = defaultDraft();
-            // El perfil puede llegar después del primer render (p. ej. justo tras registrarse).
             if (!draft.generatorCompanyName && !companyEdited) {
                 draft.generatorCompanyName = defaultDraft().generatorCompanyName;
             }
@@ -451,10 +413,6 @@ window.generatorCtrl = (function () {
         step() { return step; },
         touched() { return touched; },
 
-        /**
-         * Guarda lo escrito sin re-renderizar (el foco y el teclado no se pierden) y valida en vivo el campo que el
-         * usuario ya tocó: el mensaje se escribe directamente en su pista.
-         */
         updateDraft(event) {
             const target = event.target;
             if (target && target.name && Object.hasOwn(this.draft(), target.name)) {
@@ -471,7 +429,7 @@ window.generatorCtrl = (function () {
             touched.add(target.name);
             const city = (target.name === 'originCity' || target.name === 'destinationCity') && window.GeneratorPanel.findCity(target.value);
             if (city && city.city !== target.value) {
-                target.value = city.city; // normaliza "bogota" -> "Bogotá"
+                target.value = city.city;
                 draft[target.name] = city.city;
             }
             this.showFieldErrors(target.form);
@@ -493,14 +451,12 @@ window.generatorCtrl = (function () {
             if (index > step && !this.validateStep()) return;
             step = Math.max(0, Math.min(2, index));
             window.store.setState({ generatorFormError: null });
-            // Solo el cambio de paso se anima (no los re-render del refresco automático).
             const panel = document.querySelector('[data-form-step]');
             if (panel) panel.classList.add('screen-enter');
         },
         nextStep() { this.goToStep(step + 1); },
         prevStep() { this.goToStep(step - 1); },
 
-        /** Avanza solo si los campos del paso actual son válidos; si no, los marca y enfoca el primero. */
         validateStep() {
             const errors = window.GeneratorPanel.validate(this.draft());
             const fields = window.GeneratorPanel.FORM_STEPS[step].fields;
@@ -514,10 +470,6 @@ window.generatorCtrl = (function () {
             return false;
         },
 
-        /**
-         * Enlace de seguimiento público: Load-Allocation firma un token (vence a las 48 h o 6 h después de la entrega)
-         * y devuelve la URL de la PWA que lo abre sin sesión. La hoja muestra la URL real y su vencimiento.
-         */
         async shareTracking(loadId) {
             if (sharing) return;
             sharing = true;
@@ -586,8 +538,6 @@ window.generatorCtrl = (function () {
             window.store.setState({ busyAction: 'publish', generatorFormError: null });
             try {
                 const created = await window.TruckCarService.publishLoad({
-                    // El backend reemplaza este valor por el id del usuario autenticado (X-Auth-User).
-                    generatorCompanyId: user ? user.id : undefined,
                     generatorCompanyName: companyName,
                     cargoDescription: d.cargoDescription.trim(),
                     weightTons: weight,
@@ -599,14 +549,13 @@ window.generatorCtrl = (function () {
                     destinationLatitude: destination.latitude, destinationLongitude: destination.longitude,
                     offeredBudget: budget
                 });
-                try { localStorage.setItem('truckcar.generatorCompanyName', companyName); } catch (e) { /* sin almacenamiento */ }
+                try { localStorage.setItem('truckcar.generatorCompanyName', companyName); } catch (e) { }
                 draft = { ...defaultDraft(), requiredTruckType: d.requiredTruckType, originCity: d.originCity, destinationCity: d.destinationCity };
                 step = 0;
                 touched = new Set();
                 window.Native.haptic('success');
                 window.store.setState({ busyAction: null, selectedShipmentId: created.backendId, shipmentFilter: 'ALL' });
                 window.ui.toast(created.id + ' publicada. El motor de asignación ya busca conductor.', 'success');
-                // El matching es asíncrono: a los pocos segundos la carga suele pasar a PROPOSED/NOTIFIED.
                 setTimeout(() => this.refresh(true), 4000);
             } catch (err) {
                 window.store.setState({ busyAction: null, generatorFormError: 'No se pudo publicar: ' + window.ui.errorMessage(err) });
@@ -622,7 +571,6 @@ window.generatorCtrl = (function () {
         },
 
         async refresh(silent) {
-            // Un refresco programado (p. ej. tras publicar) puede dispararse después de cerrar la sesión.
             if (!window.store.state.isAuthenticated) return;
             await window.TruckCarService.refreshShipments();
             window.store.setState({ dataStatus: { ...window.store.state.dataStatus, lastSync: new Date().toISOString() } });

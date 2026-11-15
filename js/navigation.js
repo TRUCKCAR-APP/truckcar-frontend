@@ -1,69 +1,39 @@
-/**
- * Navegación paso a paso sobre la ruta real de la carga en tránsito.
- *
- *  - Ruta: los puntos del plan de Route-AI (o el origen y destino de la carga si el plan no llegó) se envían a OSRM con
- *    steps=true; cada maniobra (giro, glorieta, incorporación, llegada) se traduce a una instrucción en español.
- *  - Progreso: cada posición de la telemetría se proyecta sobre la geometría de la ruta. Con eso se sabe la maniobra
- *    siguiente, la distancia hasta ella y lo que falta hasta el destino.
- *  - Fuera de ruta (> 250 m de la línea) se recalcula desde la posición actual hasta el destino (máx. 1 cada 30 s).
- *
- *  - Sin señal: la ruta elegida (geometría, maniobras y restricciones) se guarda en IndexedDB (routeStore.js). Si OSRM
- *    no responde al reabrir la app, la guía se restaura desde ahí y siguen los avisos de restricciones a 3 km.
- *  - Restricciones vecinas: además de las de la ruta, se piden las de un corredor ampliado (500 m). Fuera de ruta (y
- *    sin señal para recalcular) la posición se compara con ellas y se avisa de los puentes bajos cercanos.
- *  - Bloqueos de la IA: route-ai-agent detecta en una alerta de la comunidad que la vía está cerrada y fleets-drivers
- *    lo reenvía por /topic/road-blockages. Si el punto cae sobre lo que falta de ruta, el HUD y la voz lo anuncian y se
- *    recalcula de inmediato con alternativas que no pasen por el bloqueo y validadas contra gálibo y peso.
- *
- * La vista no se re-renderiza en cada posición (destruiría el mapa): renderHud() actualiza el HUD en sitio.
- */
 window.RouteGuidance = (function () {
-    const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving/';
     const OFF_ROUTE_M = 250;
     const REROUTE_COOLDOWN_MS = 30000;
-    // Restricciones de la ruta (Routing-Restrictions): se anuncian una vez al quedar a 3 km o menos.
     const CLEARANCE_ANNOUNCE_M = 3000;
     const CLEARANCE_MAX_POINTS = 400;
-    // OSRM devuelve hasta 3 rutas con alternatives=true (solo entre dos puntos: con puntos intermedios no hay alternativas).
     const MAX_ALTERNATIVES = 3;
     const ARRIVED_M = 60;
     const NEAR_ANNOUNCE_M = 300;
-    // Corredor ampliado de las restricciones vecinas (máximo que admite /validate-route).
     const NEARBY_CORRIDOR_M = 500;
-    // Un bloqueo de la IA afecta la ruta si está a esta distancia o menos de lo que falta por recorrer.
     const BLOCKAGE_NEAR_M = 150;
-    // Desvío lateral (en grados, ~3 km) de los puntos de paso que se prueban si ninguna alternativa evita el bloqueo.
     const DETOUR_OFFSET_DEG = 0.03;
-    // Con la ruta restaurada sin señal, se vuelve a intentar OSRM como mucho una vez por minuto.
     const RETRY_ONLINE_MS = 60000;
-    // Desvío limpio: la confirmación verde de la IA se retira sola (el HUD no debe crecer hasta tapar el panel).
     const AI_ALERT_OK_MS = 20000;
 
-    // { key, source, geometry, cumulative, steps, totalM, durationS, choice: { evaluated, index, restricted, blocking } }
     let route = null;
-    let status = 'idle';       // idle | loading | ready | unavailable
-    let progress = null;       // { stepIndex, toNextM, remainingM, offRoute, arrived, position }
+    let status = 'idle';
+    let progress = null;
     let pendingKey = null;
     let lastReroute = 0;
     const announced = new Set();
     const listeners = new Set();
-    // { key, status: checking | ok | found | unavailable | no-vehicle, items: [{ id, kind, alongM, text, sub, spoken }] }
     let clearance = null;
-    let loadId = null;           // carga de la ruta actual (clave del registro guardado)
+    let wakeLock = null;
+    let loadId = null;
     let currentLoad = null;
-    let nearby = [];             // restricciones del corredor ampliado que incumple el vehículo, con su posición
-    let avoidPoints = [];        // bloqueos de la IA que la ruta debe evitar: [{ lat, lng, alertId }]
-    let aiAlert = null;          // aviso del HUD: { text, sub, warning }
+    let nearby = [];
+    let avoidPoints = [];
+    let aiAlert = null;
     const handledBlockages = new Set();
     let lastNetworkTry = 0;
     let aiAlertTimer = null;
-    // Avisos del HUD: como máximo MAX_HUD_ALERTS a la vista; el resto en "+N avisos" (se despliega al tocarlo).
     const MAX_HUD_ALERTS = 2;
     const EXPANDED_ALERTS_MS = 15000;
     let alertsExpanded = false;
     let expandedTimer = null;
 
-    // ------------------------------------------------------------------ geometría
     const toRad = (deg) => deg * Math.PI / 180;
 
     function distanceM(a, b) {
@@ -73,14 +43,12 @@ window.RouteGuidance = (function () {
         return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
     }
 
-    /** Proyección del punto sobre la polilínea: distancia recorrida a lo largo de ella y separación de la línea. */
     function project(geometry, cumulative, point) {
         const cos = Math.cos(toRad(point[0]));
         let best = { alongM: 0, offM: Infinity };
         for (let i = 1; i < geometry.length; i++) {
             const a = geometry[i - 1];
             const b = geometry[i];
-            // Plano local equirectangular: suficiente para tramos de pocos km.
             const ax = a[1] * cos, ay = a[0], bx = b[1] * cos, by = b[0], px = point[1] * cos, py = point[0];
             const dx = bx - ax, dy = by - ay;
             const len2 = dx * dx + dy * dy;
@@ -94,7 +62,6 @@ window.RouteGuidance = (function () {
         return best;
     }
 
-    // ------------------------------------------------------------------ instrucciones
     const MODIFIERS = {
         right: 'a la derecha', left: 'a la izquierda', 'slight right': 'ligeramente a la derecha',
         'slight left': 'ligeramente a la izquierda', 'sharp right': 'cerrado a la derecha',
@@ -112,7 +79,6 @@ window.RouteGuidance = (function () {
         const road = street(step);
         const via = road ? ' por ' + road : '';
         const toward = road ? ' hacia ' + road : '';
-        // OSRM marca los retornos como turn, continue o new name con modificador uturn.
         if (m.modifier === 'uturn' && m.type !== 'arrive' && m.type !== 'depart') return 'Haga un giro en U' + via;
         switch (m.type) {
             case 'depart': return 'Inicie el recorrido' + via;
@@ -142,7 +108,6 @@ window.RouteGuidance = (function () {
         return 'fa-arrow-up';
     }
 
-    /** Ícono de Phosphor (assets/icons.svg) de la maniobra, para el HUD. Distingue giro, giro leve, retorno y glorieta. */
     function glyph(step) {
         const m = step.maneuver || {};
         const mod = m.modifier || '';
@@ -157,13 +122,6 @@ window.RouteGuidance = (function () {
         return 'arrow-up';
     }
 
-    /** Tiempo restante en texto ("2 h 16 min"). */
-    function formatDuration(seconds) {
-        if (seconds == null || !Number.isFinite(seconds)) return '—';
-        const minutes = Math.max(1, Math.round(seconds / 60));
-        return minutes >= 60 ? Math.floor(minutes / 60) + ' h ' + (minutes % 60) + ' min' : minutes + ' min';
-    }
-
     function formatDistance(m) {
         if (m == null || !Number.isFinite(m)) return '—';
         if (m < 1000) return Math.max(10, Math.round(m / 10) * 10) + ' m';
@@ -174,7 +132,6 @@ window.RouteGuidance = (function () {
         return m < 1000 ? 'En ' + Math.max(50, Math.round(m / 50) * 50) + ' metros, ' : 'En ' + formatDistance(m).replace(' km', ' kilómetros') + ', ';
     }
 
-    // ------------------------------------------------------------------ ruta
     function waypointsFor(load) {
         const routes = window.TruckCarData.routes;
         const plan = routes && routes.optimal && routes.optimal.waypoints && routes.optimal.waypoints.length >= 2
@@ -184,15 +141,10 @@ window.RouteGuidance = (function () {
         return points.length >= 2 ? { key: 'CARGA-' + load.backendId, source: 'carga', points } : null;
     }
 
-    /** Rutas de OSRM entre los puntos: la principal y, entre dos puntos, hasta dos alternativas, en el orden de OSRM. */
     async function requestRoutes(points) {
-        const url = OSRM_URL + points.map(c => c[1] + ',' + c[0]).join(';')
-            + '?overview=full&geometries=geojson&steps=true' + (points.length === 2 ? '&alternatives=true' : '');
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('OSRM ' + response.status);
-        const json = await response.json();
-        const routes = (json.routes || []).filter(r => r && r.geometry && r.legs).slice(0, MAX_ALTERNATIVES);
-        if (!routes.length) throw new Error('OSRM sin ruta');
+        const found = await window.TruckCarApi.routing.drivingRoutes(points, { steps: true, alternatives: points.length === 2 });
+        const routes = found.filter(r => r.legs).slice(0, MAX_ALTERNATIVES);
+        if (!routes.length) throw new Error('El servicio de rutas no devolvió maniobras');
         return routes;
     }
 
@@ -203,7 +155,6 @@ window.RouteGuidance = (function () {
             return acc;
         }, []);
         const raw = osrm.legs.flatMap(leg => leg.steps || []);
-        // Las llegadas intermedias (fin de cada tramo) no son maniobras para el conductor: solo cuenta la final.
         const kept = raw.filter((s, i) => !(s.maneuver && s.maneuver.type === 'arrive' && i < raw.length - 1));
         let start = 0;
         const steps = kept.map((s, i) => {
@@ -223,11 +174,10 @@ window.RouteGuidance = (function () {
     }
 
     function notify() {
-        listeners.forEach(listener => { try { listener(snapshot()); } catch (e) { /* listener roto */ } });
+        listeners.forEach(listener => { try { listener(snapshot()); } catch (e) { } });
         renderHud();
     }
 
-    /** Prepara la ruta de la carga activa (una vez por plan). Idempotente mientras la carga y el plan no cambien. */
     async function prepare(load) {
         if (!load) return;
         if (loadId !== load.backendId) {
@@ -264,6 +214,7 @@ window.RouteGuidance = (function () {
             if (restoredBefore) announced.clear();
             useRoute(chosen, candidates);
             status = 'ready';
+            acquireWakeLock();
             announceChoice(chosen);
             persist();
             refreshNearby(chosen);
@@ -289,7 +240,6 @@ window.RouteGuidance = (function () {
         }
     }
 
-    /** Recalcula desde la posición actual hasta el destino cuando el conductor se sale de la ruta. */
     async function reroute(position) {
         if (!route || Date.now() - lastReroute < REROUTE_COOLDOWN_MS) return;
         lastReroute = Date.now();
@@ -308,11 +258,9 @@ window.RouteGuidance = (function () {
             refreshNearby(chosen);
             update({ coords: position });
         } catch (e) {
-            // Sin OSRM se sigue mostrando la ruta anterior con el aviso de fuera de ruta.
         }
     }
 
-    /** Nueva posición (GPS real, o la simulación si se activó en las herramientas de prueba). */
     function update(point) {
         if (!point || !point.coords) return;
         if (!route) {
@@ -355,7 +303,6 @@ window.RouteGuidance = (function () {
         notify();
     }
 
-    /** Hasta CLEARANCE_MAX_POINTS puntos de la geometría, siempre con el primero y el último. */
     function samplePath(geometry) {
         if (geometry.length <= CLEARANCE_MAX_POINTS) return geometry.slice();
         const step = (geometry.length - 1) / (CLEARANCE_MAX_POINTS - 1);
@@ -365,12 +312,11 @@ window.RouteGuidance = (function () {
     const metres = (value) => Number(value).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const tons = (value) => Number(value).toLocaleString('es-CO', { maximumFractionDigits: 1 });
 
-    /** Texto de una restricción de la ruta, con lo que mide o pesa este vehículo. */
     function clearanceItem(item, vehicle, warning) {
         const r = item.restriction || {};
         const base = { id: r.id, kind: item.kind, alongM: item.alongRouteMeters, warning,
             lat: Number.isFinite(r.latitude) ? r.latitude : null, lng: Number.isFinite(r.longitude) ? r.longitude : null };
-        const title = r.title || 'Restricción vial';
+        const title = window.ui.orNotAvailable(r.title);
         if (item.kind === 'GALIBO_ALTURA') {
             return { ...base, text: 'Gálibo de ' + metres(r.maxClearanceMeters) + ' m',
                 sub: 'su vehículo mide ' + metres(vehicle.height) + ' m',
@@ -392,11 +338,6 @@ window.RouteGuidance = (function () {
         return vehicle && Number.isFinite(vehicle.height) && Number.isFinite(vehicle.grossWeight) ? vehicle : null;
     }
 
-    /**
-     * Pide a Routing-Restrictions las restricciones activas a lo largo de la geometría real de una ruta (la de OSRM), con
-     * la altura y el peso bruto del vehículo registrado. Devuelve el estado y las restricciones que incumple (blocking) o
-     * que solo informan (warnings). Sin vehículo o sin respuesta no se inventa nada.
-     */
     async function validateRoute(candidate, corridorMeters) {
         const vehicle = currentVehicle();
         const api = window.TruckCarApi && window.TruckCarApi.restrictions;
@@ -421,11 +362,6 @@ window.RouteGuidance = (function () {
         }
     }
 
-    /**
-     * Elige la ruta para el camión: valida todas las alternativas contra Routing-Restrictions y toma la primera, en el
-     * orden de OSRM, que no incumpla ningún gálibo ni límite de peso. Si todas incumplen, la de menor impacto: menos
-     * restricciones incumplidas y, a igualdad, la más corta. Sin vehículo o sin Routing-Restrictions, la principal.
-     */
     async function chooseRoute(candidates) {
         const results = await Promise.all(candidates.map(candidate => validateRoute(candidate)));
         const checked = results.every(r => r.status === 'ok' || r.status === 'found');
@@ -450,7 +386,6 @@ window.RouteGuidance = (function () {
         return chosen;
     }
 
-    /** Deja la ruta elegida como la de la guía y la dibuja; las alternativas descartadas quedan en gris en el mapa. */
     function useRoute(chosen, candidates) {
         route = chosen;
         clearance = chosen.clearance;
@@ -460,8 +395,6 @@ window.RouteGuidance = (function () {
         if (window.mapCtrl && window.mapCtrl.useGuidedRoute) window.mapCtrl.useGuidedRoute(route);
     }
 
-    // ------------------------------------------------------------------ sin señal y restricciones vecinas
-    /** Guarda la ruta actual en el dispositivo (no bloquea la guía; sin IndexedDB no pasa nada). */
     function persist() {
         if (!route || loadId == null || !window.RouteStore) return;
         window.RouteStore.save(loadId, route, {
@@ -471,7 +404,6 @@ window.RouteGuidance = (function () {
         });
     }
 
-    /** Restaura la ruta guardada de la carga. Devuelve true si había una. */
     async function restore(id) {
         if (!window.RouteStore) return false;
         const saved = await window.RouteStore.load(id);
@@ -491,10 +423,6 @@ window.RouteGuidance = (function () {
         return true;
     }
 
-    /**
-     * Restricciones que el vehículo incumple en el corredor ampliado de la ruta (500 m), con su posición, para avisar
-     * fuera de ruta. Se piden una vez por ruta, con señal, y se guardan con ella.
-     */
     async function refreshNearby(forRoute) {
         const result = await validateRoute(forRoute, NEARBY_CORRIDOR_M);
         if (route !== forRoute || (result.status !== 'ok' && result.status !== 'found')) return;
@@ -506,10 +434,6 @@ window.RouteGuidance = (function () {
         return result.items.filter(item => !item.warning && item.lat != null && item.lng != null);
     }
 
-    /**
-     * Al aceptar la carga (antes de iniciar el viaje) se calcula y guarda la ruta, para poder guiar aunque el viaje
-     * empiece sin señal. No dibuja ni anuncia nada; una vez por carga.
-     */
     const prefetched = new Set();
     async function prefetch(load) {
         if (!load || !window.RouteStore || prefetched.has(load.backendId)) return false;
@@ -531,7 +455,6 @@ window.RouteGuidance = (function () {
         }
     }
 
-    /** La restricción vecina más cercana a la posición, a 3 km o menos. */
     function nearbyHazard(position) {
         let best = null;
         nearby.forEach(item => {
@@ -541,19 +464,16 @@ window.RouteGuidance = (function () {
         return best;
     }
 
-    // ------------------------------------------------------------------ bloqueos detectados por la IA
     function passesNear(candidate, points) {
         return points.some(p => project(candidate.geometry, candidate.cumulative, [p.lat, p.lng]).offM <= BLOCKAGE_NEAR_M);
     }
 
-    /** Quita las alternativas que pasan por un bloqueo marcado; si todas pasan, las deja (no hay otra ruta). */
     function avoiding(candidates) {
         if (!avoidPoints.length) return candidates;
         const clean = candidates.filter(c => !passesNear(c, avoidPoints));
         return clean.length ? clean : candidates;
     }
 
-    /** Puntos de paso a ~3 km a cada lado del bloqueo, perpendiculares a la ruta, para forzar un desvío. */
     function detourVias(point) {
         const { alongM } = project(route.geometry, route.cumulative, point);
         let i = route.cumulative.findIndex(c => c >= alongM);
@@ -574,7 +494,6 @@ window.RouteGuidance = (function () {
         return fix && fix.coords ? fix.coords : route.geometry[0];
     }
 
-    /** Alternativas de OSRM desde la posición hasta el destino que no pasan por los bloqueos marcados. */
     async function detourCandidates(position, point) {
         const destination = route.geometry[route.geometry.length - 1];
         const key = route.key;
@@ -587,11 +506,6 @@ window.RouteGuidance = (function () {
         return clean;
     }
 
-    /**
-     * Bloqueo vial que la IA (route-ai-agent) detectó en una alerta. Si cae a 150 m o menos de lo que falta por recorrer:
-     * aviso visual y sonoro, y recálculo inmediato con un desvío que no pase por él y que se valida contra gálibo y peso.
-     * Devuelve true si el bloqueo afectaba la ruta.
-     */
     async function handleBlockage(blockage) {
         if (!route || !blockage || !Number.isFinite(blockage.latitude) || !Number.isFinite(blockage.longitude)) return false;
         const id = blockage.eventId || ('alert-' + blockage.alertId);
@@ -651,7 +565,6 @@ window.RouteGuidance = (function () {
         return true;
     }
 
-    /** Se dice una vez por ruta: si se esquivó una restricción o si ninguna alternativa es apta para el vehículo. */
     function announceChoice(chosen) {
         const choice = chosen.choice;
         if (!choice || !window.voiceEngine) return;
@@ -663,7 +576,6 @@ window.RouteGuidance = (function () {
         }
     }
 
-    /** Aviso de la ruta elegida para el HUD (null si la ruta principal ya era apta o no se pudo validar). */
     function routeNotice() {
         const choice = route && route.choice;
         if (!choice || !choice.checked) return null;
@@ -683,7 +595,6 @@ window.RouteGuidance = (function () {
         return null;
     }
 
-    /** La próxima restricción de la ruta desde la posición actual (las ya pasadas no cuentan); primero las que bloquean. */
     function nextClearance(alongM) {
         if (!route || !clearance || clearance.key !== route.key || !clearance.items.length) return null;
         const from = alongM == null ? 0 : alongM - 50;
@@ -721,7 +632,6 @@ window.RouteGuidance = (function () {
             arrived: !!(p && p.arrived),
             icon: p && p.arrived ? 'fa-flag-checkered' : next ? next.icon : 'fa-route',
             glyph: p && p.arrived ? 'flag-checkered-fill' : next ? next.glyph : 'path',
-            // Ubicación de la próxima maniobra: la navegación encuadra la posición y ese punto.
             nextLocation: next && next.location ? next.location : null,
             distance: p && p.toNextM != null ? formatDistance(p.toNextM) : next ? formatDistance(next.startM) : '—',
             instruction: p && p.arrived ? 'Llegó al destino de la carga' : next ? next.text : '',
@@ -729,16 +639,23 @@ window.RouteGuidance = (function () {
             stepNumber: p && p.nextIndex != null ? p.nextIndex + 1 : route ? 1 : 0,
             stepCount: route ? route.steps.length : 0,
             remaining: route ? formatDistance(p && p.remainingM != null ? p.remainingM : route.totalM) : '—',
-            // Tiempo restante proporcional a la distancia que falta (OSRM, perfil de auto).
-            remainingTime: route && route.durationS && route.totalM
-                ? formatDuration(route.durationS * (p && p.remainingM != null ? p.remainingM : route.totalM) / route.totalM) : '—',
+            plannedDuration: plannedDuration(),
             speed,
             clearance: clearanceHud(p),
-            // El aviso de la IA ya dice si el desvío tiene restricciones: no se repite con el de ruta alternativa.
             routeNotice: aiAlert ? null : routeNotice(),
             aiAlert,
             restored: !!(route && route.restored)
         };
+    }
+
+    function plannedDuration() {
+        const routes = window.TruckCarData && window.TruckCarData.routes;
+        const hours = routes && routes.optimal ? routes.optimal.estimatedDurationHours : null;
+        return hours == null ? null : window.TruckCarService.formatHours(hours);
+    }
+
+    function durationText(s) {
+        return s.plannedDuration ? 'Viaje completo: ' + s.plannedDuration + ' · Route-AI' : 'Duración: ' + window.ui.NOT_AVAILABLE;
     }
 
     function clearanceHud(p) {
@@ -753,11 +670,6 @@ window.RouteGuidance = (function () {
         return { text: item.text + ' en ' + formatDistance(away), sub: item.sub, warning: item.warning };
     }
 
-    /** Textos del HUD según el estado (el mismo marcado sirve para el render inicial y para las actualizaciones). */
-    /**
-     * Calle por la que va el camión, bajo la instrucción. Si no se conoce o es la misma que ya nombra la instrucción
-     * ("…hacia Avenida Calle 59 Sur"), no se muestra nada: repetirla no informa.
-     */
     function currentStreet(s) {
         const street = (s.street || '').trim();
         if (!street) return '';
@@ -766,10 +678,9 @@ window.RouteGuidance = (function () {
     }
 
     function hudText(s) {
-        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: 'Ruta por carretera de OSRM' };
+        if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: '' };
         if (s.status === 'unavailable') return { distance: '—', instruction: 'Guía paso a paso no disponible', street: 'Sin conexión con el servicio de rutas: siga el mapa.' };
         if (s.status === 'idle') return { distance: '—', instruction: 'Preparando la navegación…', street: '' };
-        // Sin GPS o fuera de ruta, el aviso ya está dentro de la tarjeta (triángulo y texto): la línea gris no lo repite.
         if (!s.hasPosition || s.offRoute) return { distance: s.distance, instruction: s.instruction, street: '' };
         if (s.restored) return { distance: s.distance, instruction: s.instruction, street: 'Sin señal: guía con la ruta guardada en el teléfono' };
         return { distance: s.distance, instruction: s.instruction, street: currentStreet(s) };
@@ -785,7 +696,7 @@ window.RouteGuidance = (function () {
         set('[data-nav-street]', text.street);
         set('[data-nav-speed]', s.speed == null ? '—' : String(s.speed));
         set('[data-nav-remaining]', s.remaining);
-        set('[data-nav-eta]', s.remainingTime === '—' ? 'Tiempo sin información' : s.remainingTime + ' · estimado para auto');
+        set('[data-nav-eta]', durationText(s));
         set('[data-nav-step]', s.stepCount ? 'Paso ' + s.stepNumber + ' de ' + s.stepCount : 'Ruta real');
         document.querySelectorAll('[data-nav-icon]').forEach(el => { el.className = 'fas ' + s.icon; });
         document.querySelectorAll('[data-nav-glyph]').forEach(el => { el.setAttribute('href', 'assets/icons.svg#' + s.glyph); });
@@ -808,11 +719,6 @@ window.RouteGuidance = (function () {
         layoutAlerts();
     }
 
-    // ------------------------------------------------------------------ pila de avisos del HUD
-    /**
-     * Prioridad de cada fila (data-hud-alert, menor = más importante): bloqueo de la IA (1) > restricción de gálibo o
-     * peso próxima (2) > ruta con restricciones (2,5) > fuera de ruta (3) > ruta alternativa apta (4) > GPS (5).
-     */
     function alertPriority(el) {
         if (el.hasAttribute('data-nav-route-notice') && el.classList.contains('is-ok')) return 4;
         return Number(el.dataset.hudAlert) || 9;
@@ -824,13 +730,6 @@ window.RouteGuidance = (function () {
         return true;
     }
 
-    /**
-     * Ordena los avisos activos por prioridad, deja a la vista los dos primeros (cada uno en 3 líneas como máximo) y
-     * resume el resto en "+N avisos". Si aun así la tarjeta llega al panel de velocidad: 1) se oculta la fila de altura y
-     * peso (los avisos de gálibo ya dicen cuánto mide el vehículo), 2) el panel pasa a una fila al pie del mapa y 3) se
-     * deja un solo aviso. Desplegado, se ven todos y el panel
-     * se oculta mientras se leen (se repliega solo a los 15 s o al tocar de nuevo).
-     */
     function layoutAlerts() {
         if (typeof document === 'undefined') return;
         const card = document.querySelector('.nav-screen .hud-card');
@@ -862,8 +761,6 @@ window.RouteGuidance = (function () {
         };
         apply();
 
-        // Lo que la tarjeta no puede tapar: lo que está debajo de ella en su columna (panel de velocidad, barra del
-        // viaje, atribución del mapa) y el borde inferior del mapa. En vertical el panel queda bajo la tarjeta; en horizontal, al lado.
         const area = screen && screen.querySelector('.nav-map-area');
         const below = (el) => {
             if (!el || !(el.offsetHeight > 0)) return false;
@@ -890,13 +787,11 @@ window.RouteGuidance = (function () {
                 apply();
             }
             if (overlaps()) {
-                // Ni con un solo aviso cabe (pantallas muy bajas): la tarjeta llega hasta el límite y se desplaza.
                 card.style.maxHeight = Math.max(120, limit() - card.getBoundingClientRect().top - 8) + 'px';
                 card.style.overflowY = 'auto';
             }
         }
         if (alertsExpanded) {
-            // Desplegada (panel oculto): hasta el borde del mapa o la barra del viaje, con desplazamiento interno.
             card.style.maxHeight = Math.max(120, limit(false) - card.getBoundingClientRect().top - 8) + 'px';
             card.style.overflowY = 'auto';
         }
@@ -910,7 +805,6 @@ window.RouteGuidance = (function () {
         if (relayout) layoutAlerts();
     }
 
-    /** Toque en "+N avisos" / "Ocultar avisos". */
     function toggleAlerts() {
         if (alertsExpanded) {
             collapseAlerts();
@@ -941,9 +835,35 @@ window.RouteGuidance = (function () {
         alertsExpanded = false;
         handledBlockages.clear();
         lastNetworkTry = 0;
+        releaseWakeLock();
     }
 
-    /** Viaje terminado o sesión cerrada: borra también la ruta guardada en el dispositivo. */
+    async function acquireWakeLock() {
+        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !wakeLock) {
+            try {
+                if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                }
+            } catch (err) { }
+        }
+    }
+
+    async function releaseWakeLock() {
+        if (wakeLock) {
+            try { await wakeLock.release(); } catch (e) {}
+            wakeLock = null;
+        }
+    }
+
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && status === 'ready') {
+                acquireWakeLock();
+            }
+        });
+    }
+
     function forget(id) {
         const target = id === undefined ? loadId : id;
         reset();
@@ -952,13 +872,13 @@ window.RouteGuidance = (function () {
     }
 
     return {
-        prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, handleBlockage, layoutAlerts, toggleAlerts,
+        prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, durationText, handleBlockage, layoutAlerts, toggleAlerts,
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
         get clearance() { return clearance; },
         get nearby() { return nearby; },
         get avoidPoints() { return avoidPoints; },
-        // Expuestos para pruebas.
-        instruction, formatDistance, formatDuration, glyph, project, samplePath, validateRoute, chooseRoute, routeNotice
+        get hasWakeLock() { return Boolean(wakeLock); }, requestWakeLock: acquireWakeLock, releaseWakeLock,
+        instruction, formatDistance, glyph, project, samplePath, validateRoute, chooseRoute, routeNotice, OFF_ROUTE_M
     };
 })();

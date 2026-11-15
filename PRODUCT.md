@@ -50,7 +50,7 @@ del vehículo, las alertas vienen de otros conductores en la misma vía y todo f
 
 ## Brand Commitments
 
-- Nombre: **TruckCar** (wordmark "TRUCKCAR"); ícono en `assets/icon.svg`.
+- Nombre: **TruckCar** (wordmark "TRUCKCAR"); logo oficial en `assets/brand/` e íconos generados en `assets/icon-*.png` y `assets/favicon-*.png`.
 - Idioma: español de Colombia, trato de "usted", tono directo y operativo.
 - Rediseño premium nativo (noviembre 2026): paleta grafito casi monocroma (`#0C0E12`) con un solo acento ámbar
   apagado (`#E8A33D`) en el botón principal y la pestaña activa, Manrope servida localmente con cifras tabulares, sin

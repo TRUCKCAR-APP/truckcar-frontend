@@ -1,15 +1,3 @@
-/**
- * Pestañas de administración de la torre de control:
- *  - Restricciones (COORDINADOR y ADMIN): registrar y desactivar gálibos, límites de peso y cierres. La PWA del
- *    conductor las cruza con su ruta real (POST /restrictions/validate-route) y avisa en la navegación.
- *  - Usuarios (solo ADMIN): cambiar el rol y activar o suspender cuentas. El registro público solo crea conductores y
- *    generadores; los coordinadores salen de aquí.
- *  - Plantillas (solo ADMIN): el texto de cada notificación por categoría y canal; Notifications lo usa desde el
- *    siguiente envío.
- *
- * La vista se vuelve a dibujar con cada actualización de la torre; el formulario de restricción va en una hoja montada
- * en <body> (window.Sheet) para que el mapa y lo escrito no se pierdan.
- */
 window.TowerAdmin = (function () {
     const esc = (value) => window.ui.escape(value);
 
@@ -34,7 +22,6 @@ window.TowerAdmin = (function () {
         return text === '' || !Number.isFinite(n) ? null : n;
     }
 
-    /** Validación del formulario de restricción; devuelve { errors, restriction }. */
     function validateRestriction(values) {
         const errors = {};
         const type = RESTRICTION_TYPES[values.restrictionType] ? values.restrictionType : null;
@@ -67,9 +54,9 @@ window.TowerAdmin = (function () {
     }
 
     function limitText(r) {
-        if (r.maxClearanceMeters != null) return window.DriverApp.number(r.maxClearanceMeters, 2, 'm') + ' de altura';
-        if (r.maxGrossWeightTons != null) return window.DriverApp.number(r.maxGrossWeightTons, 1, 't') + ' de peso bruto';
-        if (r.maxAxleWeightTons != null) return window.DriverApp.number(r.maxAxleWeightTons, 1, 't') + ' por eje';
+        if (r.maxClearanceMeters != null) return window.ui.number(r.maxClearanceMeters, 2, 'm') + ' de altura';
+        if (r.maxGrossWeightTons != null) return window.ui.number(r.maxGrossWeightTons, 1, 't') + ' de peso bruto';
+        if (r.maxAxleWeightTons != null) return window.ui.number(r.maxAxleWeightTons, 1, 't') + ' por eje';
         return '';
     }
 
@@ -102,7 +89,6 @@ window.TowerAdmin = (function () {
             </div>`;
     }
 
-    // ------------------------------------------------------------------ restricciones
     function renderRestrictions(state) {
         const status = state.adminStatus || {};
         const list = window.TruckCarData.restrictions || [];
@@ -196,7 +182,6 @@ window.TowerAdmin = (function () {
         let map = null;
         window.Sheet.open({
             title: 'Nueva restricción vial',
-            // Routing-Restrictions cruza la ruta con un corredor de 60 m (DEFAULT_CORRIDOR_METERS): el punto va sobre la vía.
             subtitle: 'Toque el punto sobre la vía: la verán los conductores cuya ruta pase a menos de 60 m.',
             icon: 'fa-road-barrier',
             body,
@@ -216,7 +201,6 @@ window.TowerAdmin = (function () {
                     if (marker) marker.setLatLng(event.latlng);
                     else marker = window.L.marker(event.latlng).addTo(map);
                 });
-                // La hoja termina de subir después de montarse: Leaflet necesita medir el contenedor ya visible.
                 setTimeout(() => map && map.invalidateSize(), 450);
             },
             actions: [
@@ -263,7 +247,6 @@ window.TowerAdmin = (function () {
         }
     }
 
-    // ------------------------------------------------------------------ plantillas
     const TEMPLATE_CATEGORIES = {
         REASIGNACION_CARGA: 'Propuesta, asignación o reasignación de carga',
         CAMBIO_ESTADO_VIAJE: 'Cambio de estado del viaje',
@@ -274,7 +257,6 @@ window.TowerAdmin = (function () {
     };
     const CHANNELS = { PUSH: 'Push', VOICE: 'Voz' };
 
-    /** Variables {{nombre}} que usa un texto, en orden y sin repetir. */
     function templateVariables(text) {
         const found = [];
         String(text || '').replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (match, name) => {
@@ -387,7 +369,6 @@ window.TowerAdmin = (function () {
         });
     }
 
-    // ------------------------------------------------------------------ usuarios
     function filterUsers(users, filter) {
         if (!filter || filter === 'all') return users;
         if (filter === 'PENDING_VERIFICATION') return users.filter(u => u.status === 'PENDING_VERIFICATION');
@@ -503,7 +484,6 @@ window.TowerAdmin = (function () {
         window.store.setState({ adminUserFilter: filter });
     }
 
-    /** Carga los datos de la pestaña; el estado de carga va en adminStatus para los vacíos y errores. */
     async function load(tab) {
         const setStatus = (value) => window.store.setState({ adminStatus: { ...(window.store.state.adminStatus || {}), [tab]: value } });
         setStatus('loading');

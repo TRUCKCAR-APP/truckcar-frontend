@@ -1,5 +1,3 @@
-// Service Worker: el app shell precargado coincide con lo que carga index.html y las estrategias de caché nunca guardan
-// la API ni las evidencias firmadas.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -8,15 +6,12 @@ import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
 const ORIGIN = "http://localhost:5500";
 
-/** Carga sw.js con un ámbito de Service Worker mínimo y devuelve los manejadores registrados. */
 function loadServiceWorker() {
   const handlers = {};
-  // Reloj controlable (vencimiento de las teselas) e IndexedDB en memoria, nueva en cada carga.
   const clock = { now: Date.parse("2026-11-01T12:00:00Z") };
   class FakeDate extends Date { static now() { return clock.now; } }
   const cacheStores = new Map();
   const keyOf = (request) => (typeof request === "string" ? request : request.url);
-  // Como Cache Storage: "css/main.css" y "http://localhost:5500/css/main.css" son la misma entrada.
   const same = (a, b) => new URL(a, ORIGIN + "/").href === new URL(b, ORIGIN + "/").href;
   const cacheFor = (name) => {
     if (!cacheStores.has(name)) {
@@ -81,9 +76,9 @@ async function install(handlers) {
   await installing;
 }
 
-test("registra install, activate y fetch", () => {
+test("registra install, activate, fetch, message y sync", () => {
   const { handlers } = loadServiceWorker();
-  assert.deepEqual(Object.keys(handlers).sort(), ["activate", "fetch", "install"]);
+  assert.deepEqual(Object.keys(handlers).sort(), ["activate", "fetch", "install", "message", "sync"]);
 });
 
 test("cada archivo del app shell existe y cada script y hoja de estilos de index.html está precargado", async () => {
@@ -144,6 +139,110 @@ test("teselas, CDN, navegación y app shell sí se sirven desde el Service Worke
   }
 });
 
+test("una API en el mismo origen tampoco se responde ni se guarda: /api/ queda fuera de la caché", async () => {
+  const { handlers, context, cacheStores } = loadServiceWorker();
+  await install(handlers);
+  let network = 0;
+  context.fetch = async (request) => { network++; return { ok: true, body: "privado", clone() { return this; } }; };
+  for (const url of [`${ORIGIN}/api/v1/loads/mine`, `${ORIGIN}/api/v1/users/me`, `${ORIGIN}/api/v1/loads/public-tracking/abc.def`]) {
+    const event = fetchEvent(url);
+    handlers.fetch(event);
+    assert.equal(event.responded, null, url + " va directo a la red");
+  }
+  assert.equal(network, 0, "el Service Worker ni siquiera pide la API");
+  for (const cache of cacheStores.values()) {
+    assert.ok(![...cache.entries.keys()].some((key) => String(key).includes("/api/")), "ninguna respuesta de /api/ queda guardada");
+  }
+  assert.match(readFileSync("sw.js", "utf8"), /const VERSION = 'v25'/, "la versión sube para descartar las cachés que sí guardaron la API");
+});
+
+test("panel.html y seguimiento.html van solo por red: ni se responden ni se guardan", async () => {
+  const { handlers, cacheStores } = loadServiceWorker();
+  await install(handlers);
+  const before = [...cacheStores.get("truckcar-shell-v25").entries.keys()].length;
+  for (const url of [`${ORIGIN}/panel.html`, `${ORIGIN}/seguimiento.html`, `${ORIGIN}/seguimiento.html?track=abc.def`]) {
+    for (const mode of ["navigate", "cors"]) {
+      const event = fetchEvent(url, { mode });
+      handlers.fetch(event);
+      assert.equal(event.responded, null, url + " (" + mode + ") no pasa por el Service Worker");
+    }
+  }
+  assert.equal([...cacheStores.get("truckcar-shell-v25").entries.keys()].length, before);
+});
+
+test("la navegación se guarda por ruta: otra página no sobrescribe la app del conductor ni se cruza sin red", async () => {
+  const { handlers, context, cacheStores } = loadServiceWorker();
+  await install(handlers);
+  const shell = cacheStores.get("truckcar-shell-v25").entries;
+  const page = (body, ok = true) => async () => ({ ok, body, clone() { return this; } });
+  const navigate = async (path) => {
+    const event = fetchEvent(ORIGIN + path, { mode: "navigate" });
+    handlers.fetch(event);
+    return event.responded;
+  };
+
+  context.fetch = page("otra página");
+  assert.equal((await navigate("/otra.html")).body, "otra página");
+  assert.equal(shell.get("index.html").body, "index.html", "la copia de la app del conductor sigue intacta");
+  assert.equal(shell.get("otra.html").body, "otra página", "la otra página se guarda en su propia ruta");
+
+  context.fetch = page("app del conductor nueva");
+  await navigate("/?demo=1");
+  assert.equal(shell.get("index.html").body, "app del conductor nueva", "la raíz, con o sin parámetros, actualiza index.html");
+  await navigate("/index.html");
+  assert.equal([...shell.keys()].filter((key) => /index\.html|^\.\/$/.test(key)).length, 2, "sin copias duplicadas de la raíz");
+
+  context.fetch = page("error 500", false);
+  await navigate("/");
+  assert.equal(shell.get("index.html").body, "app del conductor nueva", "una respuesta de error no reemplaza la copia buena");
+
+  context.fetch = async () => { throw new TypeError("Failed to fetch"); };
+  assert.equal((await navigate("/")).body, "app del conductor nueva");
+  assert.equal((await navigate("/otra.html")).body, "otra página", "sin red cada página recibe su propia copia");
+  assert.equal((await navigate("/nunca-vista.html")).type, "error", "una página sin copia no recibe la app del conductor");
+  assert.equal((await navigate("/conductor")).body, "app del conductor nueva", "las rutas de la app sí caen a index.html");
+});
+
+test("al cerrar sesión se limpia la caché: solo quedan los archivos estáticos de la app y las teselas", async () => {
+  const { handlers, cacheStores, context } = loadServiceWorker();
+  await install(handlers);
+  const shell = cacheStores.get("truckcar-shell-v25");
+  await shell.put(`${ORIGIN}/api/v1/loads/mine`, "carga privada");
+  await shell.put(`${ORIGIN}/reporte-privado.json`, "datos de la sesión");
+  await shell.put("otra.html", "otra página");
+  await shell.put(`${ORIGIN}/assets/vendor/leaflet/images/marker-icon.png`, "estático");
+  const runtime = await context.caches.open("truckcar-runtime-v25");
+  await runtime.put("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css", "cdn");
+  const tiles = await context.caches.open("truckcar-tiles-v2");
+  await tiles.put(TILE, "tesela");
+
+  let ignored;
+  handlers.message({ data: { type: "OTRO" }, waitUntil: (promise) => { ignored = promise; } });
+  assert.equal(ignored, undefined, "otros mensajes no limpian nada");
+  assert.ok(shell.entries.has(`${ORIGIN}/api/v1/loads/mine`));
+
+  let clearing;
+  handlers.message({ data: { type: "TRUCKCAR_SESSION_ENDED" }, waitUntil: (promise) => { clearing = promise; } });
+  await clearing;
+
+  const left = [...shell.entries.keys()];
+  assert.ok(!left.some((key) => key.includes("/api/")), "sin respuestas de la API");
+  assert.ok(!left.includes(`${ORIGIN}/reporte-privado.json`) && !left.includes("otra.html"), "sin nada que no sea de la app");
+  for (const kept of ["index.html", "js/app.js", "css/main.css", `${ORIGIN}/assets/vendor/leaflet/images/marker-icon.png`]) {
+    assert.ok(left.includes(kept), kept + " se conserva: la app sigue abriendo sin señal");
+  }
+  assert.equal(runtime.entries.size, 1, "los recursos públicos del CDN se conservan");
+  assert.equal(tiles.entries.size, 1, "el mapa guardado no se toca");
+});
+
+test("la app avisa al Service Worker en cada fin de sesión, también cuando la sesión vence", () => {
+  const app = readFileSync("js/app.js", "utf8");
+  const endSession = app.slice(app.indexOf("    endSession({ keepStoredSession = false } = {}) {"), app.indexOf("    async submitLogin"));
+  assert.match(endSession, /this\.clearSessionCaches\(\)/);
+  assert.match(app, /postMessage\(\{ type: 'TRUCKCAR_SESSION_ENDED' \}\)/);
+  assert.match(readFileSync("sw.js", "utf8"), /const SESSION_ENDED = 'TRUCKCAR_SESSION_ENDED'/);
+});
+
 test("sin red, la navegación cae al index.html precargado", async () => {
   const { handlers, context } = loadServiceWorker();
   await install(handlers);
@@ -182,12 +281,10 @@ test("el manifiesto de la PWA es válido y sus íconos existen", () => {
   for (const icon of manifest.icons) assert.ok(existsSync(icon.src.replace(/^\.?\//, "")), `no existe el ícono ${icon.src}`);
 });
 
-// ------------------------------------------------------------------ teselas del mapa (términos de Stadia Maps)
 const TILE = "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/10/301/504@2x.png";
 const HOUR = 60 * 60 * 1000;
 const MB = 1024 * 1024;
 
-/** Respuesta CORS de una tesela, como la de Stadia (Cache-Control: max-age=21600 = 6 h). */
 function tileResponse(bytes = 11440, headers = { "content-type": "image/png", "cache-control": "max-age=21600" }, type = "cors") {
   const response = new Response(new Uint8Array(bytes), { status: 200, headers });
   Object.defineProperty(response, "type", { value: type });
@@ -256,7 +353,6 @@ test("sin señal y sin tesela guardada: PNG transparente válido, sin error de r
   assert.equal(response.status, 200);
   const png = new Uint8Array(await response.arrayBuffer());
   assert.equal(String.fromCharCode(...png.slice(1, 4)), "PNG");
-  // Píxel RGBA totalmente transparente: el mapa muestra su fondo oscuro.
   assert.equal(png[25], 6, "tipo de color RGBA");
 });
 
@@ -273,14 +369,12 @@ test("tope de 100 MB: se expulsan primero las vencidas y después las de uso men
   const { handlers, context, clock, tiles } = loadServiceWorker();
   assert.equal(tiles.MAX_BYTES, 100 * MB);
   const now = clock.now;
-  // 30 MB vencidos y 80 MB vigentes (60 usados hace 5 h, 20 hace 1 h) = 110 MB.
   await tiles.put({ url: "https://tiles.stadiamaps.com/vencida", bytes: 30 * MB, expires: now - 1, used: now - 1 });
   await tiles.put({ url: "https://tiles.stadiamaps.com/antigua", bytes: 60 * MB, expires: now + HOUR, used: now - 5 * HOUR });
   await tiles.put({ url: "https://tiles.stadiamaps.com/reciente", bytes: 20 * MB, expires: now + HOUR, used: now - HOUR });
   assert.deepEqual(Array.from(tiles.planEviction(await tiles.all(), now)), ["https://tiles.stadiamaps.com/vencida"],
     "sin las vencidas ya cabe: no se toca ninguna vigente");
 
-  // Una tesela nueva de 25 MB deja 105 MB vigentes: sale también la de uso menos reciente.
   context.fetch = async () => tileResponse(25 * MB);
   await requestTile(handlers);
   const left = await tiles.all();

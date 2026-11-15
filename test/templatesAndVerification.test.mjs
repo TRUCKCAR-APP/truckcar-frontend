@@ -1,4 +1,3 @@
-// Plantillas de notificación (torre, solo ADMIN) y cuenta pendiente de verificación (app del conductor).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -6,9 +5,16 @@ import { JSDOM } from "jsdom";
 
 function windowWith(files, setup = () => {}) {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
-  w.ui = { escape: (v) => String(v ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`), syncBanner: () => "" };
+  w.eval(readFileSync("js/ui.js", "utf8"));
+  w.ui.syncBanner = () => "";
   setup(w);
   for (const file of files) w.eval(readFileSync(file, "utf8"));
+  if (!w.TruckCarService) {
+    w.store = w.store || { state: { dataStatus: { errors: {} } }, setState() {} };
+    w.TruckCarData = w.TruckCarData || {};
+    w.TruckCarApi = w.TruckCarApi || {};
+    w.eval(readFileSync("js/dataService.js", "utf8"));
+  }
   return w;
 }
 const same = (actual, expected) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected);

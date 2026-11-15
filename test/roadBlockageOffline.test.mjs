@@ -1,7 +1,3 @@
-// Fase 1: un bloqueo que la IA detecta en una alerta (route-ai-agent → fleets-drivers → /topic/road-blockages) se
-// anuncia en el HUD y en voz, y la guía se desvía de inmediato validando el desvío contra gálibo y peso.
-// Fase 2: la ruta del viaje queda en IndexedDB y la guía se restaura sin señal, con los avisos a 3 km y, fuera de
-// ruta, los de las restricciones vecinas del corredor ampliado.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -15,22 +11,18 @@ const ROUTE = (via, distance) => ({
   geometry: { coordinates: [[-74.0, 4.6], via, [-73.99, 4.61]] },
   legs: [{ steps: [step(-74.0, 4.6), step(via[0], via[1], "turn"), step(-73.99, 4.61, "arrive")] }]
 });
-// La principal sube por la Calle 13 (lng -74.0) hasta 4.61; la alterna corta en diagonal por 4.605,-73.995.
 const PRINCIPAL = ROUTE([-74.0, 4.61], 2200);
 const ALTERNA = ROUTE([-73.995, 4.605], 2600);
 const LOAD = { backendId: 30, status: "IN_TRANSIT", raw: { id: 30, status: "IN_TRANSIT", originCity: "Bogotá" },
   origin: { coords: [4.6, -74.0] }, destination: { coords: [4.61, -73.99] } };
 const DRIVER = { id: "driver-ana", vehicle: { plate: "TDK-410", height: 4.1, grossWeight: 40 } };
-// Derrumbe sobre la Calle 13, a ~550 m del inicio: está sobre la principal y lejos de la alterna.
 const BLOCKAGE = { eventId: "e-1", alertId: 21, latitude: 4.605, longitude: -74.0, alertType: "DERRUMBE",
   description: "Derrumbe tapa la vía en el km 40", confidence: 0.9, source: "AZURE_OPENAI" };
 const BRIDGE = { kind: "GALIBO_ALTURA", alongRouteMeters: 1100, distanceFromRouteMeters: 5,
   restriction: { id: 7, title: "Puente", maxClearanceMeters: 3.8, latitude: 4.61, longitude: -74.0 } };
-// Puente bajo del corredor ampliado (a ~330 m al occidente de la Calle 13): solo sale con corridorMeters=500.
 const NEARBY_BRIDGE = { kind: "GALIBO_ALTURA", alongRouteMeters: 500, distanceFromRouteMeters: 330,
   restriction: { id: 9, title: "Puente bajo", maxClearanceMeters: 3.5, latitude: 4.6045, longitude: -74.003 } };
 
-/** routesFor(url) → rutas de OSRM; offline: fetch falla como sin señal. */
 function browser({ idb = new IDBFactory(), routesFor = () => [PRINCIPAL, ALTERNA], offline = false,
   validate = () => ({ blocking: [], warnings: [] }) } = {}) {
   const dom = new JSDOM(`<!doctype html><body>
@@ -52,7 +44,10 @@ function browser({ idb = new IDBFactory(), routesFor = () => [PRINCIPAL, ALTERNA
   w.voiceEngine = { speak: (text) => spoken.push(text), alert: () => { chimes++; } };
   w.mapCtrl = { drawGuidanceLine() {} };
   w.TruckCarData = { currentDriver: DRIVER };
-  w.TruckCarApi = { restrictions: { validateRoute: async (request) => { validated.push(request); return validate(request); } } };
+  w.TruckCarConfig = { apiBaseUrl: "http://localhost:8000/api/v1", gatewayUrl: "http://localhost:8000", requestTimeoutMs: 5000,
+    routingUrl: "https://rutas.example.test/route/v1/driving/", storageKeys: { session: "truckcar.session" } };
+  ["js/ui.js", "js/api.js"].forEach((file) => w.eval(readFileSync(file, "utf8")));
+  w.TruckCarApi.restrictions = { validateRoute: async (request) => { validated.push(request); return validate(request); } };
   ["js/routeStore.js", "js/navigation.js"].forEach((file) => w.eval(readFileSync(file, "utf8")));
   const hud = (name) => ({
     hidden: w.document.querySelector(`[data-nav-${name}]`).hidden,
@@ -90,7 +85,7 @@ test("un bloqueo de la IA sobre lo que falta de ruta se anuncia y la guía se de
 test("un bloqueo lejos de la ruta o ya superado no interrumpe la guía", async () => {
   const { w, spoken, hud, fetches } = browser();
   await w.RouteGuidance.prepare(LOAD);
-  w.RouteGuidance.update({ coords: [4.609, -74.0] });   // ya pasó el km 0,5 de la Calle 13
+  w.RouteGuidance.update({ coords: [4.609, -74.0] });
   const before = fetches.length;
 
   assert.equal(await w.RouteGuidance.handleBlockage({ ...BLOCKAGE, eventId: "lejos", latitude: 4.7, longitude: -74.2 }), false);
@@ -120,7 +115,7 @@ test("la ruta queda guardada y, al reabrir sin señal, la guía sigue con el avi
     : { blocking: [BRIDGE], warnings: [] };
   const online = browser({ routesFor: () => [PRINCIPAL], validate });
   await online.w.RouteGuidance.prepare(LOAD);
-  await sleep(50);   // guardado y restricciones vecinas en segundo plano
+  await sleep(50);
   assert.equal(online.validated.at(-1).corridorMeters, 500, "pide las restricciones del corredor ampliado");
 
   const saved = await online.w.RouteStore.latest("driver-ana");
@@ -130,7 +125,6 @@ test("la ruta queda guardada y, al reabrir sin señal, la guía sigue con el avi
   assert.equal(saved.clearance.items[0].text, "Gálibo de 3,80 m");
   assert.equal(saved.nearby.length, 2);
 
-  // Misma IndexedDB, app recargada y sin red.
   const offline = browser({ idb: online.idb, offline: true, validate });
   await offline.w.RouteGuidance.prepare(LOAD);
   const s = offline.w.RouteGuidance.snapshot();
@@ -157,7 +151,6 @@ test("fuera de ruta y sin señal, avisa de los puentes bajos cercanos del corred
 
   const offline = browser({ idb: online.idb, offline: true, validate });
   await offline.w.RouteGuidance.prepare(LOAD);
-  // ~440 m al occidente de la Calle 13 (fuera de ruta) y a ~150 m del puente bajo.
   offline.w.RouteGuidance.update({ coords: [4.6045, -74.004] });
 
   assert.equal(offline.w.RouteGuidance.snapshot().offRoute, true);

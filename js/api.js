@@ -1,13 +1,6 @@
-/**
- * Cliente HTTP de TruckCar: todas las llamadas pasan por el api-gateway.
- * - fetch + async/await, timeout con AbortController.
- * - Cabeceras estándar, JWT (Authorization: Bearer) y X-Correlation-Id por petición.
- * - Errores normalizados en ApiError { status, message, details, correlationId }.
- */
 (function () {
     const config = window.TruckCarConfig;
 
-    /** Texto para el usuario cuando el gateway corta por el límite de intentos de /api/v1/auth (429). */
     const RATE_LIMITED_MESSAGE = 'Demasiados intentos, espere unos segundos';
 
     class ApiError extends Error {
@@ -18,7 +11,6 @@
             this.details = details;
             this.correlationId = correlationId;
             this.path = path;
-            /** Segundos que pide esperar el gateway (cabecera Retry-After de un 429); null si no la envió. */
             this.retryAfterSeconds = retryAfterSeconds;
         }
 
@@ -34,7 +26,6 @@
         return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
     }
 
-    // ---------------------------------------------------------------- sesión
     const session = {
         get() {
             try {
@@ -49,7 +40,7 @@
             const value = {
                 accessToken: authResponse.accessToken,
                 refreshToken: authResponse.refreshToken,
-                expiresAt: claims.exp ? claims.exp * 1000 : Date.now() + (authResponse.expiresIn || 0),
+                expiresAt: claims.exp ? claims.exp * 1000 : Date.now() + (authResponse.expiresIn || 0) * 1000,
                 userId: claims.sub,
                 email: claims.email,
                 role: claims.role
@@ -62,40 +53,41 @@
             return value;
         },
         clear() {
-            try { localStorage.removeItem(config.storageKeys.session); } catch (e) { /* sin almacenamiento */ }
+            try { localStorage.removeItem(config.storageKeys.session); } catch (e) { }
         },
         isActive() {
             const s = this.get();
             return Boolean(s && s.accessToken && s.expiresAt > Date.now());
         },
-        /** El access token dura 15 min: con refresh token la sesión se puede renovar aunque haya expirado. */
         isRenewable() {
             const s = this.get();
             return Boolean(s && s.refreshToken);
         }
     };
 
-    // Margen antes de la expiración en el que se renueva el token por adelantado.
     const REFRESH_MARGIN_MS = 60 * 1000;
     let refreshInFlight = null;
 
-    /**
-     * Renueva la sesión con el refresh token. User-Identity revoca el refresh usado (rotación), así que las peticiones
-     * concurrentes comparten una sola renovación: dos /auth/refresh con el mismo token cerrarían la sesión.
-     */
+    function withSessionLock(task) {
+        const locks = typeof navigator !== 'undefined' && navigator.locks;
+        return locks && typeof locks.request === 'function' ? locks.request('truckcar.session.refresh', task) : task();
+    }
+
     function refreshSession() {
         if (!refreshInFlight) {
-            const current = session.get();
-            refreshInFlight = (current && current.refreshToken
-                ? request('POST', '/auth/refresh', { body: { refreshToken: current.refreshToken }, auth: false })
-                    .then(response => session.save(response))
-                : Promise.reject(new ApiError('No hay sesión para renovar', { status: 401 })))
-                .finally(() => { refreshInFlight = null; });
+            const before = session.get();
+            refreshInFlight = withSessionLock(async () => {
+                const current = session.get();
+                if (!current || !current.refreshToken) throw new ApiError('No hay sesión para renovar', { status: 401 });
+                const renewedElsewhere = before && current.accessToken !== before.accessToken && current.expiresAt > Date.now();
+                if (renewedElsewhere) return current;
+                const response = await request('POST', '/auth/refresh', { body: { refreshToken: current.refreshToken }, auth: false });
+                return session.save(response);
+            }).finally(() => { refreshInFlight = null; });
         }
         return refreshInFlight;
     }
 
-    /** Garantiza un access token vigente (lo renueva si vence en menos de un minuto). Lanza si no se puede. */
     async function ensureFreshSession() {
         const current = session.get();
         if (current && current.accessToken && current.expiresAt - REFRESH_MARGIN_MS > Date.now()) {
@@ -137,9 +129,17 @@
         return url.toString();
     }
 
+    function validationDetails(body) {
+        const details = body && body.details;
+        if (!details || typeof details !== 'object') return [];
+        return Object.values(details).filter(value => typeof value === 'string' && value.trim());
+    }
+
     function extractErrorMessage(body, status) {
         if (body && typeof body === 'object') {
             if (body.message) return body.message;
+            const details = validationDetails(body);
+            if (details.length) return details.join('. ');
             if (body.reasonDetails) return body.reasonDetails;
             if (body.error && typeof body.error === 'string') return body.error;
             if (body.errors && typeof body.errors === 'object') {
@@ -161,13 +161,14 @@
         return defaults[status] || ('Error HTTP ' + status);
     }
 
-    // ---------------------------------------------------------------- núcleo
     async function request(method, path, { body, query, auth = true, timeoutMs, headers = {}, retried = false } = {}) {
+        if (!config.gatewayUrl) {
+            throw new ApiError('Esta instalación no tiene configurada la dirección del servidor. Pida una versión actualizada de la aplicación.', { status: 0, path });
+        }
         if (auth && session.isRenewable()) {
             try {
                 await ensureFreshSession();
             } catch (e) {
-                // Si la renovación falla se envía igual: el 401 del gateway cierra la sesión más abajo.
             }
         }
         const correlationId = newCorrelationId();
@@ -227,12 +228,9 @@
                 retryAfterSeconds: response.status === 429 ? retryAfterOf(response) : null
             });
             if (error.isUnauthorized && auth && !retried && session.isRenewable()) {
-                // Token vencido o revocado entre la comprobación y el envío: una renovación y un reintento.
                 try {
                     await refreshSession();
                 } catch (refreshError) {
-                    // /auth/refresh limitado (429): la sesión sigue siendo válida, solo hay que esperar. Cerrarla aquí
-                    // sacaría al conductor de la app por una ráfaga de renovaciones.
                     if (refreshError && refreshError.isRateLimited) {
                         throw refreshError;
                     }
@@ -246,7 +244,6 @@
                 session.clear();
                 window.dispatchEvent(new CustomEvent('truckcar:unauthorized', { detail: error }));
             } else if (error.isForbidden && auth) {
-                // El rol del token no permite esta ruta (p. ej. un GENERADOR en la torre de control): la app redirige.
                 window.dispatchEvent(new CustomEvent('truckcar:forbidden', { detail: error }));
             }
             throw error;
@@ -268,7 +265,59 @@
 
     const enc = encodeURIComponent;
 
-    // ---------------------------------------------------------------- endpoints
+    const DRIVER_STATE_FIELDS = ['driverName', 'licenseCategory', 'rating', 'totalTrips', 'netCargoWeightTons',
+        'drivingHoursToday', 'mandatoryRestLocation', 'hazmatAuthorized', 'coldChainCertified', 'runtValid',
+        'electronicTollTagActive', 'activeBadges', 'currentLatitude', 'currentLongitude', 'currentSpeedKmH', 'status'];
+    const VEHICLE_STATE_FIELDS = ['vehiclePlate', 'vehicleModel', 'vehicleType', 'maxHeightMeters', 'maxPayloadTons', 'tareWeightTons'];
+
+    function finiteOrUndefined(value) {
+        if (value === null || value === undefined || value === '') return undefined;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : undefined;
+    }
+
+    async function patchDriverState(driverId, changes) {
+        let current = null;
+        try {
+            current = await http.get('/fleets-drivers/drivers/' + enc(driverId));
+        } catch (error) {
+            if (!error.isNotFound) throw error;
+        }
+        const kept = {};
+        DRIVER_STATE_FIELDS.concat(VEHICLE_STATE_FIELDS).forEach(field => {
+            if (current && current[field] !== null && current[field] !== undefined) kept[field] = current[field];
+        });
+        return http.post('/fleets-drivers/state', { ...kept, driverId, ...changes });
+    }
+
+    function registerVehicle(driverId, vehicleData) {
+        return patchDriverState(driverId, {
+            vehiclePlate: vehicleData.plate ? String(vehicleData.plate).toUpperCase().trim() : undefined,
+            vehicleModel: vehicleData.model ? String(vehicleData.model).trim() : undefined,
+            vehicleType: vehicleData.type || undefined,
+            maxHeightMeters: finiteOrUndefined(vehicleData.height),
+            maxPayloadTons: finiteOrUndefined(vehicleData.maxPayload),
+            tareWeightTons: finiteOrUndefined(vehicleData.tareWeight)
+        });
+    }
+
+    async function drivingRoutes(points, { steps = false, alternatives = false } = {}) {
+        const url = config.routingUrl + points.map(c => c[1] + ',' + c[0]).join(';')
+            + '?overview=full&geometries=geojson' + (steps ? '&steps=true' : '') + (alternatives ? '&alternatives=true' : '');
+        const response = await fetch(url);
+        if (!response.ok) throw new ApiError('El servicio de rutas respondió ' + response.status, { status: response.status, path: 'routing' });
+        const json = await response.json();
+        const routes = (json.routes || []).filter(r => r && r.geometry && r.geometry.coordinates);
+        if (!routes.length) {
+            throw new ApiError('El servicio de rutas no devolvió una ruta', { status: 502, path: 'routing' });
+        }
+        return routes;
+    }
+
+    async function drivingRoute(points, options) {
+        return (await drivingRoutes(points, options))[0];
+    }
+
     window.TruckCarApi = {
         ApiError,
         RATE_LIMITED_MESSAGE,
@@ -277,7 +326,6 @@
         decodeJwt,
         http,
 
-        /** User-Identity: /api/v1/auth, /api/v1/users */
         auth: {
             async login(email, password) {
                 const response = await http.post('/auth/login', { email, password }, { auth: false });
@@ -296,96 +344,82 @@
             me: () => http.get('/users/me'),
             updateMe: (data) => http.put('/users/me', data),
             getById: (id) => http.get('/users/' + enc(id)),
-            /** ADMIN: cuentas paginadas (Spring Page: { content, totalElements }), opcionalmente por rol o estado. */
             list: ({ role, status, size = 200 } = {}) => http.get('/users', { query: { role, status, size, sort: 'createdAt,desc' } }),
             changeRole: (id, role) => http.patch('/users/' + enc(id) + '/role', { role }),
             changeStatus: (id, status) => http.patch('/users/' + enc(id) + '/status', { status })
         },
 
-        /** fleets-drivers: estado de conductores y vehículos */
         fleet: {
             listActive: () => http.get('/fleets-drivers/active'),
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
             getVehicle: (plate) => http.get('/fleets-drivers/vehicles/' + enc(plate)),
-            updateState: (state) => http.post('/fleets-drivers/state', state)
+            updateState: (state) => http.post('/fleets-drivers/state', state),
+            registerVehicle,
+            patchState: patchDriverState
         },
 
-        /** Load-Allocation: cargas y ciclo comercial de asignación */
         loads: {
             getById: (loadId) => http.get('/loads/' + enc(loadId)),
             listAvailable: (truckType) => http.get('/loads/available', { query: { truckType } }),
             listByCompany: (companyId) => http.get('/loads/company/' + enc(companyId)),
-            /** Envíos del generador autenticado (generatorCompanyId = su id de usuario). */
             published: () => http.get('/loads/published'),
             publish: (load) => http.post('/loads', load),
             accept: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/accept'),
             reject: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/reject'),
-            /** Cargas del conductor autenticado (propuestas, aceptadas y en tránsito). */
             mine: () => http.get('/loads/mine'),
             startTrip: (loadId) => http.patch('/loads/' + enc(loadId) + '/trip/start'),
-            /** pod: { receiverName, receiverDocument, notes, signature?, photo? } (referencias, ver PodEvidence). */
             deliver: (loadId, pod) => http.patch('/loads/' + enc(loadId) + '/trip/deliver', pod),
-            /** files: [{ kind: SIGNATURE|PHOTO, contentType, sizeBytes, sha256 }] -> URLs prefirmadas de subida. */
             podUploadUrls: (loadId, files) =>
                 http.post('/loads/' + enc(loadId) + '/proof-of-delivery/upload-urls', { files }),
             cancel: (loadId, reason) => http.patch('/loads/' + enc(loadId) + '/cancel', { reason }),
-            /** Torre de control (COORDINADOR/ADMIN): cargas de todos los generadores por status. */
             list: (statuses) => http.get('/loads', { query: { status: statuses && statuses.length ? statuses.join(',') : undefined } }),
-            /** POD completo con firma y foto: conductor de la carga o torre de control. */
             proofOfDelivery: (loadId) => http.get('/loads/' + enc(loadId) + '/proof-of-delivery'),
-            /** Enlace firmado de seguimiento público (GENERADOR dueño o torre): { token, url, expiresAt }. */
             publicTrackingLink: (loadId) => http.post('/loads/' + enc(loadId) + '/public-tracking-link'),
-            /** Vista pública anónima del envío: sin JWT (el gateway abre solo este GET). */
             publicTracking: (token) => http.get('/loads/public-tracking/' + enc(token), { auth: false })
         },
 
-        /** AI-powered-fleet-allocation: motor de scoring de conductores */
         allocation: {
             matchLoad: (loadId) => http.post('/fleet-allocation/match/' + enc(loadId)),
             history: (loadId) => http.get('/fleet-allocation/history/' + enc(loadId)),
             optimize: (request) => http.post('/fleet-allocation/optimize', request)
         },
 
-        /** Route-AI-agent: planeación de rutas para carga pesada */
+        routing: {
+            drivingRoute,
+            drivingRoutes
+        },
+
         routes: {
             plan: (request) => http.post('/routes/plan', request, { timeoutMs: 45000 }),
             historyByPlate: (plate) => http.get('/routes/history/' + enc(plate))
         },
 
-        /** Community-Alerts: reportes de vía con PostGIS */
         alerts: {
             listActive: () => http.get('/alerts'),
             nearby: (latitude, longitude, radiusMeters = 50000) =>
                 http.get('/alerts/nearby', { query: { latitude, longitude, radiusMeters } }),
             create: (alert) => http.post('/alerts', alert),
             confirm: (alertId) => http.patch('/alerts/' + enc(alertId) + '/confirm'),
-            /** Botón de pánico del conductor: { latitude, longitude, accuracyMeters, loadId, vehiclePlate, driverName, clientEventId }. */
             sos: (sos) => http.post('/alerts/sos', sos, { timeoutMs: 8000 }),
-            /** Torre de control: SOS sin atender. */
             activeSos: () => http.get('/alerts/sos'),
             acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
         },
 
-        /** Notifications: plantillas de texto por categoría, canal e idioma (solo ADMIN; el gateway responde 403 a otro rol). */
         templates: {
             list: () => http.get('/templates'),
             update: (id, templateText) => http.put('/templates/' + enc(id), { templateText })
         },
 
-        /** Notifications: lo que se le envió al usuario (push y voz), la más reciente primero. */
         notifications: {
             forUser: (userId, size = 30) =>
                 http.get('/notifications/user/' + enc(userId), { query: { size, sort: 'createdAt,desc' } })
         },
 
-        /** Routing-Restrictions: restricciones y cierres viales */
         restrictions: {
             listActive: (query) => http.get('/restrictions', { query }),
-            /** Torre de control (COORDINADOR/ADMIN): registra un gálibo, un límite de peso o un cierre. */
             create: (restriction) => http.post('/restrictions', restriction),
             deactivate: (id) => http.patch('/restrictions/' + enc(id) + '/deactivate'),
             validateCompatibility: (request) => http.post('/restrictions/validate-compatibility', request),
-            /** Restricciones activas a lo largo de la geometría real de la ruta (gálibo, peso, cierres). */
             validateRoute: (request) => http.post('/restrictions/validate-route', request, { timeoutMs: 8000 })
         }
     };

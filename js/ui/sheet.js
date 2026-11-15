@@ -1,18 +1,5 @@
-/**
- * Hojas inferiores (bottom sheets) y diálogos. En el teléfono suben desde abajo con la curva de las hojas de iOS y se
- * cierran arrastrando hacia abajo; en pantallas anchas aparecen como diálogo centrado.
- *
- *  Sheet.open({ title, subtitle, icon, tone, body, actions, dismissible, draggable, onMount }) -> Promise<valor|null>
- *  Sheet.confirm({ title, message, confirmLabel, tone })                                       -> Promise<boolean>
- *  Sheet.prompt({ title, message, placeholder, suggestions, required, confirmLabel })          -> Promise<string|null>
- *  Sheet.explainError(error, contexto)  -> muestra un diálogo comprensible para 401/403/409; true si lo manejó.
- *
- * Se montan en <body>: las vistas se re-renderizan completas en cada setState y no deben llevárselas.
- */
 window.Sheet = (function () {
     const esc = (value) => window.ui.escape(value);
-    // Ícono de la hoja sobre una superficie neutra; el significado lo da el color del ícono (advertencia u ok), nunca un
-    // fondo teñido. Una acción destructiva (rechazar, cancelar) no es una emergencia: no va en rojo, que es del SOS.
     const TONES = {
         primary: 'text-slate-100 bg-slate-800 border-transparent',
         warning: 'text-warn-500 bg-slate-800 border-transparent',
@@ -76,8 +63,6 @@ window.Sheet = (function () {
             const onKey = (event) => { if (event.key === 'Escape' && opts.dismissible) close(null); };
             document.addEventListener('keydown', onKey);
 
-            // Solo cierra un toque que empezó en el fondo: el click sintético al soltar el dedo que abrió la hoja (p. ej.
-            // tras mantener el SOS) cae sobre el fondo y no debe cerrarla.
             let pressedBackdrop = false;
             backdrop.addEventListener('pointerdown', (event) => { pressedBackdrop = event.target === backdrop; });
             backdrop.addEventListener('click', (event) => {
@@ -89,7 +74,7 @@ window.Sheet = (function () {
                 backdrop.querySelector(`[data-sheet-action="${i}"]`).addEventListener('click', async () => {
                     if (a.onClick) {
                         const result = await a.onClick(sheet);
-                        if (result === false) return; // la acción pidió mantener la hoja abierta (p. ej. validación)
+                        if (result === false) return;
                     }
                     close(a.value === undefined ? i : a.value);
                 });
@@ -98,7 +83,6 @@ window.Sheet = (function () {
 
             document.body.appendChild(backdrop);
             if (opts.onMount) opts.onMount(sheet, close);
-            // Doble frame: el estado inicial (fuera de pantalla) se pinta antes de transicionar.
             requestAnimationFrame(() => requestAnimationFrame(() => {
                 backdrop.classList.add('is-open');
                 const focusTarget = sheet.querySelector('[autofocus], input, textarea, [data-sheet-action]');
@@ -107,10 +91,6 @@ window.Sheet = (function () {
         });
     }
 
-    /**
-     * Arrastrar la manija (o la cabecera) hacia abajo cierra la hoja. Hacia arriba hay resistencia, como en iOS.
-     * Se cierra si se arrastró más del 30 % de la altura o con un gesto rápido (> 0,5 px/ms).
-     */
     function bindDrag(backdrop, sheet, onClose) {
         const handle = sheet.querySelector('.sheet-handle');
         let startY = 0;
@@ -130,7 +110,7 @@ window.Sheet = (function () {
         const onMove = (event) => {
             if (!dragging) return;
             const raw = event.clientY - startY;
-            dy = raw > 0 ? raw : raw / 6; // resistencia al subir
+            dy = raw > 0 ? raw : raw / 6;
             sheet.style.transform = `translateY(${dy}px)`;
             backdrop.style.opacity = String(Math.max(0.35, 1 - Math.max(0, dy) / (sheet.offsetHeight * 1.4)));
         };
@@ -147,7 +127,7 @@ window.Sheet = (function () {
             sheet.style.transform = '';
         };
         handle.addEventListener('pointerdown', onDown);
-        sheet.querySelector('.sheet-body > div').addEventListener('pointerdown', onDown); // la cabecera también
+        sheet.querySelector('.sheet-body > div').addEventListener('pointerdown', onDown);
         sheet.addEventListener('pointermove', onMove);
         sheet.addEventListener('pointerup', onUp);
         sheet.addEventListener('pointercancel', onUp);
@@ -166,7 +146,6 @@ window.Sheet = (function () {
         }).then(value => value === true);
     }
 
-    /** Pide un texto (motivo de rechazo, de cancelación…) con sugerencias de un toque. */
     function prompt({ title, message, placeholder = '', suggestions = [], required = true, confirmLabel = 'Enviar', tone = 'primary', icon = 'fa-pen' }) {
         const body = document.createElement('div');
         body.className = 'space-y-3';
@@ -203,10 +182,6 @@ window.Sheet = (function () {
         }).then(value => (value === '__submit__' ? textarea.value.trim() : null));
     }
 
-    /**
-     * Errores que el usuario puede entender y resolver: sesión vencida (401), permiso (403) y conflicto de estado (409,
-     * p. ej. la carga ya la tomó otro conductor). El resto lo muestra quien llama como toast.
-     */
     function explainError(error, context = 'la operación') {
         const status = error && error.status;
         const trace = error && error.correlationId ? `Referencia de soporte: ${String(error.correlationId).slice(0, 8)}` : '';

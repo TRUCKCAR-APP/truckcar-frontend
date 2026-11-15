@@ -1,14 +1,6 @@
-/*
- * Navegación en vivo (pantalla Navegar del conductor), dirección B: una tarjeta superior de vidrio con la maniobra, la
- * altura y el peso bruto y los avisos; un panel vertical a la derecha (velocidad, centrar, voz, reportar) y la barra
- * del viaje abajo. Todo en la rejilla de 16 px y con los tokens de css/tokens.css. Sin límite de velocidad: no hay
- * fuente para ese dato.
- */
-
 .nav-screen { height: 100%; display: flex; flex-direction: column; }
 .nav-map-area { flex: 1; position: relative; overflow: hidden; }
 
-/* Tarjeta superior: vidrio con respaldo sólido donde no hay backdrop-filter o se pide menos transparencia. */
 .hud-card {
     position: absolute;
     z-index: 600;
@@ -27,7 +19,6 @@
     .hud-card { background: var(--color-glass-solid); }
 }
 
-/* La maniobra es un botón: tocarla repite la instrucción en voz alta. */
 .hud-turn {
     width: 100%;
     display: grid;
@@ -62,10 +53,8 @@
 .hud-meta .k { font-size: var(--text-caption); color: var(--color-text-secondary); }
 .hud-meta .v { font-size: var(--text-body); font-weight: var(--weight-bold); }
 
-/* Avisos dentro de la tarjeta (fuera de ruta, GPS): triángulo y texto. El GPS solo aparece si hay algo que advertir. */
 .hud-row { padding: var(--space-3) var(--space-4); border-top: var(--border-subtle); font-size: var(--text-footnote); }
 .hud-row[hidden], .hud-gps:empty, .hud-gps[data-state="ok"] { display: none; }
-/* Pila de avisos: los que exceden el máximo a la vista se resumen en "+N avisos". */
 .hud-row.is-overflow, .hud-meta[hidden] { display: none; }
 .hud-more {
     display: block;
@@ -85,12 +74,9 @@
     touch-action: manipulation;
 }
 .hud-more:active { background: var(--color-pressed); }
-/* Desplegados todos los avisos: la tarjeta se desplaza si no cabe y el panel se oculta mientras se leen. */
 .nav-screen.alerts-expanded .hud-card { max-height: calc(100% - var(--space-4) * 2); overflow-y: auto; overscroll-behavior: contain; }
 .nav-screen.alerts-expanded .hud-panel { visibility: hidden; }
-/* "Ocultar avisos" siempre a mano aunque la tarjeta desplegada se desplace. */
 .nav-screen.alerts-expanded .hud-more { position: sticky; bottom: 0; background: var(--color-glass-solid); }
-/* Plegados, cada aviso ocupa 3 líneas como máximo: el texto completo está al desplegar y en la voz. */
 .nav-screen:not(.alerts-expanded) .hud-row[data-hud-alert] .warn-line > span {
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -98,18 +84,14 @@
     line-clamp: 3;
     overflow: hidden;
 }
-/* Sin altura para tarjeta y panel vertical (360×800 con avisos): el panel pasa a una fila al pie del mapa. */
 .hud-panel.is-row { grid-auto-flow: column; align-items: end; }
-/* Ruta alternativa que evitó una restricción: confirmación en verde, no advertencia (la advertencia sigue en ámbar). */
 .hud-route-notice.is-ok .warn-line { color: var(--color-ok); }
-/* Bloqueo detectado por la IA en la ruta: aviso de la vía (tono SOS) hasta que el desvío quede calculado. */
 .hud-ai-alert { background: var(--color-sos-soft); }
 .hud-ai-alert .warn-line { color: var(--color-sos-text); }
 .hud-ai-alert.is-ok { background: var(--color-ok-soft); }
 .hud-ai-alert.is-ok .warn-line { color: var(--color-ok); }
 .hud-gps { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); }
 
-/* Panel vertical derecho, por encima de la atribución del mapa. */
 .hud-panel {
     position: absolute;
     z-index: 600;
@@ -148,13 +130,11 @@
 .hud-btn:active { background: var(--color-pressed); transform: scale(var(--press-scale)); }
 .hud-btn:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
-/* Pantallas bajas (360×800 y similares): el panel se compacta para no tocar la tarjeta superior. */
 @media (max-height: 860px) {
     .hud-speed { width: 64px; height: 64px; }
     .hud-btn { width: 48px; height: 48px; }
 }
 
-/* Barra del viaje: lo que falta, el tiempo (perfil de auto) y la ruta; crece con su texto y nunca se corta. */
 .trip-bar {
     flex: none;
     min-height: 72px;
@@ -187,7 +167,6 @@
 .btn-trip:active { background: var(--color-pressed); transform: scale(var(--press-scale)); }
 .btn-trip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
-/* Horizontal: la tarjeta a la izquierda, el panel a la derecha y la barra del viaje bajo la tarjeta. */
 .nav-screen.is-landscape { position: relative; }
 .nav-screen.is-landscape .nav-map-area { position: absolute; inset: 0; }
 .nav-screen.is-landscape .hud-card { right: auto; width: 340px; }
@@ -203,8 +182,6 @@
     box-shadow: var(--elev-3);
 }
 
-/* Marcador del camión: flecha con el rumbo real, sin círculo (un triángulo dentro de un círculo se lee como
-   "reproducir"); sin rumbo conocido, un punto. */
 .truck-arrow { width: 44px; height: 44px; display: grid; place-items: center; filter: drop-shadow(0 3px 6px rgb(0 0 0 / 0.6)); }
 .truck-arrow svg {
     width: 40px;
