@@ -292,10 +292,10 @@ test("el reporte envía el tipo, la severidad y el título que exige Community-A
 test("las acciones de una carga se deciden en un solo lugar según status y assignmentStatus", () => {
   const { service: s } = service();
   const on = (load) => Object.entries(s.loadActions(load)).filter(([, allowed]) => allowed).map(([name]) => name).sort();
-  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: null }), ["cancel", "requestMatching", "shareTracking"]);
-  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "PROPOSED" }), ["awaitNotification", "cancel", "shareTracking"]);
+  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: null }), ["assignManually", "cancel", "requestMatching", "shareTracking"]);
+  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "PROPOSED" }), ["awaitNotification", "cancel", "notifyDriver", "shareTracking"]);
   assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "NOTIFIED" }), ["cancel", "respond", "shareTracking"]);
-  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "UNASSIGNED_NO_DRIVERS" }), ["cancel", "requestMatching", "shareTracking"]);
+  assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "UNASSIGNED_NO_DRIVERS" }), ["assignManually", "cancel", "requestMatching", "shareTracking"]);
   assert.deepEqual(on({ status: "ASSIGNED", assignmentStatus: "ACCEPTED" }), ["cancel", "navigate", "shareTracking", "startTrip", "trackTruck"]);
   assert.deepEqual(on({ status: "IN_TRANSIT", assignmentStatus: "ACCEPTED" }), ["deliver", "navigate", "shareTracking", "trackTruck", "transmitPosition"]);
   assert.deepEqual(on({ status: "DELIVERED", assignmentStatus: "ACCEPTED" }), ["shareTracking", "viewProofOfDelivery"]);

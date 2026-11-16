@@ -243,6 +243,8 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     gap: 8px;
 }
 
+.btn-secondary.is-danger { color: var(--color-sos-text); border-color: var(--color-sos); background: var(--color-sos-soft); }
+
 .chip {
     display: inline-flex;
     white-space: nowrap;
