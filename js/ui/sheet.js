@@ -9,7 +9,7 @@ window.Sheet = (function () {
     const BUTTONS = {
         primary: 'btn-cta',
         success: 'btn-cta',
-        danger: 'btn-secondary w-full',
+        danger: 'btn-secondary is-danger w-full',
         secondary: 'btn-secondary w-full'
     };
     let openCount = 0;
@@ -60,7 +60,25 @@ window.Sheet = (function () {
                 if (previousFocus && previousFocus.focus) previousFocus.focus({ preventScroll: true });
                 resolve(value === undefined ? null : value);
             };
-            const onKey = (event) => { if (event.key === 'Escape' && opts.dismissible) close(null); };
+            const onKey = (event) => {
+                if (event.key === 'Escape' && opts.dismissible) {
+                    close(null);
+                    return;
+                }
+                if (event.key !== 'Tab') return;
+                const focusable = [...sheet.querySelectorAll('button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])')]
+                    .filter(el => !el.disabled && !el.closest('.hidden'));
+                if (!focusable.length) return;
+                const index = focusable.indexOf(document.activeElement);
+                const last = focusable.length - 1;
+                if (event.shiftKey && index <= 0) {
+                    event.preventDefault();
+                    focusable[last].focus();
+                } else if (!event.shiftKey && (index === -1 || index === last)) {
+                    event.preventDefault();
+                    focusable[0].focus();
+                }
+            };
             document.addEventListener('keydown', onKey);
 
             let pressedBackdrop = false;
@@ -146,20 +164,30 @@ window.Sheet = (function () {
         }).then(value => value === true);
     }
 
-    function prompt({ title, message, placeholder = '', suggestions = [], required = true, confirmLabel = 'Enviar', tone = 'primary', icon = 'fa-pen' }) {
+    function prompt({ title, message, label, placeholder = '', suggestions = [], required = true, confirmLabel = 'Enviar',
+        cancelLabel = 'Cancelar', requiredMessage = 'Este campo es obligatorio.', tone = 'primary', icon = 'fa-pen' }) {
+        const hintId = 'sheet-prompt-hint-' + (openCount + 1);
         const body = document.createElement('div');
         body.className = 'space-y-3';
         body.innerHTML = `
             ${suggestions.length ? `<div class="flex flex-wrap gap-2">${suggestions.map((s, i) =>
                 `<button type="button" data-suggestion="${i}" class="chip !py-2 !px-3 text-slate-200">${esc(s)}</button>`).join('')}</div>` : ''}
-            <textarea rows="3" maxlength="500" class="login-input w-full text-sm resize-none" enterkeyhint="done"></textarea>
-            <p class="field-hint" aria-live="polite"></p>`;
+            <textarea rows="3" maxlength="500" class="login-input w-full text-sm resize-none" enterkeyhint="done" aria-describedby="${hintId}"></textarea>
+            <p id="${hintId}" class="field-hint" role="alert"></p>`;
         const textarea = body.querySelector('textarea');
         textarea.placeholder = placeholder;
+        textarea.setAttribute('aria-label', label || title);
+        if (required) textarea.setAttribute('aria-required', 'true');
+        textarea.addEventListener('input', () => {
+            if (!textarea.value.trim()) return;
+            body.querySelector('.field-hint').textContent = '';
+            textarea.removeAttribute('aria-invalid');
+        });
         body.querySelectorAll('[data-suggestion]').forEach(chip => chip.addEventListener('click', () => {
             textarea.value = suggestions[Number(chip.dataset.suggestion)];
             body.querySelectorAll('[data-suggestion]').forEach(c => c.classList.toggle('!border-brand-500', c === chip));
             body.querySelector('.field-hint').textContent = '';
+            textarea.removeAttribute('aria-invalid');
         }));
         return open({
             title, subtitle: message, icon, tone, body,
@@ -168,7 +196,7 @@ window.Sheet = (function () {
                     label: confirmLabel, tone: tone === 'danger' ? 'danger' : 'primary',
                     onClick: () => {
                         if (required && !textarea.value.trim()) {
-                            body.querySelector('.field-hint').textContent = 'Este campo es obligatorio.';
+                            body.querySelector('.field-hint').textContent = requiredMessage;
                             textarea.setAttribute('aria-invalid', 'true');
                             textarea.focus();
                             return false;
@@ -177,7 +205,7 @@ window.Sheet = (function () {
                     },
                     value: '__submit__'
                 },
-                { label: 'Cancelar', tone: 'secondary', value: null }
+                { label: cancelLabel, tone: 'secondary', value: null }
             ]
         }).then(value => (value === '__submit__' ? textarea.value.trim() : null));
     }

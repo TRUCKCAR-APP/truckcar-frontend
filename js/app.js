@@ -216,6 +216,7 @@ window.app = {
 
     async submitLogin(event) {
         event.preventDefault();
+        if (window.ui.reportFormProblem(event.target)) return;
         const form = new FormData(event.target);
         window.store.setState({ busyAction: 'auth', authError: null });
         try {
@@ -235,6 +236,7 @@ window.app = {
 
     async submitRegister(event) {
         event.preventDefault();
+        if (window.ui.reportFormProblem(event.target)) return;
         const form = new FormData(event.target);
         window.store.setState({ busyAction: 'auth', authError: null });
         try {
@@ -267,6 +269,7 @@ window.app = {
             const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
             if (!state.isAuthenticated || state.activeRole !== 'coordinator' || typing) return;
             await window.TruckCarService.refreshCoordinator();
+            if (state.coordinatorTab === 'loads') await window.TowerLoads.refresh({ silent: true });
         }, window.TruckCarConfig.pollingIntervalMs);
         clearInterval(this.shipmentsTimer);
         this.shipmentsTimer = setInterval(async () => {
@@ -355,7 +358,7 @@ window.app = {
         const minutes = window.TruckCarConfig.assignmentResponseMinutes;
         window.ui.toast('Nueva carga propuesta', 'success',
             { description: route + ' · ' + load.netWeight + ' t. Tiene ' + minutes + ' minutos para responder.' });
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        window.voiceEngine.proposalAlert();
         window.voiceEngine.speak('Nueva carga propuesta: ' + route.replace('→', 'a') + ', ' + load.netWeight
             + ' toneladas. Tiene ' + minutes + ' minutos para responder.');
     },
@@ -509,6 +512,7 @@ window.app = {
     setCoordinatorTab(tab) {
         window.store.setState({ coordinatorTab: tab });
         if (tab === 'shipments') window.generatorCtrl.refresh(true);
+        if (tab === 'loads') window.TowerLoads.refresh();
         if (['restrictions', 'users', 'templates'].includes(tab)) window.TowerAdmin.load(tab);
     },
 
@@ -725,6 +729,13 @@ window.app = {
         const s = window.RouteGuidance.snapshot();
         const hud = window.RouteGuidance.hudText(s);
         window.voiceEngine.speak((s.hasPosition && s.status === 'ready' ? 'En ' + hud.distance + ', ' : '') + hud.instruction, true);
+    },
+
+    toggleAlertSound() {
+        const enabled = window.store.state.alertSoundEnabled === false;
+        window.TruckCarStore.saveAlertSound(enabled);
+        window.store.setState({ alertSoundEnabled: enabled });
+        if (enabled) window.voiceEngine.proposalAlert();
     },
 
     toggleVoice() {

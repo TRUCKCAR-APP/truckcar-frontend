@@ -20,6 +20,58 @@ window.ui = {
         return typeof speed === 'number' ? speed + ' km/h' : 'Velocidad: ' + this.NOT_AVAILABLE;
     },
 
+    fieldLabel(field) {
+        const label = (field.labels && field.labels[0]) || null;
+        if (label) {
+            const copy = label.cloneNode(true);
+            copy.querySelectorAll('input, select, textarea, button, .field-req').forEach(node => node.remove());
+            const text = copy.textContent.replace(/\s+/g, ' ').trim();
+            if (text) return text;
+        }
+        return field.getAttribute('aria-label') || field.name || field.id || 'campo';
+    },
+
+    fieldProblem(field) {
+        const validity = field.validity;
+        if (!validity || validity.valid) return null;
+        const label = '«' + this.fieldLabel(field) + '»';
+        if (validity.valueMissing) return 'Complete el campo ' + label + '.';
+        if (validity.typeMismatch && field.type === 'email') return 'Escriba un correo válido en ' + label + ', por ejemplo nombre@empresa.com.';
+        if (validity.tooShort) return 'El campo ' + label + ' debe tener al menos ' + field.minLength + ' caracteres.';
+        if (validity.tooLong) return 'El campo ' + label + ' admite máximo ' + field.maxLength + ' caracteres.';
+        if (validity.rangeUnderflow) return 'El valor de ' + label + ' debe ser ' + field.min + ' o más.';
+        if (validity.rangeOverflow) return 'El valor de ' + label + ' debe ser ' + field.max + ' o menos.';
+        if (validity.badInput || validity.stepMismatch) return 'Escriba un número válido en ' + label + '.';
+        return 'Revise el campo ' + label + '.';
+    },
+
+    clearFormProblem(form) {
+        form.querySelectorAll('[data-form-problem]').forEach(node => node.remove());
+        form.querySelectorAll('[data-form-invalid]').forEach((field) => {
+            field.removeAttribute('aria-invalid');
+            field.removeAttribute('aria-describedby');
+            field.removeAttribute('data-form-invalid');
+        });
+    },
+
+    reportFormProblem(form) {
+        this.clearFormProblem(form);
+        const field = [...form.elements].find(el => el.willValidate && el.validity && !el.validity.valid);
+        if (!field) return false;
+        const hint = document.createElement('p');
+        hint.className = 'field-hint';
+        hint.id = 'form-problem-' + (field.name || field.id || 'campo');
+        hint.setAttribute('role', 'alert');
+        hint.setAttribute('data-form-problem', '');
+        hint.textContent = this.fieldProblem(field);
+        (field.closest('label') || field).insertAdjacentElement('afterend', hint);
+        field.setAttribute('aria-invalid', 'true');
+        field.setAttribute('aria-describedby', hint.id);
+        field.setAttribute('data-form-invalid', '');
+        field.focus();
+        return true;
+    },
+
     toast(message, type = 'info', options = {}) {
         if (!window.Toaster) return;
         window.Toaster.show({ title: message, type, ...options });

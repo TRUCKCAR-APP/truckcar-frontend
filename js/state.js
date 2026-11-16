@@ -1,4 +1,23 @@
 class TruckCarStore {
+    static ALERT_SOUND_KEY = 'truckcar.alertSound';
+
+    static readAlertSound() {
+        try {
+            return window.localStorage.getItem(TruckCarStore.ALERT_SOUND_KEY) !== 'off';
+        } catch (error) {
+            return true;
+        }
+    }
+
+    static saveAlertSound(enabled) {
+        try {
+            window.localStorage.setItem(TruckCarStore.ALERT_SOUND_KEY, enabled ? 'on' : 'off');
+        } catch (error) {
+            return false;
+        }
+        return true;
+    }
+
     constructor() {
         this.state = {
             isAuthenticated: false,
@@ -17,6 +36,7 @@ class TruckCarStore {
             showDeviceFrame: true,
             isNavigating: true,
             voiceEnabled: true,
+            alertSoundEnabled: TruckCarStore.readAlertSound(),
             isOffline: false,
             tripAccepted: true,
             tripCompleted: false,
@@ -54,4 +74,5 @@ class TruckCarStore {
     }
 }
 
+window.TruckCarStore = TruckCarStore;
 window.store = new TruckCarStore();

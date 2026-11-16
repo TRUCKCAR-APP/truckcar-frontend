@@ -50,6 +50,22 @@ test("la hoja del motivo no se envía vacía y acepta una sugerencia", async () 
   assert.equal(await answer, "Falla mecánica");
 });
 
+test("la hoja del motivo conserva «Cancelar» y su mensaje por defecto, y nombra el campo para el lector de pantalla", async () => {
+  const w = browser();
+  const answer = w.Sheet.prompt({ title: "Rechazar esta carga" });
+  await sleep(50);
+  const sheet = w.document.querySelector(".sheet");
+  const field = sheet.querySelector("textarea");
+  assert.equal(field.getAttribute("aria-label"), "Rechazar esta carga", "sin etiqueta propia usa el título");
+  assert.deepEqual([...sheet.querySelectorAll("[data-sheet-action]")].map((b) => b.textContent.trim()), ["Enviar", "Cancelar"]);
+  assert.doesNotMatch(sheet.querySelector("[data-sheet-action='0']").className, /is-danger/);
+  sheet.querySelector("[data-sheet-action='0']").click();
+  await sleep(20);
+  assert.equal(sheet.querySelector(".field-hint").textContent, "Este campo es obligatorio.");
+  sheet.querySelector("[data-sheet-action='1']").click();
+  assert.equal(await answer, null);
+});
+
 test("el click fantasma al soltar el dedo no cierra la hoja; un toque en el fondo sí", async () => {
   const w = browser();
   const result = w.Sheet.open({ title: "SOS activado", actions: [{ label: "Cancelar", tone: "secondary" }] });

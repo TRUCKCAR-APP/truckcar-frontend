@@ -85,6 +85,9 @@
             trackTruck: underway,
             cancel: load.status === 'AVAILABLE' || load.status === 'ASSIGNED',
             requestMatching: !load.assignmentStatus || load.assignmentStatus === 'UNASSIGNED_NO_DRIVERS',
+            assignManually: load.status === 'AVAILABLE'
+                && (!load.assignmentStatus || load.assignmentStatus === 'UNASSIGNED_NO_DRIVERS'),
+            notifyDriver: proposal && load.assignmentStatus === 'PROPOSED',
             shareTracking: load.status !== 'CANCELLED',
             viewProofOfDelivery: load.status === 'DELIVERED'
         };
@@ -295,6 +298,25 @@
         };
     }
 
+    function mapAssignableDriver(state, load) {
+        const driverId = given(state, 'driverId');
+        const driverName = given(state, 'driverName');
+        const vehiclePlate = given(state, 'vehiclePlate');
+        const discarded = Boolean(driverId && load && (load.discardedDriverIds || []).includes(driverId));
+        const blockedReason = discarded ? 'Ya rechazó o dejó vencer esta carga'
+            : !driverId || !driverName ? 'Sin nombre registrado'
+                : !vehiclePlate ? 'Sin vehículo registrado' : null;
+        return {
+            driverId,
+            driverName,
+            vehiclePlate,
+            vehicleType: [state.vehicleModel, state.vehicleType].filter(Boolean).join(' · ') || null,
+            maxPayloadTons: given(state, 'maxPayloadTons'),
+            assignable: !blockedReason,
+            blockedReason
+        };
+    }
+
     function mapAlert(alert) {
         return {
             id: alert.id,
@@ -353,6 +375,7 @@
             assignedDriverId: load.assignedDriverId,
             assignedDriverName: load.assignedDriverName,
             assignedVehiclePlate: load.assignedVehiclePlate,
+            discardedDriverIds: Array.isArray(load.discardedDriverIds) ? load.discardedDriverIds : [],
             correlationId: load.correlationId,
             publishedAt: load.publishedAt,
             assignedAt: load.assignedAt,
@@ -749,6 +772,33 @@
             if (window.store.state.activeRole === 'coordinator') {
                 await this.loadCoordinatorLoad();
             }
+            return mapLoad(updated);
+        },
+
+        async loadTowerLoads(status) {
+            const loads = (await api.loads.list(status ? [status] : null)) || [];
+            data.towerLoads = loads.map(mapLoad);
+            return data.towerLoads;
+        },
+
+        async listAssignableDrivers(load) {
+            const states = (await api.fleet.listAvailable()) || [];
+            return states.map(state => mapAssignableDriver(state, load));
+        },
+
+        async assignDriver(loadId, candidate) {
+            const updated = await api.loads.assign(loadId, {
+                driverId: candidate.driverId,
+                driverName: candidate.driverName,
+                vehiclePlate: candidate.vehiclePlate
+            });
+            await this.loadCoordinatorLoad();
+            return mapLoad(updated);
+        },
+
+        async notifyProposedDriver(loadId) {
+            const updated = await api.loads.notifyAssignment(loadId);
+            await this.loadCoordinatorLoad();
             return mapLoad(updated);
         },
 

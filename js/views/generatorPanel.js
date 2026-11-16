@@ -583,15 +583,21 @@ window.generatorCtrl = (function () {
         },
 
         async cancel(loadId) {
-            const reason = prompt('Motivo de la cancelación del envío CARGA-' + loadId + ' (obligatorio):');
+            const reason = await window.Sheet.prompt({
+                title: 'Cancelar el envío CARGA-' + loadId,
+                message: 'Esta acción no se puede deshacer. Indique el motivo de la cancelación.',
+                label: 'Motivo de la cancelación',
+                placeholder: 'Motivo de la cancelación',
+                confirmLabel: 'Cancelar envío',
+                cancelLabel: 'Volver',
+                requiredMessage: 'Indique el motivo de la cancelación.',
+                tone: 'danger',
+                icon: 'fa-ban'
+            });
             if (reason === null) return;
-            if (!reason.trim()) {
-                window.ui.toast('Indique el motivo de la cancelación.', 'warning');
-                return;
-            }
             window.store.setState({ busyAction: 'cancel' });
             try {
-                await window.TruckCarService.cancelLoad(loadId, reason.trim());
+                await window.TruckCarService.cancelLoad(loadId, reason);
                 await window.TruckCarService.loadPublishedLoads();
                 window.ui.toast('Envío CARGA-' + loadId + ' cancelado.', 'success');
             } catch (err) {
