@@ -262,6 +262,11 @@ window.app = {
         this.endSession();
     },
 
+    shipmentsPollingMs() {
+        const config = window.TruckCarConfig;
+        return window.TruckCarTelemetry.isOnline ? config.shipmentsPollingOnlineMs : config.shipmentsPollingOfflineMs;
+    },
+
     schedulePolling() {
         clearInterval(this.pollTimer);
         this.pollTimer = setInterval(async () => {
@@ -279,8 +284,9 @@ window.app = {
             const onShipments = state.activeRole === 'generator'
                 || (state.activeRole === 'coordinator' && state.coordinatorTab === 'shipments');
             if (!state.isAuthenticated || !onShipments || typing || podOpen) return;
+            if (Date.now() - (window.generatorCtrl.lastRefreshAt() || 0) < this.shipmentsPollingMs() - 1000) return;
             await window.generatorCtrl.refresh(true);
-        }, 10000);
+        }, window.TruckCarConfig.shipmentsPollingOfflineMs);
         clearInterval(this.driverTimer);
         this.driverTimer = setInterval(() => this.pollDriverProposals(), window.TruckCarConfig.driverPollingMs);
         clearInterval(this.countdownTimer);
@@ -461,8 +467,11 @@ window.app = {
                 if (window.mapCtrl.isMountedOn('generator-map-container')) window.mapCtrl.moveShipmentTruck(truck);
                 window.GeneratorPanel.updateTruckLine(truck);
             });
+            live.followStatuses(window.GeneratorPanel.liveStatusLoadIds(state),
+                (msg) => window.generatorCtrl.applyLiveStatus(msg));
         } else {
             live.unfollowTrips();
+            live.unfollowStatuses();
         }
     },
 

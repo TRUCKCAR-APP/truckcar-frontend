@@ -12,6 +12,33 @@ window.GeneratorPanel = (function () {
     const truckTypeLabel = (code) => window.TruckCarService.truckTypeLabel(code) || window.ui.orNotAvailable(code);
     const cities = () => window.TruckCarService.cityCatalog();
     const FILTERS = ['ALL', 'AVAILABLE', 'PROPOSED', 'NOTIFIED', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'];
+    const MAX_DESCRIPTION = 255;
+    const MAX_CANCEL_REASON = 500;
+    const PAGE_SIZE = 50;
+    const MAX_LIVE_STATUS = 20;
+    const TERMINAL = ['DELIVERED', 'CANCELLED'];
+
+    function sortLoads(loads) {
+        return [...loads].sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''))
+            || (b.backendId || 0) - (a.backendId || 0));
+    }
+
+    const normalize = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+    function matchesQuery(load, query) {
+        const q = normalize(query);
+        if (!q) return true;
+        return [load.id, load.backendId, load.cargoType, load.origin && load.origin.city, load.destination && load.destination.city]
+            .some(value => normalize(value).includes(q));
+    }
+
+    function liveStatusLoadIds(state) {
+        const loads = sortLoads(window.TruckCarData.publishedLoads || []).filter(l => !TERMINAL.includes(l.status));
+        const ids = loads.slice(0, MAX_LIVE_STATUS).map(l => l.backendId);
+        const selected = loads.find(l => l.backendId === state.selectedShipmentId);
+        if (selected && !ids.includes(selected.backendId)) ids.push(selected.backendId);
+        return ids;
+    }
 
     function statusKey(load) {
         if (load.status !== 'AVAILABLE') return STATUS[load.status] ? load.status : 'AVAILABLE';
@@ -53,13 +80,14 @@ window.GeneratorPanel = (function () {
     ];
 
     function findCity(name) {
-        const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
-        return cities().find(c => norm(c.city) === norm(name)) || null;
+        return cities().find(c => normalize(c.city) === normalize(name)) || null;
     }
 
     function validate(d) {
         const errors = {};
-        if (!String(d.cargoDescription || '').trim()) errors.cargoDescription = 'Describa la carga.';
+        const description = String(d.cargoDescription || '').trim();
+        if (!description) errors.cargoDescription = 'Describa la carga.';
+        else if (description.length > MAX_DESCRIPTION) errors.cargoDescription = 'Máximo ' + MAX_DESCRIPTION + ' caracteres.';
         const weight = Number(d.weightTons);
         if (!(weight > 0)) errors.weightTons = 'Debe ser mayor a 0 t.';
         if (d.volumeM3 !== '' && d.volumeM3 != null && !(Number(d.volumeM3) > 0)) errors.volumeM3 = 'Debe ser mayor a 0 m³ o quedar vacío.';
@@ -72,8 +100,8 @@ window.GeneratorPanel = (function () {
         return errors;
     }
 
-    function field(name, label, control, { required = false, touched, errors }) {
-        const error = touched.has(name) ? errors[name] : '';
+    function field(name, label, control, { required = false, touched, errors, serverErrors = {} }) {
+        const error = (touched.has(name) ? errors[name] : '') || serverErrors[name] || '';
         return `<label class="text-[11px] space-y-1 block">
             <span class="font-bold text-slate-300">${label}${required ? ' <span class="text-slate-400 font-medium">· obligatorio</span>' : ''}</span>
             ${control.replace('<input ', `<input aria-invalid="${Boolean(error)}" `).replace('<select ', `<select aria-invalid="${Boolean(error)}" `)}
@@ -89,7 +117,7 @@ window.GeneratorPanel = (function () {
         const touched = ctrl.touched();
         const errors = validate(d);
         const busy = state.busyAction === 'publish';
-        const opts = { touched, errors };
+        const opts = { touched, errors, serverErrors: ctrl.serverErrors() };
         const money = Number(d.offeredBudget) > 0 ? Number(d.offeredBudget).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }) : '—';
         const origin = findCity(d.originCity);
         const destination = findCity(d.destinationCity);
@@ -147,6 +175,72 @@ window.GeneratorPanel = (function () {
         `;
     }
 
+    function shipmentRow(l, selectedId) {
+        const esc = window.ui.escape;
+        const driver = currentDriver(l);
+        return `
+            <div role="listitem">
+                <button onclick="window.generatorCtrl.select(${l.backendId})" ${l.backendId === selectedId ? 'aria-current="true"' : ''}
+                        class="w-full text-left p-3 rounded-xl border transition ${l.backendId === selectedId ? 'bg-slate-800 border-slate-400' : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800'}">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="font-mono text-[11px] font-bold text-slate-300">${esc(l.id)}</span>
+                        ${badge(l)}
+                    </div>
+                    <div class="text-xs font-bold text-white mt-1 truncate">${esc(l.cargoType)}</div>
+                    <div class="flex items-center justify-between gap-2 text-[10px] text-slate-400 mt-0.5">
+                        <span class="truncate">${esc(l.origin.city)} → ${esc(l.destination.city)} · ${esc(l.netWeight)} t</span>
+                        <span class="shrink-0">${esc(driver ? driver.name : l.scheduledDeparture)}</span>
+                    </div>
+                </button>
+            </div>`;
+    }
+
+    function renderResults(state, loads) {
+        const esc = window.ui.escape;
+        const ctrl = window.generatorCtrl;
+        const filter = state.shipmentFilter || 'ALL';
+        const query = ctrl.query();
+        const byStatus = filter === 'ALL' ? loads : loads.filter(l => filterKey(l) === filter);
+        const visible = sortLoads(byStatus.filter(l => matchesQuery(l, query)));
+        const shown = visible.slice(0, ctrl.shownCount());
+        const error = state.dataStatus && state.dataStatus.errors ? state.dataStatus.errors.shipments : null;
+        const summary = filter === 'ALL' && !query.trim()
+            ? loads.length + (loads.length === 1 ? ' envío' : ' envíos')
+            : visible.length + ' de ' + loads.length + ' envíos';
+        const retry = '<button onclick="window.generatorCtrl.refresh()" class="btn-secondary !w-auto px-4"><i class="fas fa-rotate"></i> Reintentar</button>';
+        let body;
+        if (!loads.length && error) {
+            body = `
+                <div class="p-6 rounded-xl border border-dashed border-slate-700 text-xs text-slate-300 text-center flex flex-col items-center gap-2" role="alert">
+                    <i class="fas fa-triangle-exclamation text-warn-500 text-lg"></i>
+                    <p class="font-bold">No se pudieron cargar sus envíos.</p>
+                    <p class="text-slate-500">${esc(error)}</p>
+                    ${retry}
+                </div>`;
+        } else if (!shown.length) {
+            body = `
+                <div class="p-6 rounded-xl border border-dashed border-slate-700 text-xs text-slate-400 text-center">
+                    <i class="fas fa-inbox text-lg mb-1 block"></i>
+                    ${!loads.length ? 'Aún no ha publicado cargas. Use el formulario para publicar la primera.'
+                        : query.trim() ? 'Ningún envío coincide con «' + esc(query.trim()) + '».' : 'No hay envíos con este estado.'}
+                </div>`;
+        } else {
+            const remaining = visible.length - shown.length;
+            body = `
+                <div role="list" aria-label="Envíos publicados" class="space-y-2">${shown.map(l => shipmentRow(l, state.selectedShipmentId)).join('')}</div>
+                ${remaining > 0 ? `
+                    <button onclick="window.generatorCtrl.showMore()" class="w-full py-2 text-xs font-bold text-slate-300 border border-slate-700 rounded-xl hover:bg-slate-800">
+                        Mostrar ${Math.min(PAGE_SIZE, remaining)} más <span class="text-slate-500 font-medium">· quedan ${remaining}</span>
+                    </button>` : ''}`;
+        }
+        const stale = loads.length && error ? `
+            <p class="text-[11px] text-warn-500 flex items-center gap-2" role="status">
+                <i class="fas fa-triangle-exclamation"></i> No se pudo actualizar la lista.
+                <button onclick="window.generatorCtrl.refresh()" class="underline font-bold">Reintentar</button>
+            </p>` : '';
+        return `<p class="text-[11px] text-slate-400" aria-live="polite" data-shipments-summary>${esc(summary)}</p>${stale}${body}`;
+    }
+
     function renderBoard(state, loads) {
         const esc = window.ui.escape;
         const filter = state.shipmentFilter || 'ALL';
@@ -154,8 +248,6 @@ window.GeneratorPanel = (function () {
             acc[key] = key === 'ALL' ? loads.length : loads.filter(l => filterKey(l) === key).length;
             return acc;
         }, {});
-        const visible = filter === 'ALL' ? loads : loads.filter(l => filterKey(l) === filter);
-        const selectedId = state.selectedShipmentId;
         return `
             <div class="card p-4 flex flex-col gap-3 overflow-hidden">
                 <div class="flex items-center justify-between">
@@ -167,6 +259,13 @@ window.GeneratorPanel = (function () {
                         <i class="fas fa-rotate ${state.dataStatus.loading ? 'fa-spin' : ''}"></i>
                     </button>
                 </div>
+                <label class="relative block">
+                    <span class="sr-only">Buscar envíos</span>
+                    <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-[11px]" aria-hidden="true"></i>
+                    <input type="search" value="${esc(window.generatorCtrl.query())}" oninput="window.generatorCtrl.setQuery(this.value)"
+                           placeholder="Buscar por número, carga o ciudad" autocomplete="off" enterkeyhint="search"
+                           class="login-input w-full text-xs !pl-8">
+                </label>
                 <div class="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por estado">
                     ${FILTERS.map(key => `
                         <button onclick="window.generatorCtrl.setFilter('${key}')" aria-pressed="${filter === key}"
@@ -175,36 +274,18 @@ window.GeneratorPanel = (function () {
                         </button>
                     `).join('')}
                 </div>
-                <div class="flex-1 overflow-y-auto space-y-2 pr-1">
-                    ${visible.length ? visible.map(l => `
-                        <button onclick="window.generatorCtrl.select(${l.backendId})"
-                                class="w-full text-left p-3 rounded-xl border transition ${l.backendId === selectedId ? 'bg-slate-800 border-slate-400' : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800'}">
-                            <div class="flex items-center justify-between gap-2">
-                                <span class="font-mono text-[11px] font-bold text-slate-300">${esc(l.id)}</span>
-                                ${badge(l)}
-                            </div>
-                            <div class="text-xs font-bold text-white mt-1 truncate">${esc(l.cargoType)}</div>
-                            <div class="flex items-center justify-between gap-2 text-[10px] text-slate-400 mt-0.5">
-                                <span class="truncate">${esc(l.origin.city)} → ${esc(l.destination.city)} · ${esc(l.netWeight)} t</span>
-                                <span class="shrink-0">${esc(currentDriver(l) ? currentDriver(l).name : l.scheduledDeparture)}</span>
-                            </div>
-                        </button>
-                    `).join('') : `
-                        <div class="p-6 rounded-xl border border-dashed border-slate-700 text-xs text-slate-400 text-center">
-                            <i class="fas fa-inbox text-lg mb-1 block"></i>
-                            ${loads.length ? 'No hay envíos con este estado.' : 'Aún no ha publicado cargas. Use el formulario para publicar la primera.'}
-                        </div>
-                    `}
+                <div class="flex-1 overflow-y-auto space-y-2 pr-1" data-shipment-results>
+                    ${renderResults(state, loads)}
                 </div>
             </div>
         `;
     }
 
-    function timelineItem(done, icon, title, when, extra) {
+    function timelineItem(done, icon, title, when, extra, pulse) {
         const esc = window.ui.escape;
         return `
             <li class="flex gap-2.5">
-                <span class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] ${done ? 'bg-ok-500 text-graphite-950' : 'bg-slate-800 text-slate-500 border border-slate-700'}"><i class="fas ${icon}"></i></span>
+                <span class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] ${done ? 'bg-ok-500 text-graphite-950' : 'bg-slate-800 text-slate-500 border border-slate-700'}${pulse ? ' animate-pulse' : ''}"><i class="fas ${icon}"></i></span>
                 <div class="text-[11px] leading-tight pt-0.5">
                     <div class="font-bold ${done ? 'text-white' : 'text-slate-500'}">${title}</div>
                     <div class="text-slate-400">${done && when ? esc(formatDate(when)) : done ? '' : 'Pendiente'}${extra ? ' · ' + esc(extra) : ''}</div>
@@ -213,11 +294,11 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    function progressItem(icon, title, when, detail) {
+    function progressItem(icon, title, when, detail, pulse) {
         const esc = window.ui.escape;
         return `
             <li class="flex gap-2.5" aria-current="step">
-                <span class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] bg-slate-800 text-slate-200 border border-slate-500"><i class="fas ${icon}"></i></span>
+                <span class="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] bg-slate-800 text-slate-200 border border-slate-500${pulse ? ' animate-pulse' : ''}"><i class="fas ${icon}"></i></span>
                 <div class="text-[11px] leading-tight pt-0.5">
                     <div class="font-bold text-white">${esc(title)}</div>
                     <div class="text-slate-400">${[when ? formatDate(when) : '', detail].filter(Boolean).map(esc).join(' · ')}</div>
@@ -226,23 +307,31 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    function matchingStep(load) {
+    function maxAttempts() {
+        return (window.TruckCarConfig && window.TruckCarConfig.assignmentMaxAttempts) || 5;
+    }
+
+    function matchingStep(load, pulse) {
         if (load.status !== 'AVAILABLE') return '';
         const raw = load.raw || {};
         const changed = raw.assignmentStatusChangedAt;
-        const attempts = Number(raw.assignmentAttempts) > 1 ? ' (intento ' + raw.assignmentAttempts + ')' : '';
+        const tries = Number(raw.assignmentAttempts) || 0;
+        const attempts = tries > 1 ? ' (intento ' + tries + ')' : '';
         switch (load.assignmentStatus) {
             case 'PROPOSED':
             case 'NOTIFIED':
                 return progressItem('fa-paper-plane', 'Propuesta a ' + (load.assignedDriverName || 'un conductor') + attempts,
-                    changed, 'esperando su respuesta');
+                    changed, 'esperando su respuesta', pulse);
             case 'REJECTED':
-                return progressItem('fa-rotate', 'Buscando otro conductor', changed, 'el anterior la rechazó');
-            case 'TIMEOUT':
-                return progressItem('fa-rotate', 'Buscando otro conductor', changed, 'el anterior no respondió a tiempo');
+            case 'TIMEOUT': {
+                const who = load.assignedDriverName || 'El conductor anterior';
+                const why = load.assignmentStatus === 'REJECTED' ? who + ' la rechazó' : who + ' no respondió a tiempo';
+                const progress = tries > 0 ? ' (intento ' + tries + '/' + maxAttempts() + ')' : '';
+                return progressItem('fa-rotate', 'Buscando otro conductor' + progress, changed, why, pulse);
+            }
             case 'UNASSIGNED_NO_DRIVERS':
                 return progressItem('fa-triangle-exclamation', 'Sin conductores disponibles', changed,
-                    'el motor vuelve a intentar');
+                    'el motor vuelve a intentar', pulse);
             default:
                 return progressItem('fa-magnifying-glass', 'Buscando conductor', null, 'el motor de asignación evalúa la flota');
         }
@@ -261,6 +350,7 @@ window.GeneratorPanel = (function () {
         const status = STATUS[statusKey(load)];
         const cancelled = load.status === 'CANCELLED';
         const assigned = ['ASSIGNED', 'IN_TRANSIT', 'DELIVERED'].includes(load.status);
+        const pulse = window.generatorCtrl.highlightFor(load.backendId);
         const allowed = window.TruckCarService.loadActions(load);
         return `
             <div class="card p-4 flex flex-col gap-3 overflow-y-auto">
@@ -284,15 +374,15 @@ window.GeneratorPanel = (function () {
                     <div><span class="text-slate-500 block">Presupuesto</span><b class="text-white">${esc(load.freightPayment)}</b></div>
                     <div><span class="text-slate-500 block">Conductor</span><b class="text-white">${esc(currentDriver(load) ? currentDriver(load).name : '—')}</b>${currentDriver(load) && currentDriver(load).plate ? ` <span class="font-mono text-slate-400">${esc(currentDriver(load).plate)}</span>` : ''}</div>
                 </div>
-                <ol class="space-y-2 border-t border-slate-800 pt-3" aria-label="Seguimiento del envío">
+                <ol class="space-y-2 border-t border-slate-800 pt-3" aria-label="Seguimiento del envío" aria-live="polite">
                     ${timelineItem(true, 'fa-upload', 'Publicada', load.publishedAt)}
                     ${cancelled
-                        ? timelineItem(true, 'fa-ban', 'Cancelada', load.cancelledAt, load.cancellationReason)
-                        : matchingStep(load)
-                            + timelineItem(assigned, 'fa-handshake', 'Aceptada por el conductor', load.assignedAt)
-                            + timelineItem(!!load.tripStartedAt, 'fa-truck-moving', 'En ruta', load.tripStartedAt)
+                        ? timelineItem(true, 'fa-ban', 'Cancelada', load.cancelledAt, load.cancellationReason, pulse === 'cancelled')
+                        : matchingStep(load, pulse === 'matching')
+                            + timelineItem(assigned, 'fa-handshake', 'Aceptada por el conductor', load.assignedAt, '', pulse === 'accepted')
+                            + timelineItem(!!load.tripStartedAt, 'fa-truck-moving', 'En ruta', load.tripStartedAt, '', pulse === 'in_transit')
                             + timelineItem(load.status === 'DELIVERED', 'fa-flag-checkered', 'Entregada', load.deliveredAt,
-                                load.podReceiverName ? 'recibió ' + load.podReceiverName : '')}
+                                load.podReceiverName ? 'recibió ' + load.podReceiverName : '', pulse === 'delivered')}
                 </ol>
                 <div class="flex flex-col gap-2 pt-1">
                     ${allowed.viewProofOfDelivery ? `
@@ -378,7 +468,10 @@ window.GeneratorPanel = (function () {
         `;
     }
 
-    return { render, selectedLoad, truckFor, updateTruckLine, FORM_STEPS, findCity, validate, matchingStep };
+    return {
+        render, renderResults, selectedLoad, truckFor, updateTruckLine, FORM_STEPS, findCity, validate, matchingStep,
+        sortLoads, matchesQuery, liveStatusLoadIds, PAGE_SIZE, MAX_CANCEL_REASON
+    };
 })();
 
 window.generatorCtrl = (function () {
@@ -387,6 +480,67 @@ window.generatorCtrl = (function () {
     let step = 0;
     let touched = new Set();
     let sharing = false;
+    let serverErrors = {};
+    let query = '';
+    let shown = 0;
+    let lastRefresh = 0;
+    let highlight = null;
+
+    const FIELD_ALIASES = {
+        originDepartment: 'originCity', originLatitude: 'originCity', originLongitude: 'originCity',
+        destinationDepartment: 'destinationCity', destinationLatitude: 'destinationCity', destinationLongitude: 'destinationCity'
+    };
+
+    function fieldErrorsOf(error) {
+        const details = error && error.status === 400 && error.details && error.details.details;
+        if (!details || typeof details !== 'object') return {};
+        const formFields = new Set(window.GeneratorPanel.FORM_STEPS.flatMap(s => s.fields));
+        const result = {};
+        Object.entries(details).forEach(([name, message]) => {
+            const field = FIELD_ALIASES[name] || name;
+            if (formFields.has(field) && !result[field]) result[field] = String(message);
+        });
+        return result;
+    }
+
+    const LIVE_EVENTS = {
+        'assignment.proposed': { step: 'matching' },
+        'assignment.notified': { step: 'matching' },
+        'assignment.rejected': { step: 'matching' },
+        'assignment.timeout': { step: 'matching' },
+        'assignment.unassigned': { step: 'matching' },
+        'assignment.accepted': { step: 'accepted', stamp: 'assignedAt' },
+        'trip.started': { step: 'in_transit', stamp: 'tripStartedAt' },
+        'trip.delivered': { step: 'delivered', stamp: 'deliveredAt' },
+        'load.cancelled': { step: 'cancelled', stamp: 'cancelledAt' }
+    };
+
+    function announce(load, msg) {
+        const name = load.id;
+        const driver = msg.assignedDriverName || load.assignedDriverName || 'El conductor';
+        const max = (window.TruckCarConfig && window.TruckCarConfig.assignmentMaxAttempts) || 5;
+        const attempt = msg.assignmentAttempts ? ' (intento ' + msg.assignmentAttempts + '/' + max + ')' : '';
+        switch (msg.eventType) {
+            case 'assignment.accepted':
+                return window.ui.toast('Su carga ' + name + ' fue aceptada por ' + driver
+                    + (msg.assignedVehiclePlate ? ' (' + msg.assignedVehiclePlate + ')' : '') + '.', 'success');
+            case 'assignment.rejected':
+                return window.ui.toast(driver + ' rechazó ' + name + '; se busca otro conductor' + attempt + '.', 'info');
+            case 'assignment.timeout':
+                return window.ui.toast(driver + ' no respondió a tiempo ' + name + '; se busca otro conductor' + attempt + '.', 'info');
+            case 'assignment.unassigned':
+                return window.ui.toast(name + ': sin conductores disponibles por ahora.', 'warning',
+                    { description: 'El motor de asignación vuelve a intentarlo solo.' });
+            case 'trip.started':
+                return window.ui.toast(name + ' salió en ruta.', 'info');
+            case 'trip.delivered':
+                return window.ui.toast(name + ' fue entregada.', 'success');
+            case 'load.cancelled':
+                return window.ui.toast(name + ' fue cancelada.', 'info');
+            default:
+                return null;
+        }
+    }
 
     function defaultDraft() {
         const user = window.store.state.currentUser;
@@ -412,11 +566,68 @@ window.generatorCtrl = (function () {
 
         step() { return step; },
         touched() { return touched; },
+        serverErrors() { return serverErrors; },
+        query() { return query; },
+        shownCount() { return shown || window.GeneratorPanel.PAGE_SIZE; },
+        lastRefreshAt() { return lastRefresh; },
+
+        highlightFor(loadId) {
+            return highlight && highlight.loadId === loadId && Date.now() < highlight.until ? highlight.step : null;
+        },
+
+        setQuery(value) {
+            query = String(value || '');
+            shown = 0;
+            const results = document.querySelector('[data-shipment-results]');
+            if (results) {
+                results.innerHTML = window.GeneratorPanel.renderResults(window.store.state, window.TruckCarData.publishedLoads || []);
+            }
+        },
+
+        showMore() {
+            shown = this.shownCount() + window.GeneratorPanel.PAGE_SIZE;
+            window.store.setState({ shipmentsVersion: Date.now() });
+        },
+
+        applyLiveStatus(msg) {
+            if (!msg || msg.loadId == null) return;
+            const load = (window.TruckCarData.publishedLoads || []).find(l => l.backendId === Number(msg.loadId));
+            if (!load) {
+                this.refresh(true);
+                return;
+            }
+            const raw = load.raw || (load.raw = {});
+            const before = load.status + '/' + load.assignmentStatus;
+            const at = msg.occurredAt || new Date().toISOString();
+            const event = LIVE_EVENTS[msg.eventType] || {};
+            if (msg.loadStatus) load.status = raw.status = msg.loadStatus;
+            if (Object.hasOwn(msg, 'assignmentStatus')) load.assignmentStatus = raw.assignmentStatus = msg.assignmentStatus;
+            if (msg.assignedDriverName) load.assignedDriverName = raw.assignedDriverName = msg.assignedDriverName;
+            if (msg.assignedVehiclePlate) load.assignedVehiclePlate = raw.assignedVehiclePlate = msg.assignedVehiclePlate;
+            if (msg.assignmentAttempts != null) raw.assignmentAttempts = msg.assignmentAttempts;
+            if (String(msg.eventType || '').startsWith('assignment.')) raw.assignmentStatusChangedAt = at;
+            if (event.stamp && !load[event.stamp]) load[event.stamp] = raw[event.stamp] = at;
+            if (before === load.status + '/' + load.assignmentStatus) return;
+
+            if (event.step) {
+                highlight = { loadId: load.backendId, step: event.step, until: Date.now() + 1500 };
+                setTimeout(() => {
+                    if (highlight && Date.now() >= highlight.until) {
+                        highlight = null;
+                        window.store.setState({ shipmentsVersion: Date.now() });
+                    }
+                }, 1600);
+            }
+            announce(load, msg);
+            window.store.setState({ shipmentsVersion: Date.now() });
+            if (msg.eventType === 'trip.delivered' || msg.eventType === 'load.cancelled') this.refresh(true);
+        },
 
         updateDraft(event) {
             const target = event.target;
             if (target && target.name && Object.hasOwn(this.draft(), target.name)) {
                 draft[target.name] = target.value;
+                delete serverErrors[target.name];
                 if (target.name === 'generatorCompanyName') companyEdited = true;
                 if (event.type === 'change') touched.add(target.name);
                 this.showFieldErrors(target.form);
@@ -440,7 +651,7 @@ window.generatorCtrl = (function () {
             const errors = window.GeneratorPanel.validate(this.draft());
             form.querySelectorAll('[data-hint]').forEach((hint) => {
                 const name = hint.dataset.hint;
-                const message = touched.has(name) ? (errors[name] || '') : '';
+                const message = (touched.has(name) ? errors[name] : '') || serverErrors[name] || '';
                 hint.textContent = message;
                 const input = form.elements[name];
                 if (input) input.setAttribute('aria-invalid', String(Boolean(message)));
@@ -553,16 +764,28 @@ window.generatorCtrl = (function () {
                 draft = { ...defaultDraft(), requiredTruckType: d.requiredTruckType, originCity: d.originCity, destinationCity: d.destinationCity };
                 step = 0;
                 touched = new Set();
+                serverErrors = {};
+                query = '';
                 window.Native.haptic('success');
                 window.store.setState({ busyAction: null, selectedShipmentId: created.backendId, shipmentFilter: 'ALL' });
                 window.ui.toast(created.id + ' publicada. El motor de asignación ya busca conductor.', 'success');
                 setTimeout(() => this.refresh(true), 4000);
             } catch (err) {
+                const fieldErrors = fieldErrorsOf(err);
+                if (Object.keys(fieldErrors).length) {
+                    serverErrors = fieldErrors;
+                    Object.keys(fieldErrors).forEach(name => touched.add(name));
+                    const firstStep = window.GeneratorPanel.FORM_STEPS.findIndex(s => s.fields.some(name => fieldErrors[name]));
+                    if (firstStep >= 0) step = firstStep;
+                    window.store.setState({ busyAction: null, generatorFormError: 'Revise los campos marcados.' });
+                    return;
+                }
                 window.store.setState({ busyAction: null, generatorFormError: 'No se pudo publicar: ' + window.ui.errorMessage(err) });
             }
         },
 
         setFilter(filter) {
+            shown = 0;
             window.store.setState({ shipmentFilter: filter });
         },
 
@@ -572,6 +795,7 @@ window.generatorCtrl = (function () {
 
         async refresh(silent) {
             if (!window.store.state.isAuthenticated) return;
+            lastRefresh = Date.now();
             await window.TruckCarService.refreshShipments();
             window.store.setState({ dataStatus: { ...window.store.state.dataStatus, lastSync: new Date().toISOString() } });
             if (!silent) window.ui.toast('Envíos actualizados.', 'info');
@@ -588,6 +812,7 @@ window.generatorCtrl = (function () {
                 message: 'Esta acción no se puede deshacer. Indique el motivo de la cancelación.',
                 label: 'Motivo de la cancelación',
                 placeholder: 'Motivo de la cancelación',
+                suggestions: ['El cliente canceló el pedido', 'Cambió la fecha de despacho', 'Error al publicar la carga'],
                 confirmLabel: 'Cancelar envío',
                 cancelLabel: 'Volver',
                 requiredMessage: 'Indique el motivo de la cancelación.',
@@ -595,13 +820,20 @@ window.generatorCtrl = (function () {
                 icon: 'fa-ban'
             });
             if (reason === null) return;
+            const text = reason.trim().slice(0, window.GeneratorPanel.MAX_CANCEL_REASON);
             window.store.setState({ busyAction: 'cancel' });
             try {
-                await window.TruckCarService.cancelLoad(loadId, reason);
+                await window.TruckCarService.cancelLoad(loadId, text);
                 await window.TruckCarService.loadPublishedLoads();
                 window.ui.toast('Envío CARGA-' + loadId + ' cancelado.', 'success');
             } catch (err) {
-                window.ui.failure('No se pudo cancelar', err, 'cancelar');
+                if (err && err.status === 409) {
+                    window.ui.toast('CARGA-' + loadId + ' ya no se puede cancelar', 'warning',
+                        { description: 'El viaje ya empezó o la carga cambió de estado. La lista se actualizó.' });
+                    await this.refresh(true);
+                } else {
+                    window.ui.failure('No se pudo cancelar', err, 'cancelar');
+                }
             } finally {
                 window.store.setState({ busyAction: null });
             }
@@ -612,6 +844,11 @@ window.generatorCtrl = (function () {
             companyEdited = false;
             step = 0;
             touched = new Set();
+            serverErrors = {};
+            query = '';
+            shown = 0;
+            lastRefresh = 0;
+            highlight = null;
         }
     };
 })();

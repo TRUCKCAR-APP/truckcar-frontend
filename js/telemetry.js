@@ -469,6 +469,8 @@
 
     let fleetUnsubscribe = null;
     const tripSubscriptions = new Map();
+    const statusSubscriptions = new Map();
+    let statusHandler = null;
     let blockageUnsubscribe = null;
     let blockageHandler = null;
 
@@ -555,6 +557,27 @@
             this.followTrips([]);
         },
 
+        followStatuses(loadIds, onStatus) {
+            statusHandler = onStatus;
+            const wantedIds = new Set(loadIds);
+            statusSubscriptions.forEach((unsubscribe, loadId) => {
+                if (!wantedIds.has(loadId)) {
+                    unsubscribe();
+                    statusSubscriptions.delete(loadId);
+                }
+            });
+            wantedIds.forEach(loadId => {
+                if (statusSubscriptions.has(loadId)) return;
+                statusSubscriptions.set(loadId, TruckCarTelemetry.subscribe('/topic/trip.' + loadId + '.status', (msg) => {
+                    if (msg && msg.loadId != null && statusHandler) statusHandler(msg);
+                }, () => statusSubscriptions.delete(loadId)));
+            });
+        },
+
+        unfollowStatuses() {
+            this.followStatuses([], null);
+        },
+
         followBlockages(onBlockage) {
             blockageHandler = onBlockage;
             if (blockageUnsubscribe) return;
@@ -572,6 +595,7 @@
         stopAll() {
             this.unfollowFleet();
             this.unfollowTrips();
+            this.unfollowStatuses();
             this.unfollowBlockages();
         }
     };

@@ -66,6 +66,9 @@
         pollingIntervalMs: 30000,
         driverPollingMs: 10000,
         assignmentResponseMinutes: injectedResponseMinutes > 0 ? injectedResponseMinutes : 5,
+        assignmentMaxAttempts: 5,
+        shipmentsPollingOnlineMs: 60000,
+        shipmentsPollingOfflineMs: 10000,
         storageKeys: {
             session: 'truckcar.session'
         }
