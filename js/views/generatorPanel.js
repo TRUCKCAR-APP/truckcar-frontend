@@ -808,11 +808,14 @@ window.generatorCtrl = (function () {
 
         async cancel(loadId) {
             const reason = await window.Sheet.prompt({
-                title: 'Cancelar envío CARGA-' + loadId,
-                message: 'El conductor propuesto o asignado deja de verla. El motivo queda en el detalle del envío.',
+                title: 'Cancelar el envío CARGA-' + loadId,
+                message: 'Esta acción no se puede deshacer. Indique el motivo de la cancelación.',
+                label: 'Motivo de la cancelación',
                 placeholder: 'Motivo de la cancelación',
                 suggestions: ['El cliente canceló el pedido', 'Cambió la fecha de despacho', 'Error al publicar la carga'],
                 confirmLabel: 'Cancelar envío',
+                cancelLabel: 'Volver',
+                requiredMessage: 'Indique el motivo de la cancelación.',
                 tone: 'danger',
                 icon: 'fa-ban'
             });
