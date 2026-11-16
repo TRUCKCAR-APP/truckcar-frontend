@@ -332,21 +332,18 @@ window.app = {
         const current = window.TruckCarData.activeLoadOrder;
         const typing = document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
         const overlayOpen = document.querySelector('.sheet-backdrop');
-        const onTrip = current && window.TruckCarService.loadActions(current).navigate;
+        const onTrip = current && window.TruckCarService.loadActions(current).transmitPosition;
         if (!state.isAuthenticated || state.activeRole !== 'driver' || state.sessionRole !== 'CONDUCTOR'
             || state.busyAction || typing || overlayOpen || onTrip || this.pollingProposals) return;
         this.pollingProposals = true;
         try {
             const key = (l) => (l ? [l.backendId, l.status, l.assignmentStatus].join(':') : '');
-            await window.TruckCarService.loadDriverAssignment();
+            const lost = await window.TruckCarService.loadDriverAssignment();
             const after = window.TruckCarData.activeLoadOrder;
             const change = window.DriverApp.proposalChange(current, after);
             if (change === 'new') this.announceProposal(after);
-            if (change === 'gone') {
-                window.ui.toast('La propuesta ya no está disponible', 'info',
-                    { description: 'Venció o se asignó a otro conductor. Le avisaremos cuando llegue otra.' });
-            }
-            if (key(current) !== key(after)) window.store.setState(change === 'new' && window.store.state.driverScreen !== 'navigation'
+            if (lost) this.announceLostLoad(lost);
+            if (key(current) !== key(after)) window.store.setState(lost || (change === 'new' && window.store.state.driverScreen !== 'navigation')
                 ? { driverScreen: 'assigned_load' } : {});
         } finally {
             this.pollingProposals = false;
@@ -361,6 +358,14 @@ window.app = {
         window.voiceEngine.proposalAlert();
         window.voiceEngine.speak('Nueva carga propuesta: ' + route.replace('→', 'a') + ', ' + load.netWeight
             + ' toneladas. Tiene ' + minutes + ' minutos para responder.');
+    },
+
+    announceLostLoad(lost) {
+        const notice = window.TruckCarService.lostLoadNotice(lost);
+        window.ui.toast(notice.title, notice.tone, notice.description ? { description: notice.description } : {});
+        if (!notice.alert) return;
+        window.voiceEngine.proposalAlert();
+        window.voiceEngine.speak(notice.title);
     },
 
     tickCountdowns() {
@@ -682,9 +687,12 @@ window.app = {
     },
 
     async refreshAssignment() {
-        await window.TruckCarService.loadDriverAssignment();
+        const lost = await window.TruckCarService.loadDriverAssignment();
+        if (lost) this.announceLostLoad(lost);
+        else window.TruckCarService.dismissLostLoad();
         await window.TruckCarService.loadRoutePlan();
-        window.store.setState({});
+        window.store.setState(lost ? { driverScreen: 'assigned_load' } : {});
+        return lost;
     },
 
     async startNavigation() {
@@ -701,6 +709,7 @@ window.app = {
                 window.ui.toast('Viaje iniciado: la carga está en tránsito.', 'success');
             } catch (error) {
                 window.store.setState({ busyAction: null });
+                if (error && error.status === 409 && await this.refreshAssignment()) return;
                 window.ui.failure('No se pudo iniciar el viaje', error, 'iniciar el viaje');
                 return;
             }
