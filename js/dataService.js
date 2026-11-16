@@ -126,8 +126,47 @@
         return status ? String(status).toUpperCase() : null;
     }
 
+    function isDriverCurrentLoad(load) {
+        if (!load) return false;
+        const actions = loadActions(load);
+        return Boolean(actions.awaitNotification || actions.respond || actions.navigate);
+    }
+
     function currentLoadOf(loads, currentLoadId) {
-        return loads.find(load => load.id === currentLoadId) || loads[0] || null;
+        const current = loads.filter(isDriverCurrentLoad);
+        return current.find(load => load.id === currentLoadId) || current[0] || null;
+    }
+
+    async function lostLoadOf(previous) {
+        const actions = loadActions(previous);
+        let status = null;
+        try {
+            status = given(await api.loads.getById(previous.backendId), 'status');
+        } catch (error) {
+            status = null;
+        }
+        return {
+            loadId: previous.backendId,
+            label: previous.id,
+            status,
+            cancelled: status === 'CANCELLED',
+            wasProposal: Boolean(actions.awaitNotification || actions.respond)
+        };
+    }
+
+    function lostLoadNotice(lost) {
+        if (lost.cancelled) {
+            return { title: 'La carga ' + lost.label + ' fue cancelada.', description: '', tone: 'warning', alert: true };
+        }
+        if (lost.wasProposal) {
+            return {
+                title: 'La propuesta ya no está disponible',
+                description: 'Venció o se asignó a otro conductor. Le avisaremos cuando llegue otra.',
+                tone: 'info',
+                alert: false
+            };
+        }
+        return { title: 'La carga ' + lost.label + ' ya no está asignada a usted.', description: '', tone: 'warning', alert: true };
     }
 
     function timeAgo(isoDate) {
@@ -493,6 +532,8 @@
     const service = {
         mapLoad,
         loadActions,
+        isDriverCurrentLoad,
+        lostLoadNotice,
         roleAccess,
         accountPending,
         driverAvailable,
@@ -537,12 +578,21 @@
         async loadDriverAssignment() {
             const driver = data.currentDriver;
             if (!driver || !driver.id) return;
+            const previous = data.activeLoadOrder;
             try {
                 const mine = (await api.loads.mine()) || [];
                 const current = currentLoadOf(mine, driver.currentLoadId);
+                const stillMine = previous && mine.some(load => load.id === previous.backendId && isDriverCurrentLoad(load));
+                const lost = previous && !stillMine ? await lostLoadOf(previous) : null;
                 data.activeLoadOrder = current ? mapLoad(current) : null;
+                if (lost) {
+                    data.routes = null;
+                    if (window.RouteGuidance.forget) await window.RouteGuidance.forget(lost.loadId);
+                }
+                if (lost || current) data.lostLoad = current ? null : lost;
                 syncDriverTelemetry();
                 clearError('loads');
+                return lost;
             } catch (error) {
                 const saved = error.isNetworkError && !data.activeLoadOrder ? await savedTrip(driver.id) : null;
                 if (saved) {
@@ -550,7 +600,12 @@
                     syncDriverTelemetry();
                 }
                 recordError('loads', error);
+                return null;
             }
+        },
+
+        dismissLostLoad() {
+            data.lostLoad = null;
         },
 
         async loadCoordinatorLoad() {
@@ -1012,6 +1067,7 @@
             data.activeSos = [];
             data.currentDriver = null;
             data.activeLoadOrder = null;
+            data.lostLoad = null;
             data.availableLoads = [];
             data.dispatchEvaluation = { loadId: null, candidates: [] };
             data.lastMatching = null;

@@ -173,9 +173,10 @@ window.DriverApp = {
         return '<span class="spinner" aria-hidden="true"></span>';
     },
 
-    renderEmptyState(icon, title, text, actionHtml = '', afterHtml = '') {
+    renderEmptyState(icon, title, text, actionHtml = '', afterHtml = '', beforeHtml = '') {
         return `
             <div class="screen-scroll">
+                ${beforeHtml}
                 <div class="empty-state">
                     <div class="empty-mark">${icon === 'loading' ? this.spinner() : this.icon(icon)}</div>
                     <h2>${title}</h2>
@@ -378,13 +379,13 @@ window.DriverApp = {
                 </div>
             `;
         }
-        if (!load) {
+        if (!window.TruckCarService.isDriverCurrentLoad(load)) {
             return this.renderEmptyState('package', 'Sin carga asignada',
                 this.accountPending(state)
                     ? 'Su cuenta está pendiente de verificación: recibirá cargas cuando un administrador la verifique.'
                     : 'Cuando el sistema le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
                 `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`,
-                this.alertSoundSettingHtml(state));
+                this.alertSoundSettingHtml(state), this.lostLoadHtml());
         }
         const raw = load.raw || {};
         const allowed = window.TruckCarService.loadActions(load);
@@ -411,11 +412,12 @@ window.DriverApp = {
                     <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${this.icon('navigation-arrow-fill')}Continuar navegación</button>
                     <button onclick="window.app.finishTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('deliver', 'flag-checkered')}Llegué: registrar entrega</button>
                 </div>`
-            : `
+            : allowed.startTrip ? `
                 <div class="screen-actions">
                     <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('start-trip', 'navigation-arrow-fill')}Iniciar viaje</button>
                     <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="btn-quiet">${this.icon('path')}Ver ruta planeada</button>
-                </div>`;
+                </div>`
+            : '';
 
         return `
             <div class="screen-scroll">
@@ -455,6 +457,13 @@ window.DriverApp = {
                 ${pending ? this.alertSoundSettingHtml(state) : ''}
             </div>
         `;
+    },
+
+    lostLoadHtml() {
+        const lost = window.TruckCarData.lostLoad;
+        if (!lost) return '';
+        const notice = window.TruckCarService.lostLoadNotice(lost);
+        return `<div class="notice" role="status" data-lost-load="${Number(lost.loadId)}">${this.warnLine(notice.title, notice.description ? '· ' + notice.description : '')}</div>`;
     },
 
     alertSoundSettingHtml(state) {
