@@ -1,6 +1,6 @@
 ﻿importScripts('js/tileStore.js');
 
-const VERSION = 'v30';
+const VERSION = 'v31';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v2';
@@ -59,6 +59,7 @@ const SHELL = [
     'js/views/sosMonitor.js',
     'js/views/publicTracking.js',
     'js/views/companyPanel.js',
+    'js/views/securitySettings.js',
     'assets/vendor/leaflet/leaflet.css',
     'assets/vendor/leaflet/leaflet.js',
     'js/app.js',

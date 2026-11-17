@@ -20,6 +20,8 @@ export const SURFACES = {
     "js/views/publicTracking.js",
     // Afiliación del conductor (la usan la app del conductor y la administración) y el panel de la transportadora.
     "js/views/companyPanel.js",
+    // Seguridad de la cuenta (doble autenticación): la abren todos los roles.
+    "js/views/securitySettings.js",
     "js/app.js",
   ],
   driver: [

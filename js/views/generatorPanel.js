@@ -455,6 +455,7 @@ window.GeneratorPanel = (function () {
                             <span class="text-sm font-bold text-white font-mono" data-count="${delivered}" data-count-key="gen-delivered">${delivered}</span>
                         </div>
                         <div class="hidden md:block text-xs font-bold text-slate-200 pl-3 border-l border-slate-800">${esc(user ? user.firstName + ' ' + user.lastName : 'Generador')}</div>
+                        <button onclick="window.TwoFactorUI.open()" class="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-white text-xs" title="Seguridad de la cuenta" aria-label="Seguridad de la cuenta" data-security-button><i class="fas fa-shield-halved"></i></button>
                         <button onclick="window.app.logout()" class="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-white text-xs" title="Cerrar sesión" aria-label="Cerrar sesión"><i class="fas fa-right-from-bracket"></i></button>
                     </div>
                 </header>

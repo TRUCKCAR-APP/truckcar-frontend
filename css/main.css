@@ -1070,6 +1070,46 @@ body[data-view="driver"].sos-open .copilot-fab { visibility: hidden; }
 }
 .copilot-banner[data-phase="listening"] { border-left: 4px solid var(--color-accent); }
 
+/* Verificación en dos pasos (js/views/securitySettings.js y el paso 2 de loginView). */
+.two-factor-input {
+    font-size: 24px !important;
+    letter-spacing: 0.3em;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.two-factor-qr {
+    display: block;
+    width: 200px;
+    height: 200px;
+    margin: 0 auto;
+    padding: 8px;
+    background: #fff;
+    border-radius: var(--radius-md, 14px);
+    image-rendering: pixelated;
+}
+.two-factor-steps { margin: 0; padding-left: 1.2em; }
+.two-factor-secret { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.two-factor-secret code, .two-factor-codes code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    user-select: all;
+    -webkit-user-select: all;
+}
+.two-factor-secret code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.two-factor-codes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 16px;
+    margin: 0;
+    padding: 12px 12px 12px 2.2em;
+    border: var(--border-subtle);
+    border-radius: var(--radius-md, 14px);
+}
+.two-factor-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.two-factor .btn-accent, .two-factor .btn-quiet { width: 100%; justify-content: center; }
+.two-factor-row .btn-quiet { width: auto; flex: 1; }
+
 .dot.ok { background: var(--color-ok); }
 .dot.warn { background: var(--color-warn); }
 
