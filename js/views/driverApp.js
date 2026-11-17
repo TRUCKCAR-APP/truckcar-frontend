@@ -219,7 +219,7 @@ window.DriverApp = {
             <div class="screen-scroll">
                 <h1 class="large-title">Vehículo</h1>
                 ${themeSetting}
-                ${this.accountPending(state) ? `
+                ${this.accountPending(state) && !(state.currentUser && state.currentUser.driverType === 'INDEPENDIENTE') ? `
                     <div class="notice">
                         ${this.warnLine('Cuenta pendiente de verificación')}
                         <p>Un administrador debe verificarla en la torre de control. Mientras tanto puede registrar su vehículo, pero no recibirá cargas.</p>

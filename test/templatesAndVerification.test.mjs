@@ -67,3 +67,16 @@ test("el conductor con la cuenta pendiente sabe por qué no recibe cargas", () =
   assert.match(text(w.DriverApp.renderAssignedLoadScreen(pending)), /recibirá cargas cuando un administrador la verifique/);
   assert.match(text(w.DriverApp.renderAssignedLoadScreen(verified)), /Cuando el sistema le proponga una carga/);
 });
+
+test("al independiente pendiente no se le muestra el aviso de verificación: para él no bloquea nada", () => {
+  const w = windowWith(["js/views/driverApp.js"], (win) => {
+    win.TruckCarData = { currentDriver: { name: "Jorge", status: "SIN_VEHICULO", hoursDrivenToday: 0, maxDailyHours: 9, rating: "—",
+      tripsCompleted: 0, vehicle: null, state: null } };
+  });
+  const text = (html) => new JSDOM(html).window.document.body.textContent.replace(/\s+/g, " ");
+  const independent = { currentUser: { role: "CONDUCTOR", status: "PENDING_VERIFICATION", driverType: "INDEPENDIENTE" }, dataStatus: {} };
+  const company = { currentUser: { role: "CONDUCTOR", status: "PENDING_VERIFICATION", driverType: "EMPRESA", affiliationStatus: "ACTIVA" }, dataStatus: {} };
+
+  assert.doesNotMatch(text(w.DriverApp.renderProfileScreen(independent)), /Cuenta pendiente de verificación/);
+  assert.match(text(w.DriverApp.renderProfileScreen(company)), /Cuenta pendiente de verificación/);
+});
