@@ -25,7 +25,17 @@ window.DriverAffiliation = (function () {
 
     /** Aviso para la pantalla del conductor (vehículo y carga). */
     function noticeHtml(user) {
-        if (!user || user.role !== 'CONDUCTOR' || !user.driverType) return '';
+        if (!user || user.role !== 'CONDUCTOR') return '';
+        if (!user.driverType) {
+            // Cuentas anteriores a la afiliación (o creadas con una versión vieja de la app): reciben cargas como
+            // siempre, pero deben poder elegir su tipo desde aquí.
+            return `
+            <div class="notice" data-affiliation-notice>
+                <div class="warn-line"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#truck"></use></svg><span>Tipo de conductor sin definir</span></div>
+                <p>Indique si es independiente o si trabaja para una transportadora. Mientras tanto recibe cargas como hasta ahora.</p>
+                <button type="button" onclick="window.DriverAffiliation.openChooser()" class="btn-quiet mt-2">Elegir tipo de conductor</button>
+            </div>`;
+        }
         const reason = loadsBlockedReason(user);
         const title = user.driverType === 'INDEPENDIENTE' ? 'Conductor independiente'
             : user.affiliationStatus === 'ACTIVA' ? 'Conductor de ' + (user.companyName || 'su transportadora')
