@@ -19,7 +19,7 @@ window.CoordinatorPanel = {
 
                 <div data-screen class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-3 lg:p-4 overflow-y-auto lg:overflow-hidden" style="padding-bottom: calc(1rem + var(--safe-bottom))">
                     <div class="lg:col-span-4 flex flex-col gap-4 lg:overflow-hidden order-2 lg:order-1">
-                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xl max-h-[60%] overflow-y-auto">
+                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-xl lg:max-h-[60%] lg:overflow-y-auto">
                             <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
                                 <div class="flex items-center gap-2">
                                     <i class="fas fa-cubes-stacked text-slate-400"></i>
@@ -120,12 +120,12 @@ window.CoordinatorPanel = {
                             `}
                         </div>
 
-                        <div class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col overflow-hidden shadow-xl">
+                        <div class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col lg:overflow-hidden shadow-xl">
                             <div class="flex items-center justify-between mb-3">
                                 <h3 class="font-bold text-sm text-white">Flota en operación (${fleet.length})</h3>
                                 <div class="flex items-center gap-1.5">                                     <button onclick="window.coordinatorCtrl.openVehicleModal()" class="px-2.5 py-1.5 bg-accent-500 hover:bg-accent-600 text-graphite-950 font-bold rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm" title="Registrar o vincular vehículo para un conductor">                                         <i class="fas fa-truck"></i>                                         <span class="hidden sm:inline">Registrar vehículo</span>                                     </button>                                     <button onclick="window.coordinatorCtrl.refreshFleet()" class="w-8 h-8 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs bg-slate-800/80 hover:bg-slate-700" title="Actualizar desde fleets-drivers" aria-label="Actualizar la flota">                                         <i class="fas fa-rotate ${state.dataStatus.loading ? 'fa-spin' : ''}"></i>                                     </button>                                 </div>
                             </div>
-                            <div class="flex-1 overflow-y-auto space-y-2 pr-1">
+                            <div class="flex-1 lg:overflow-y-auto space-y-2 pr-1">
                                 ${fleet.length ? fleet.map(truck => `
                                     <div onclick="window.coordinatorCtrl.selectTruck('${esc(truck.id)}')" class="p-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 rounded-xl cursor-pointer transition flex items-center justify-between gap-2">
                                         <div class="flex items-center gap-3 min-w-0">
@@ -157,7 +157,7 @@ window.CoordinatorPanel = {
                     </div>
 
                     <div class="lg:col-span-8 flex flex-col gap-4 lg:overflow-hidden order-1 lg:order-2">
-                        <div class="flex-1 min-h-[55vh] lg:min-h-0 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden shadow-2xl">
+                        <div class="flex-1 min-h-[42vh] lg:min-h-0 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden shadow-2xl">
                             <div id="coordinator-map-container" class="w-full h-full"></div>
 
                             <div class="absolute top-4 left-14 z-[400] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-2xl p-3 shadow-2xl space-y-2 max-w-xs">
@@ -184,15 +184,15 @@ window.CoordinatorPanel = {
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 md:h-48 gap-4">
-                            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:h-48 gap-4">
+                            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col lg:overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
                                         <i class="fas fa-file-signature text-slate-400"></i> Entregas recientes
                                     </h3>
                                     <span class="text-xs text-slate-400">${deliveries.length} con prueba de entrega</span>
                                 </div>
-                                <div class="flex-1 overflow-y-auto space-y-1.5 text-xs">
+                                <div class="flex-1 lg:overflow-y-auto space-y-1.5 text-xs">
                                     ${deliveries.length ? deliveries.map(d => `
                                         <div class="p-2 bg-slate-800/50 border border-slate-700/50 rounded-xl flex items-center justify-between gap-2">
                                             <div class="min-w-0">
@@ -207,14 +207,14 @@ window.CoordinatorPanel = {
                                 </div>
                             </div>
 
-                            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-xl">
+                            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col lg:overflow-hidden shadow-xl">
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="font-extrabold text-xs text-white flex items-center gap-2">
                                         <i class="fas fa-triangle-exclamation text-slate-400"></i> Novedades operativas
                                     </h3>
                                     <span class="text-xs text-slate-400">Alertas y flota</span>
                                 </div>
-                                <div class="flex-1 overflow-y-auto space-y-2 text-xs">
+                                <div class="flex-1 lg:overflow-y-auto space-y-2 text-xs">
                                     ${notices.length ? notices.map(n => `
                                         <div class="p-2 ${n.style} rounded-xl flex items-start gap-2">
                                             <i class="fas ${n.icon} mt-0.5"></i>

@@ -153,7 +153,7 @@ window.GeneratorPanel = (function () {
         const last = step === FORM_STEPS.length - 1;
         return `
             <form onsubmit="event.preventDefault(); window.generatorCtrl.${last ? 'publish()' : 'nextStep()'}" oninput="window.generatorCtrl.updateDraft(event)" onchange="window.generatorCtrl.updateDraft(event)" onfocusout="window.generatorCtrl.touch(event)"
-                  class="card p-4 flex flex-col gap-3 overflow-y-auto" novalidate>
+                  class="card p-4 flex flex-col gap-3 lg:overflow-y-auto" novalidate>
                 <div class="flex items-center gap-2 border-b border-slate-800 pb-2.5">
                     <i class="fas fa-square-plus text-slate-400"></i>
                     <h2 class="font-bold text-sm text-white">Publicar nueva carga</h2>
@@ -249,7 +249,7 @@ window.GeneratorPanel = (function () {
             return acc;
         }, {});
         return `
-            <div class="card p-4 flex flex-col gap-3 overflow-hidden">
+            <div class="card p-4 flex flex-col gap-3 lg:overflow-hidden">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-boxes-stacked text-slate-400"></i>
@@ -274,7 +274,7 @@ window.GeneratorPanel = (function () {
                         </button>
                     `).join('')}
                 </div>
-                <div class="flex-1 overflow-y-auto space-y-2 pr-1" data-shipment-results>
+                <div class="flex-1 lg:overflow-y-auto space-y-2 pr-1" data-shipment-results>
                     ${renderResults(state, loads)}
                 </div>
             </div>
@@ -353,7 +353,7 @@ window.GeneratorPanel = (function () {
         const pulse = window.generatorCtrl.highlightFor(load.backendId);
         const allowed = window.TruckCarService.loadActions(load);
         return `
-            <div class="card p-4 flex flex-col gap-3 overflow-y-auto">
+            <div class="card p-4 flex flex-col gap-3 lg:overflow-y-auto">
                 <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0">
                         <div class="font-mono text-[11px] text-slate-400">${esc(load.id)}</div>

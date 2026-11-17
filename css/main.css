@@ -151,6 +151,27 @@ input, textarea { caret-color: var(--color-accent); }
 ::-webkit-scrollbar-thumb { background: var(--color-pressed); border-radius: var(--radius-pill); }
 
 .overflow-y-auto, .overflow-auto { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+/* Listas con scroll propio solo en escritorio: en el celular la página es el único contenedor que se desplaza. */
+@media (min-width: 1024px) {
+    .lg\:overflow-y-auto { overscroll-behavior: contain; }
+}
+
+/* Mapa de panel en celular: un dedo desplaza la página y dos dedos mueven el mapa (mapController). */
+.map-two-finger::after {
+    content: 'Dos dedos para mover el mapa';
+    position: absolute;
+    left: 12px;
+    bottom: 28px;
+    z-index: 450;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    background: rgb(0 0 0 / 0.6);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+}
 
 .safe-top { padding-top: var(--safe-top) !important; }
 .safe-bottom { padding-bottom: var(--safe-bottom) !important; }
