@@ -3,6 +3,12 @@ function mapToken(name, fallback) {
     return value || fallback;
 }
 
+// Mapas embebidos en una página con scroll (paneles de torre y generador). En pantallas táctiles pequeñas un dedo
+// desplaza la página y dos dedos mueven y acercan el mapa: sin arrastre de Leaflet, el contenedor queda con
+// touch-action: pan-x pan-y y el pellizco (touchZoom) sigue moviendo el centro. La navegación del conductor no entra.
+const SCROLL_FRIENDLY_MAPS = new Set(['coordinator-map-container', 'generator-map-container']);
+const COMPACT_TOUCH_QUERY = '(pointer: coarse) and (max-width: 1023.98px)';
+
 const ROUTE_PINS = {
     origin: () => L.divIcon({ html: '<span class="map-pin-origin"></span>', className: 'map-pin', iconSize: [20, 20], iconAnchor: [10, 10] }),
     stop: () => L.divIcon({ html: '<span class="map-pin-stop"></span>', className: 'map-pin', iconSize: [12, 12], iconAnchor: [6, 6] }),
@@ -37,6 +43,10 @@ class MapController {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
+        }
+        if (this.gestureCleanup) {
+            this.gestureCleanup();
+            this.gestureCleanup = null;
         }
         if (this.sheetObserver) {
             this.sheetObserver.disconnect();
@@ -86,6 +96,7 @@ class MapController {
         this.fleetMarkers = new Map();
         this.shipmentTruckMarker = null;
         this.mountKey = containerId;
+        if (SCROLL_FRIENDLY_MAPS.has(containerId)) this.gestureCleanup = this.applyScrollFriendlyGestures(container);
 
         if (typeof ResizeObserver === 'function') {
             let frame = null;
@@ -97,6 +108,24 @@ class MapController {
         } else {
             setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 200);
         }
+    }
+
+    applyScrollFriendlyGestures(container) {
+        if (typeof window.matchMedia !== 'function') return null;
+        const query = window.matchMedia(COMPACT_TOUCH_QUERY);
+        const map = this.map;
+        const apply = () => {
+            const compact = query.matches;
+            if (compact) map.dragging.disable();
+            else map.dragging.enable();
+            container.classList.toggle('map-two-finger', compact);
+        };
+        apply();
+        if (typeof query.addEventListener === 'function') query.addEventListener('change', apply);
+        return () => {
+            if (typeof query.removeEventListener === 'function') query.removeEventListener('change', apply);
+            container.classList.remove('map-two-finger');
+        };
     }
 
     resetRouteCache() {
