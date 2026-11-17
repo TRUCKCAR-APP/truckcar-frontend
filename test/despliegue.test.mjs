@@ -52,7 +52,9 @@ test("el script de compilación inyecta la URL del API y rechaza una APK sin URL
   assert.throws(() => injectApiBaseUrl(html, "", { requireUrl: true }), /Falta TRUCKCAR_API_BASE_URL/);
   assert.throws(() => injectApiBaseUrl(html, "http://10.0.0.5:8000", { requireHttps: true }), /https/);
   assert.throws(() => injectApiBaseUrl(html, "api sin esquema"), /no es una URL válida/);
-  assert.match(JSON.parse(readFileSync("package.json", "utf8")).scripts["build:apk"], /inject-config\.mjs .*--require-url --require-https/);
+  // build:apk prepara android/ con stage-android.mjs, que inyecta la URL exigiendo que exista y sea https.
+  assert.equal(JSON.parse(readFileSync("package.json", "utf8")).scripts["build:apk"], "node scripts/stage-android.mjs");
+  assert.match(readFileSync("scripts/stage-android.mjs", "utf8"), /injectApiBaseUrl\(.*\{ requireUrl: true, requireHttps: true \}\)/);
 });
 
 test("la APK de release apaga el tráfico en claro, el contenido mixto y la depuración del WebView", () => {

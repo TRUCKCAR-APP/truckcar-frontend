@@ -36,6 +36,8 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    implementation project(':capacitor-community-speech-recognition')
+    implementation project(':capacitor-community-text-to-speech')
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.coordinatorlayout:coordinatorlayout:1.2.0'

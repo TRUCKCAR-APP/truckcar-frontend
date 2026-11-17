@@ -261,6 +261,57 @@ window.RouteGuidance = (function () {
         }
     }
 
+    /** Punto de la ruta a `targetM` metros del inicio (o el último si se pasa). */
+    function pointAlong(targetM) {
+        const i = route.cumulative.findIndex(c => c >= targetM);
+        return route.geometry[i === -1 ? route.geometry.length - 1 : i];
+    }
+
+    /**
+     * Recálculo pedido por el conductor (copiloto de voz). Sin cooldown: es una orden explícita.
+     *  - avoidAhead=false: nueva ruta desde la posición actual hasta el destino.
+     *  - avoidAhead=true: evita el tramo que tiene adelante (≈1,5 km) con el mismo mecanismo de desvío de los bloqueos.
+     * Devuelve { ok, remainingM, durationS, restricted } o { ok: false, reason } sin hablar: quien llama lo anuncia.
+     */
+    async function recalculate({ avoidAhead = false } = {}) {
+        if (!route) return { ok: false, reason: 'no-route' };
+        const key = route.key;
+        const position = currentPosition();
+        try {
+            let candidates;
+            if (avoidAhead) {
+                const done = progress && progress.alongM != null ? progress.alongM : project(route.geometry, route.cumulative, position).alongM;
+                const point = pointAlong(done + 1500);
+                avoidPoints.push({ lat: point[0], lng: point[1], alertId: null });
+                candidates = await detourCandidates(position, point);
+            } else {
+                const destination = route.geometry[route.geometry.length - 1];
+                candidates = avoiding((await requestRoutes([position, destination])).map(osrm => buildRoute(osrm, key, 'recalculada')));
+            }
+            if (!route || route.key !== key) return { ok: false, reason: 'changed' };
+            if (!candidates.length) return { ok: false, reason: 'no-detour' };
+            const chosen = await chooseRoute(candidates);
+            if (!route || route.key !== key) return { ok: false, reason: 'changed' };
+            announced.clear();
+            useRoute(chosen, candidates);
+            lastReroute = Date.now();
+            persist();
+            refreshNearby(chosen);
+            update({ coords: position });
+            return { ok: true, remainingM: chosen.totalM, durationS: chosen.durationS, restricted: !!(chosen.choice && chosen.choice.restricted) };
+        } catch (e) {
+            return { ok: false, reason: 'offline' };
+        }
+    }
+
+    /** Distancia y tiempo que faltan según la ruta guiada (el tiempo se prorratea con la duración de la ruta). */
+    function remaining() {
+        if (!route) return null;
+        const remainingM = progress && progress.remainingM != null ? progress.remainingM : route.totalM;
+        const durationS = Number.isFinite(route.durationS) && route.totalM > 0 ? route.durationS * (remainingM / route.totalM) : null;
+        return { remainingM, durationS, arrived: !!(progress && progress.arrived) };
+    }
+
     function update(point) {
         if (!point || !point.coords) return;
         if (!route) {
@@ -873,6 +924,7 @@ window.RouteGuidance = (function () {
 
     return {
         prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, durationText, handleBlockage, layoutAlerts, toggleAlerts,
+        recalculate, remaining,
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
         get clearance() { return clearance; },

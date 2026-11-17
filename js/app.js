@@ -656,17 +656,21 @@ window.app = {
         }
     },
 
-    async handleAcceptTrip() {
+    /** Acepta la carga propuesta. Con { rethrow: true } (copiloto de voz) relanza el error después de mostrarlo. */
+    async handleAcceptTrip({ rethrow = false } = {}) {
         window.store.setState({ busyAction: 'accept' });
         try {
             await window.TruckCarService.acceptAssignment();
-            window.voiceEngine.speak('Carga aceptada. Calculando ruta segura para su vehículo.');
+            window.voiceEngine.speak('Carga aceptada. Calculando ruta segura para su vehículo.', false, { force: rethrow });
             window.ui.toast('Carga aceptada en Load-Allocation.', 'success');
             await window.TruckCarService.loadRoutePlan();
             window.store.setState({ busyAction: null, driverScreen: 'route_overview' });
+            return true;
         } catch (error) {
             window.store.setState({ busyAction: null });
             window.ui.failure('No se pudo aceptar la carga', error, 'aceptar la carga');
+            if (rethrow) throw error;
+            return false;
         }
     },
 
@@ -681,15 +685,23 @@ window.app = {
             confirmLabel: 'Rechazar carga'
         });
         if (!reason) return;
+        // El error ya se mostró en performRejectTrip.
+        await this.performRejectTrip().catch(() => {});
+    },
+
+    /** Rechaza la carga propuesta (botón o copiloto de voz). Devuelve true si quedó rechazada. */
+    async performRejectTrip({ quiet = false } = {}) {
         window.store.setState({ busyAction: 'reject' });
         try {
             await window.TruckCarService.rejectAssignment();
-            window.voiceEngine.speak('Viaje rechazado. El sistema reasignará la carga.');
+            if (!quiet) window.voiceEngine.speak('Viaje rechazado. El sistema reasignará la carga.');
             window.ui.toast('Rechazo registrado. El motor de asignación buscará otro conductor.', 'success');
             window.store.setState({ busyAction: null, driverScreen: 'profile' });
+            return true;
         } catch (error) {
             window.store.setState({ busyAction: null });
             window.ui.failure('No se pudo rechazar la carga', error, 'rechazar la carga');
+            throw error;
         }
     },
 
@@ -702,12 +714,13 @@ window.app = {
         return lost;
     },
 
-    async startNavigation() {
+    /** Inicia el viaje y la navegación. Con { rethrow: true } (copiloto de voz) relanza el error después de mostrarlo. */
+    async startNavigation({ rethrow = false } = {}) {
         const load = window.TruckCarData.activeLoadOrder;
         const actions = load ? window.TruckCarService.loadActions(load) : {};
         if (!actions.navigate) {
             window.ui.toast('Acepte una carga antes de iniciar el viaje.', 'warning');
-            return;
+            return false;
         }
         if (actions.startTrip) {
             window.store.setState({ busyAction: 'start-trip' });
@@ -716,15 +729,17 @@ window.app = {
                 window.ui.toast('Viaje iniciado: la carga está en tránsito.', 'success');
             } catch (error) {
                 window.store.setState({ busyAction: null });
-                if (error && error.status === 409 && await this.refreshAssignment()) return;
+                if (error && error.status === 409 && await this.refreshAssignment()) return false;
                 window.ui.failure('No se pudo iniciar el viaje', error, 'iniciar el viaje');
-                return;
+                if (rethrow) throw error;
+                return false;
             }
         }
         window.store.setState({ busyAction: null, driverScreen: 'navigation' });
         window.DeviceLocation.watch();
         window.RouteGuidance.prepare(window.TruckCarData.activeLoadOrder);
-        window.voiceEngine.speak('Navegación iniciada hacia ' + window.DriverApp.destinationLabel() + '.', true);
+        window.voiceEngine.speak('Navegación iniciada hacia ' + window.DriverApp.destinationLabel() + '.', true, { force: rethrow });
+        return true;
     },
 
     async finishTrip() {

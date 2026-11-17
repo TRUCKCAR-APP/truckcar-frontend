@@ -25,7 +25,7 @@ function app({ phone, sessionRole, activeRole, demo = false }) {
 }
 
 const SURFACE_GLOBALS = ["DriverApp", "DriverActions", "DriverTelemetry", "RouteGuidance", "DeviceLocation", "CoordinatorPanel",
-  "GeneratorPanel", "generatorCtrl", "SosMonitor", "LiveTracking"];
+  "GeneratorPanel", "generatorCtrl", "SosMonitor", "LiveTracking", "VoiceAssistant"];
 
 function core({ sessionRole = "CONDUCTOR", activeRole = "driver", isAuthenticated = true } = {}) {
   const { w, state } = app({ phone: false, sessionRole, activeRole });
@@ -241,12 +241,13 @@ test("la superficie del conductor registra su vista, sus ganchos y su carga de d
   registered.end.forEach((hook) => hook());
   await registered.loaders.driver();
   assert.deepEqual(calls, ["DriverApp.render", "app.handleDriverMapMount", "DriverTelemetry.renderBadge", "DriverActions.syncSos",
-    "DeviceLocation.sync", "DriverTelemetry.renderSimulationToggle", "DriverTelemetry.stop", "RouteGuidance.forget", "DeviceLocation.forget",
-    "service.loadDriverProfile", "service.loadDriverAssignment", "service.loadAlerts", "service.loadRoutePlan"]);
+    "VoiceAssistant.sync", "DeviceLocation.sync", "DriverTelemetry.renderSimulationToggle", "DriverTelemetry.stop", "RouteGuidance.forget",
+    "DeviceLocation.forget", "service.loadDriverProfile", "service.loadDriverAssignment", "service.loadAlerts", "service.loadRoutePlan"]);
 
   calls.length = 0;
   registered.render.forEach((hook) => hook({ isAuthenticated: false }));
-  assert.deepEqual(calls, ["DriverActions.syncSos", "DeviceLocation.sync"], "sin sesión no se toca el botón de simulación");
+  assert.deepEqual(calls, ["DriverActions.syncSos", "VoiceAssistant.sync", "DeviceLocation.sync"],
+    "sin sesión no se toca el botón de simulación; el copiloto se apaga y se oculta");
 });
 
 test("la superficie del panel registra torre y generador con sus mapas vivos, ganchos y cargas, y nada del conductor", async () => {
