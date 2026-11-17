@@ -239,7 +239,9 @@ window.DriverApp = {
                     </div>` : `
                     <div class="notice">
                         ${this.warnLine('Sin vehículo registrado')}
-                        <p>Registre su camión para recibir cargas: el motor de asignación necesita el tipo, la capacidad y la altura.</p>
+                        <p>${state.currentUser && state.currentUser.driverType === 'INDEPENDIENTE'
+                            ? 'Registre su camión para que la ruta tenga en cuenta su altura y su peso.'
+                            : 'Registre su camión para recibir cargas: el motor de asignación necesita el tipo, la capacidad y la altura.'}</p>
                     </div>
                     <div class="vehicle-actions">
                         <button onclick="window.app.openVehicleForm()" class="btn-accent">${this.icon('truck')}Registrar mi vehículo</button>

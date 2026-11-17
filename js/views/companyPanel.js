@@ -30,9 +30,10 @@ window.DriverAffiliation = (function () {
         const title = user.driverType === 'INDEPENDIENTE' ? 'Conductor independiente'
             : user.affiliationStatus === 'ACTIVA' ? 'Conductor de ' + (user.companyName || 'su transportadora')
                 : 'Afiliación ' + (user.affiliationStatus === 'RECHAZADA' ? 'rechazada' : 'pendiente');
+        const icon = reason && user.driverType === 'EMPRESA' ? 'warning-fill' : 'truck';
         return `
             <div class="notice" data-affiliation-notice>
-                <div class="warn-line"><span>${esc(title)}</span></div>
+                <div class="warn-line"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#${icon}"></use></svg><span>${esc(title)}</span></div>
                 <p>${esc(reason || 'Recibe las cargas que la plataforma asigna a los conductores de su transportadora.')}</p>
                 <button type="button" onclick="window.DriverAffiliation.openChooser()" class="btn-quiet mt-2">Cambiar tipo de conductor</button>
             </div>`;
@@ -182,7 +183,7 @@ window.CompanyPanel = (function () {
                     <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
                         <div>
                             <h2 class="font-bold text-white">Solicitudes de afiliación</h2>
-                            <p class="text-xs text-slate-400 mt-0.5">Conductores que dicen trabajar con ${esc(company.name)}. Al aprobarlos empiezan a recibir cargas.</p>
+                            <p class="text-xs text-slate-400 mt-0.5">Conductores que eligieron su empresa al registrarse. Al aprobarlos empiezan a recibir cargas.</p>
                         </div>
                     </div>
                     ${pending.length ? `<div class="grid gap-3 md:grid-cols-2">${pending.map(d => driverCard(d, state)).join('')}</div>`
