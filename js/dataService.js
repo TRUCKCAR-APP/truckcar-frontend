@@ -97,11 +97,15 @@
         const controlTower = sessionRole === 'COORDINADOR' || sessionRole === 'ADMIN';
         const driver = sessionRole === 'CONDUCTOR';
         const generator = sessionRole === 'GENERADOR';
+        const company = sessionRole === 'TRANSPORTADORA';
         return {
-            home: driver ? 'driver' : generator ? 'generator' : 'coordinator',
+            home: driver ? 'driver' : generator ? 'generator' : company ? 'company' : 'coordinator',
             controlTower,
             driver,
+            company,
             shipmentsOnly: generator,
+            // Generador y transportadora solo tienen su propia vista: no cambian a la torre ni a la app del conductor.
+            singleView: generator || company,
             roadBlockages: driver || controlTower
         };
     }
@@ -328,6 +332,9 @@
             mandatoryRestLocation: given(state, 'mandatoryRestLocation'),
             onTrip: given(state, 'onTrip'),
             accountVerified: given(state, 'accountVerified'),
+            driverType: given(state, 'driverType'),
+            companyName: given(state, 'companyName'),
+            affiliationStatus: given(state, 'affiliationStatus'),
             lastSeenAt: given(state, 'lastUpdate'),
             lastCheckin: orNotAvailable(timeAgo(state.lastUpdate)),
             currentLoadId: state.currentLoadId,
@@ -551,6 +558,48 @@
 
         async loadCurrentUser() {
             const user = await api.users.me();
+            window.store.setState({ currentUser: user });
+            return user;
+        },
+
+        // ── Transportadoras y afiliación ──
+
+        async loadCompanyCatalog() {
+            const list = await api.auth.companies();
+            return Array.isArray(list) ? list : [];
+        },
+
+        async loadCompany() {
+            try {
+                const [company, drivers] = await Promise.all([api.companies.me(), api.companies.drivers()]);
+                data.company = company || null;
+                data.companyDrivers = Array.isArray(drivers) ? drivers : [];
+                clearError('company');
+            } catch (error) {
+                recordError('company', error);
+            }
+        },
+
+        async registerCompanyDriver(driver) {
+            const created = await api.companies.registerDriver(driver);
+            await this.loadCompany();
+            return created;
+        },
+
+        async decideAffiliation(driverId, status) {
+            const updated = await api.companies.decide(driverId, status);
+            await this.loadCompany();
+            return updated;
+        },
+
+        async unlinkCompanyDriver(driverId) {
+            const updated = await api.companies.unlink(driverId);
+            await this.loadCompany();
+            return updated;
+        },
+
+        async changeMyAffiliation(choice) {
+            const user = await api.users.changeMyAffiliation(choice);
             window.store.setState({ currentUser: user });
             return user;
         },
@@ -1065,6 +1114,8 @@
 
         reset() {
             data.activeSos = [];
+            data.company = null;
+            data.companyDrivers = [];
             data.currentDriver = null;
             data.activeLoadOrder = null;
             data.lostLoad = null;

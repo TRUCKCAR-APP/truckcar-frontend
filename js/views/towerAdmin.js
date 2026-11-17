@@ -9,11 +9,11 @@ window.TowerAdmin = (function () {
         HORARIO_FESTIVO: { label: 'Restricción por horario o festivo', field: null }
     };
     const SEVERITIES = { INFORMATIVA: 'Informativa', PRECAUCION: 'Precaución', BLOQUEO_TOTAL: 'Bloqueo total' };
-    const ROLES = { CONDUCTOR: 'Conductor', GENERADOR: 'Generador de carga', COORDINADOR: 'Coordinador', ADMIN: 'Administrador' };
+    const ROLES = { CONDUCTOR: 'Conductor', GENERADOR: 'Generador de carga', TRANSPORTADORA: 'Transportadora', COORDINADOR: 'Coordinador', ADMIN: 'Administrador' };
     const STATUSES = { ACTIVE: 'Activa', PENDING_VERIFICATION: 'Pendiente de verificación', SUSPENDED: 'Suspendida' };
     const USER_FILTERS = [
         ['all', 'Todas'], ['PENDING_VERIFICATION', 'Pendientes'], ['CONDUCTOR', 'Conductores'],
-        ['GENERADOR', 'Generadores'], ['tower', 'Torre de control']
+        ['GENERADOR', 'Generadores'], ['TRANSPORTADORA', 'Transportadoras'], ['tower', 'Torre de control']
     ];
 
     function number(value) {
@@ -410,6 +410,7 @@ window.TowerAdmin = (function () {
                             <div class="min-w-0">
                                 <h3 class="font-bold text-sm text-white truncate">${esc(name)}${own ? ' <span class="text-slate-400 font-medium">· su cuenta</span>' : ''}</h3>
                                 <p class="text-xs text-slate-400 truncate">${esc(u.email)}</p>
+                                ${u.role === 'CONDUCTOR' && u.driverType ? `<p class="text-xs text-slate-300 truncate mt-0.5" data-driver-affiliation><i class="fas fa-id-card text-slate-400"></i> ${esc(window.DriverAffiliation ? window.DriverAffiliation.summary(u) : u.driverType)}</p>` : ''}
                             </div>
                             <span class="text-xs text-slate-300 whitespace-nowrap flex items-center gap-1.5"><span class="dot ${statusTone}"></span>${esc(STATUSES[u.status] || u.status)}</span>
                         </div>
@@ -428,7 +429,7 @@ window.TowerAdmin = (function () {
             }).join('')}</div>`;
         }
         const action = `<button onclick="window.TowerAdmin.load('users')" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-2"><i class="fas fa-rotate"></i> Actualizar</button>`;
-        return shell(state, 'Usuarios', 'Roles y estado de las cuentas. Los coordinadores se crean aquí: el registro público solo crea conductores y generadores.', action, body);
+        return shell(state, 'Usuarios', 'Roles y estado de las cuentas. Los coordinadores se crean aquí: el registro público crea conductores (independientes o de una transportadora), transportadoras y generadores.', action, body);
     }
 
     async function changeRole(userId, select) {

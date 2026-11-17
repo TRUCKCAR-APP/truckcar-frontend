@@ -336,6 +336,8 @@
                 return session.save(response);
             },
             refresh: () => refreshSession(),
+            // Catálogo público de transportadoras (id y nombre) para el registro de un conductor de empresa.
+            companies: () => http.get('/auth/companies', { auth: false }),
             async logout() {
                 try { await http.post('/auth/logout'); } finally { session.clear(); }
             }
@@ -346,7 +348,18 @@
             getById: (id) => http.get('/users/' + enc(id)),
             list: ({ role, status, size = 200 } = {}) => http.get('/users', { query: { role, status, size, sort: 'createdAt,desc' } }),
             changeRole: (id, role) => http.patch('/users/' + enc(id) + '/role', { role }),
-            changeStatus: (id, status) => http.patch('/users/' + enc(id) + '/status', { status })
+            changeStatus: (id, status) => http.patch('/users/' + enc(id) + '/status', { status }),
+            // El conductor elige: { driverType: 'INDEPENDIENTE' } o { driverType: 'EMPRESA', companyId }.
+            changeMyAffiliation: (choice) => http.put('/users/me/affiliation', choice)
+        },
+        // Transportadora autenticada: su empresa y sus conductores afiliados.
+        companies: {
+            list: () => http.get('/companies'),
+            me: () => http.get('/companies/me'),
+            drivers: () => http.get('/companies/me/drivers'),
+            registerDriver: (driver) => http.post('/companies/me/drivers', driver),
+            decide: (driverId, status) => http.patch('/companies/me/drivers/' + enc(driverId) + '/affiliation', { status }),
+            unlink: (driverId) => http.delete('/companies/me/drivers/' + enc(driverId))
         },
 
         fleet: {

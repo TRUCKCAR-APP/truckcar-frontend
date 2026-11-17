@@ -136,6 +136,7 @@ window.CoordinatorPanel = {
                                             <div class="min-w-0">
                                                 <div class="font-bold text-xs text-white truncate">${esc(truck.driverName)}</div>
                                                 <div class="text-[10px] text-slate-400 font-mono truncate">${esc(truck.plate)} • ${esc(truck.vehicleType)}</div>
+                                                ${truck.driverType ? `<div class="text-[10px] text-slate-400 truncate" data-fleet-affiliation>${truck.driverType === 'INDEPENDIENTE' ? 'Independiente · sin cargas' : esc(truck.companyName || 'Transportadora') + (truck.affiliationStatus === 'ACTIVA' ? '' : ' · afiliación ' + esc(String(truck.affiliationStatus || '').toLowerCase()))}</div>` : ''}
                                             </div>
                                         </div>
                                         <div class="flex items-center gap-2 shrink-0">
@@ -420,7 +421,7 @@ window.CoordinatorPanel = {
     },
 
     roleLabel(role) {
-        return { COORDINADOR: 'Coordinador', ADMIN: 'Administrador', GENERADOR: 'Generador de carga', CONDUCTOR: 'Conductor' }[role] || role || '';
+        return { COORDINADOR: 'Coordinador', ADMIN: 'Administrador', GENERADOR: 'Generador de carga', TRANSPORTADORA: 'Transportadora', CONDUCTOR: 'Conductor' }[role] || role || '';
     },
 
     assignmentWarn(status) {

@@ -224,6 +224,7 @@ window.DriverApp = {
                         ${this.warnLine('Cuenta pendiente de verificación')}
                         <p>Un administrador debe verificarla en la torre de control. Mientras tanto puede registrar su vehículo, pero no recibirá cargas.</p>
                     </div>` : ''}
+                ${window.DriverAffiliation ? window.DriverAffiliation.noticeHtml(state.currentUser) : ''}
                 ${v ? `
                     <div class="vehicle-id">
                         <span class="plate" aria-label="Placa ${esc(v.plate)}">${esc(this.plateText(v.plate))}</span>
@@ -238,7 +239,9 @@ window.DriverApp = {
                     </div>` : `
                     <div class="notice">
                         ${this.warnLine('Sin vehículo registrado')}
-                        <p>Registre su camión para recibir cargas: el motor de asignación necesita el tipo, la capacidad y la altura.</p>
+                        <p>${state.currentUser && state.currentUser.driverType === 'INDEPENDIENTE'
+                            ? 'Registre su camión para que la ruta tenga en cuenta su altura y su peso.'
+                            : 'Registre su camión para recibir cargas: el motor de asignación necesita el tipo, la capacidad y la altura.'}</p>
                     </div>
                     <div class="vehicle-actions">
                         <button onclick="window.app.openVehicleForm()" class="btn-accent">${this.icon('truck')}Registrar mi vehículo</button>
@@ -381,9 +384,10 @@ window.DriverApp = {
         }
         if (!window.TruckCarService.isDriverCurrentLoad(load)) {
             return this.renderEmptyState('package', 'Sin carga asignada',
-                this.accountPending(state)
-                    ? 'Su cuenta está pendiente de verificación: recibirá cargas cuando un administrador la verifique.'
-                    : 'Cuando el sistema le proponga una carga aparecerá aquí para aceptarla o rechazarla.',
+                (window.DriverAffiliation && window.DriverAffiliation.loadsBlockedReason(state.currentUser))
+                    || (this.accountPending(state)
+                        ? 'Su cuenta está pendiente de verificación: recibirá cargas cuando un administrador la verifique.'
+                        : 'Cuando el sistema le proponga una carga aparecerá aquí para aceptarla o rechazarla.'),
                 `<button onclick="window.app.refreshAssignment()" class="btn-quiet">${this.icon('arrows-clockwise')}Consultar de nuevo</button>`,
                 this.alertSoundSettingHtml(state), this.lostLoadHtml());
         }
