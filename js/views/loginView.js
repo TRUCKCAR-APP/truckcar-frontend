@@ -16,7 +16,7 @@ window.LoginView = {
                     </span>
                     <h1>${isRegister ? 'Cree su cuenta en TruckCar' : 'Inicie sesión en TruckCar'}</h1>
                     <p class="login-lead">${isRegister
-                        ? 'Para conductores y empresas que generan carga.'
+                        ? 'Para conductores, transportadoras y empresas que generan carga.'
                         : 'Cargas, ruta segura para su vehículo y entregas con prueba, incluso sin señal.'}</p>
 
                     ${config.gatewayUrl ? '' : `
@@ -35,10 +35,18 @@ window.LoginView = {
                             ${field('Apellido', '<input name="lastName" required autocomplete="family-name" autocapitalize="words" enterkeyhint="next" class="field-input">')}
                         </div>
                         ${field('Teléfono <span class="field-req">· opcional</span>', '<input name="phoneNumber" type="tel" inputmode="tel" autocomplete="tel" enterkeyhint="next" class="field-input">')}
-                        ${field('Tipo de cuenta', `<select name="role" required class="field-input">
-                                <option value="CONDUCTOR">Conductor</option>
-                                <option value="GENERADOR">Generador de carga (empresa)</option>
-                            </select>`)}
+                        ${field('Tipo de cuenta', `<select name="accountType" required class="field-input" onchange="window.LoginView.onAccountType(this)">
+                                ${this.ACCOUNT_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
+                            </select>`, `<p class="field-help" data-account-help>${esc(this.ACCOUNT_TYPES[0].help)}</p>`)}
+                        <div data-account-group="CONDUCTOR_EMPRESA" hidden>
+                            ${field('Transportadora', `<select name="companyId" required disabled class="field-input" data-company-select>
+                                    <option value="">Cargando transportadoras…</option>
+                                </select>`, '<p class="field-help">Su empresa debe aprobar la afiliación para que usted reciba cargas.</p>')}
+                        </div>
+                        <div data-account-group="TRANSPORTADORA" hidden>
+                            ${field('Razón social de la empresa', '<input name="companyName" required disabled maxlength="150" autocomplete="organization" class="field-input">')}
+                            ${field('NIT', '<input name="companyNit" required disabled inputmode="numeric" maxlength="20" placeholder="900123456-7" class="field-input">')}
+                        </div>
                     ` : ''}
 
                     ${field('Correo', '<input name="email" type="email" inputmode="email" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="correo@empresa.com" class="field-input">')}
@@ -52,7 +60,7 @@ window.LoginView = {
                             </button>
                         </span>
                     </label>
-                    ${isRegister ? '<p class="field-help">Las cuentas de coordinador (torre de control) las habilita un administrador.</p>' : ''}
+                    ${isRegister ? '<p class="field-help">Las cuentas de coordinador (torre de control) las habilita un administrador. Un conductor de transportadora también puede ser registrado por su empresa.</p>' : ''}
 
                     <button type="submit" ${busy ? 'disabled' : ''} class="btn-accent login-submit">
                         ${busy ? '<span class="spinner" aria-hidden="true"></span>' : icon(isRegister ? 'user-plus' : 'sign-in')}
@@ -77,5 +85,71 @@ window.LoginView = {
                 </form>
             </div>
         `;
+    },
+
+    ACCOUNT_TYPES: [
+        { value: 'CONDUCTOR_INDEPENDIENTE', label: 'Conductor independiente',
+            help: 'Navegación para camión, rutas seguras y alertas viales. No recibe cargas de la plataforma.' },
+        { value: 'CONDUCTOR_EMPRESA', label: 'Conductor de una transportadora',
+            help: 'Recibe las cargas de la plataforma cuando su transportadora aprueba la afiliación.' },
+        { value: 'TRANSPORTADORA', label: 'Empresa transportadora',
+            help: 'Registra a sus conductores y aprueba las solicitudes de afiliación.' },
+        { value: 'GENERADOR', label: 'Generador de carga (empresa)',
+            help: 'Publica cargas y sigue sus envíos en tiempo real.' }
+    ],
+
+    /** Muestra los campos del tipo de cuenta elegido; los ocultos quedan deshabilitados (no se validan ni se envían). */
+    onAccountType(select) {
+        const form = select.form;
+        const type = select.value;
+        form.querySelectorAll('[data-account-group]').forEach(group => {
+            const visible = group.dataset.accountGroup === type;
+            group.hidden = !visible;
+            group.querySelectorAll('input, select').forEach(el => { el.disabled = !visible; });
+        });
+        const spec = this.ACCOUNT_TYPES.find(t => t.value === type);
+        const help = form.querySelector('[data-account-help]');
+        if (help && spec) help.textContent = spec.help;
+        if (type === 'CONDUCTOR_EMPRESA') this.loadCompanies(form.querySelector('[data-company-select]'));
+    },
+
+    async loadCompanies(select) {
+        if (!select || select.dataset.loaded === 'true') return;
+        const option = (value, text) => {
+            const el = document.createElement('option');
+            el.value = value;
+            el.textContent = text;
+            return el;
+        };
+        try {
+            const companies = await window.TruckCarService.loadCompanyCatalog();
+            select.replaceChildren(option('', companies.length ? 'Elija su transportadora' : 'Aún no hay transportadoras registradas'),
+                ...companies.map(c => option(c.id, c.name)));
+            select.dataset.loaded = 'true';
+        } catch (error) {
+            select.replaceChildren(option('', 'No se pudieron cargar las transportadoras'));
+        }
+    },
+
+    /** Cuerpo de POST /auth/register según el tipo de cuenta del formulario. */
+    registrationPayload(form) {
+        const text = (name) => String(form.get(name) || '').trim();
+        const payload = {
+            email: text('email'),
+            password: form.get('password'),
+            firstName: text('firstName'),
+            lastName: text('lastName'),
+            phoneNumber: text('phoneNumber') || null
+        };
+        switch (form.get('accountType')) {
+            case 'CONDUCTOR_EMPRESA':
+                return { ...payload, role: 'CONDUCTOR', driverType: 'EMPRESA', companyId: text('companyId') || null };
+            case 'TRANSPORTADORA':
+                return { ...payload, role: 'TRANSPORTADORA', companyName: text('companyName'), companyNit: text('companyNit') };
+            case 'GENERADOR':
+                return { ...payload, role: 'GENERADOR' };
+            default:
+                return { ...payload, role: 'CONDUCTOR', driverType: 'INDEPENDIENTE' };
+        }
     }
 };

@@ -18,6 +18,8 @@ export const SURFACES = {
     "js/views/loginView.js",
     "js/views/podModals.js",
     "js/views/publicTracking.js",
+    // Afiliación del conductor (la usan la app del conductor y la administración) y el panel de la transportadora.
+    "js/views/companyPanel.js",
     "js/app.js",
   ],
   driver: [
@@ -36,6 +38,7 @@ export const SURFACES = {
     "js/views/towerLoads.js",
     "js/views/generatorPanel.js",
     "js/views/sosMonitor.js",
+    "js/surfaces/company.js",
     "js/surfaces/panel.js",
   ],
 };

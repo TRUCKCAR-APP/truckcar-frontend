@@ -304,10 +304,11 @@ test("las acciones de una carga se deciden en un solo lugar según status y assi
 
 test("lo que cada rol puede abrir se decide en un solo lugar", () => {
   const { service: s } = service();
-  assert.deepEqual({ ...s.roleAccess("CONDUCTOR") }, { home: "driver", controlTower: false, driver: true, shipmentsOnly: false, roadBlockages: true });
-  assert.deepEqual({ ...s.roleAccess("GENERADOR") }, { home: "generator", controlTower: false, driver: false, shipmentsOnly: true, roadBlockages: false });
+  assert.deepEqual({ ...s.roleAccess("CONDUCTOR") }, { home: "driver", controlTower: false, driver: true, company: false, shipmentsOnly: false, singleView: false, roadBlockages: true });
+  assert.deepEqual({ ...s.roleAccess("GENERADOR") }, { home: "generator", controlTower: false, driver: false, company: false, shipmentsOnly: true, singleView: true, roadBlockages: false });
+  assert.deepEqual({ ...s.roleAccess("TRANSPORTADORA") }, { home: "company", controlTower: false, driver: false, company: true, shipmentsOnly: false, singleView: true, roadBlockages: false });
   for (const role of ["COORDINADOR", "ADMIN"]) {
-    assert.deepEqual({ ...s.roleAccess(role) }, { home: "coordinator", controlTower: true, driver: false, shipmentsOnly: false, roadBlockages: true });
+    assert.deepEqual({ ...s.roleAccess(role) }, { home: "coordinator", controlTower: true, driver: false, company: false, shipmentsOnly: false, singleView: false, roadBlockages: true });
   }
 });
 

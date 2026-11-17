@@ -46,7 +46,9 @@ window.app = {
                 window.store.setState({ activeRole: home });
                 window.ui.toast(home === 'generator'
                     ? 'Su cuenta de generador de carga solo tiene acceso a "Mis envíos".'
-                    : 'Su cuenta no tiene acceso a esa vista.', 'info');
+                    : home === 'company'
+                        ? 'Su cuenta de transportadora solo tiene acceso a "Mis conductores".'
+                        : 'Su cuenta no tiene acceso a esa vista.', 'info');
                 window.TruckCarService.loadAll();
             }
         });
@@ -240,14 +242,7 @@ window.app = {
         const form = new FormData(event.target);
         window.store.setState({ busyAction: 'auth', authError: null });
         try {
-            const session = await window.TruckCarApi.auth.register({
-                email: form.get('email').trim(),
-                password: form.get('password'),
-                firstName: form.get('firstName').trim(),
-                lastName: form.get('lastName').trim(),
-                phoneNumber: (form.get('phoneNumber') || '').trim() || null,
-                role: form.get('role')
-            });
+            const session = await window.TruckCarApi.auth.register(window.LoginView.registrationPayload(form));
             await this.startSession(session);
         } catch (error) {
             window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
@@ -304,7 +299,10 @@ window.app = {
             try {
                 const user = await service.loadCurrentUser();
                 if (user && user.status === 'ACTIVE') {
-                    window.ui.toast('Su cuenta fue verificada', 'success', { description: 'Ya puede recibir cargas.' });
+                    window.ui.toast('Su cuenta fue verificada', 'success', {
+                        description: (window.DriverAffiliation && window.DriverAffiliation.loadsBlockedReason(user))
+                            || 'Ya puede recibir cargas.'
+                    });
                 }
             } catch (error) {
             }
@@ -501,8 +499,8 @@ window.app = {
         };
         const access = window.TruckCarService.roleAccess(role);
         show('role-switcher', !!(window.TruckCarConfig && window.TruckCarConfig.demoTools) && access.controlTower && this.canUseDriverView(role));
-        show('rotate-device-btn', !access.shipmentsOnly);
-        show('sim-toggle-btn', !access.shipmentsOnly);
+        show('rotate-device-btn', !access.singleView);
+        show('sim-toggle-btn', !access.singleView);
         document.body.dataset.view = state.isAuthenticated ? state.activeRole : 'login';
         const frame = document.getElementById('phone-mockup-frame');
         if (frame) {
@@ -586,7 +584,7 @@ window.app = {
         const sessionRole = window.store.state.sessionRole;
         if (!window.store.state.isAuthenticated) return;
         const access = window.TruckCarService.roleAccess(sessionRole);
-        if (access.shipmentsOnly) {
+        if (access.singleView) {
             if (window.store.state.activeRole !== access.home) window.store.setState({ activeRole: access.home });
             return;
         }
