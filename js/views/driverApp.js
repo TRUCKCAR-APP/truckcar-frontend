@@ -607,7 +607,7 @@ window.DriverApp = {
 
     ALERT_FILTERS: [
         ['all', 'Todas'], ['scale', 'Básculas'], ['bridge', 'Gálibos bajos'],
-        ['police', 'Retenes'], ['rest', 'Paradores'], ['danger', 'Incidentes']
+        ['police', 'Retenes'], ['rest', 'Paradores'], ['danger', 'Incidentes'], ['traffic', 'Tráfico']
     ],
 
     updatedAgo(iso) {

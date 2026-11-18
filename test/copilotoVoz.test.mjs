@@ -58,15 +58,40 @@ test("las órdenes del conductor se reconocen aunque el reconocedor agregue tild
   }
 });
 
-test("lo que Community-Alerts no tiene como tipo se dice claramente en lugar de reportarlo mal", () => {
+test("el tráfico pesado se reporta; pedir salir del trancón recalcula la ruta", () => {
   const w = intentsWindow();
-  assert.equal(parse(w, "Tráfico pesado").type, "UNSUPPORTED_REPORT");
-  assert.equal(parse(w, "hay un trancón terrible").type, "UNSUPPORTED_REPORT");
+  for (const text of ["Tráfico pesado", "hay un trancón terrible", "reportar congestión", "esto está embotellado"]) {
+    const intent = parse(w, text);
+    assert.equal(intent.type, "REPORT", text);
+    assert.equal(intent.alertType, "traffic", text);
+    assert.equal(intent.label, "tráfico pesado", text);
+  }
+  for (const text of ["sácame de este trancón", "evita el tráfico", "busca otro camino, hay mucho tráfico", "salgamos de este atasco"]) {
+    const intent = parse(w, text);
+    assert.equal(intent.type, "REROUTE", text);
+    assert.equal(intent.avoidAhead, true, text);
+  }
+  // Un peligro físico sigue siendo reporte aunque pida evitarlo.
+  assert.equal(parse(w, "hay un derrumbe, evita este tramo").type, "REPORT");
   // "Vía cerrada" sí se reporta (como obra/cierre) y lleva la frase en la descripción.
   assert.equal(parse(w, "carretera cerrada").description, "Vía cerrada (reporte por voz)");
   // Los tipos de reporte son exactamente los de la pantalla Reportar (DriverActions.REPORTS).
-  const ui = ["landslide", "danger", "workshop", "police", "scale", "bridge", "rest"];
-  for (const type of Array.from(w.VoiceIntents.REPORT_TYPES, r => r.type)) assert.ok(ui.includes(type), type);
+  const ui = ["landslide", "danger", "workshop", "police", "scale", "bridge", "rest", "traffic"];
+  const types = Array.from(w.VoiceIntents.REPORT_TYPES, r => r.type);
+  for (const type of types) assert.ok(ui.includes(type), type);
+  for (const type of ui) assert.ok(types.includes(type), "falta por voz: " + type);
+  const screen = readFileSync("js/views/driverActions.js", "utf8");
+  for (const type of ui) assert.match(screen, new RegExp("type: '" + type + "'"), "falta en la pantalla Reportar: " + type);
+});
+
+test("un robo o un atraco es SOS aunque mencione la carga", () => {
+  const w = intentsWindow();
+  for (const text of ["me están robando la mercancía", "nos están atracando", "me robaron la carga", "hay un asalto",
+    "me quieren secuestrar", "nos están disparando, nos disparan", "piratas de la carretera"]) {
+    assert.equal(parse(w, text).type, "SOS", text);
+  }
+  // Las consultas de la carga siguen funcionando.
+  assert.deepEqual([parse(w, "qué mercancía llevo").type, parse(w, "qué mercancía llevo").field], ["LOAD_INFO", "summary"]);
 });
 
 test("la palabra de activación se quita y tolera cómo el reconocedor escribe TruckCar", () => {
@@ -260,7 +285,22 @@ test("sin carga o sin propuesta no se inventa nada; lo no reconocido responde co
   await ctrl.handle("alertas cercanas");
   assert.equal(said.at(-1), "Hay 2 alertas cerca: derrumbe a 4,2 kilómetros, puesto de control a 12 kilómetros.");
   await ctrl.handle("tráfico pesado");
-  assert.match(said.at(-1), /Todavía no puedo reportar tráfico pesado\. Puede reportar derrumbe/);
+  assert.equal(said.at(-1), "Reporte de tráfico pesado registrado en su ubicación.");
+  await ctrl.handle("ayuda");
+  assert.match(said.at(-1), /^Puede reportar derrumbe, .*parador seguro o tráfico pesado\. También puede decir: enviar SOS/);
+});
+
+test("sácame de este trancón recalcula evitando el tramo; me están robando pide confirmar el SOS", async () => {
+  const reroutes = [];
+  const { ctrl, said } = controller({ actions: { reroute: async (options) => { reroutes.push(options.avoidAhead); return { ok: true, remainingM: 85200, durationS: 6000 }; } } });
+  await ctrl.handle("sácame de este trancón");
+  assert.deepEqual(reroutes, [true]);
+  assert.equal(said[0], "Buscando una ruta que evite este tramo.");
+
+  const sos = controller();
+  const result = await sos.ctrl.handle("me están robando la mercancía");
+  assert.equal(result.status, "confirming");
+  assert.match(sos.said.at(-1), /^¿Envío una alerta SOS/);
 });
 
 test("un viaje ya en tránsito se retoma sin pedir confirmación", async () => {
