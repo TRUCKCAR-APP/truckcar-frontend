@@ -327,9 +327,31 @@
         http,
 
         auth: {
+            /**
+             * Primer paso. Sin 2FA guarda la sesión y la devuelve. Con 2FA no hay sesión todavía: devuelve
+             * { requiresTwoFactor: true, tempToken, expiresAt } para verifyTwoFactor (nada se guarda).
+             */
             async login(email, password) {
                 const response = await http.post('/auth/login', { email, password }, { auth: false });
+                if (response && response.requiresTwoFactor) {
+                    return {
+                        requiresTwoFactor: true,
+                        tempToken: response.tempToken,
+                        expiresAt: Date.now() + (Number(response.expiresIn) || 300) * 1000
+                    };
+                }
                 return session.save(response);
+            },
+            /** Segundo paso del login: token temporal + código TOTP o de respaldo → sesión. */
+            async verifyTwoFactor(tempToken, code) {
+                const response = await http.post('/auth/2fa/verify-login', { tempToken, code }, { auth: false });
+                return session.save(response);
+            },
+            // Gestión de la doble autenticación (requiere sesión completa).
+            twoFactor: {
+                setup: () => http.post('/auth/2fa/setup', {}),
+                verifySetup: (code) => http.post('/auth/2fa/verify-setup', { code }),
+                disable: ({ password, code } = {}) => http.post('/auth/2fa/disable', { password: password || null, code: code || null })
             },
             async register(data) {
                 const response = await http.post('/auth/register', data, { auth: false });

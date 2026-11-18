@@ -374,7 +374,8 @@ window.CoordinatorPanel = {
                         <div class="text-xs font-bold text-slate-200">${esc(user ? (user.firstName + ' ' + user.lastName) : 'Coordinador')}</div>
                         <div class="text-xs text-slate-400">${esc(window.CoordinatorPanel.roleLabel(state.sessionRole))}</div>
                     </div>
-                    <button onclick="window.app.logout()" class="ml-1 w-9 h-9 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs" title="Cerrar sesión" aria-label="Cerrar sesión">
+                    <button onclick="window.TwoFactorUI.open()" class="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-white text-xs" title="Seguridad de la cuenta" aria-label="Seguridad de la cuenta" data-security-button><i class="fas fa-shield-halved"></i></button>
+                        <button onclick="window.app.logout()" class="ml-1 w-9 h-9 grid place-items-center rounded-xl text-slate-400 hover:text-white text-xs" title="Cerrar sesión" aria-label="Cerrar sesión">
                         <i class="fas fa-right-from-bracket"></i>
                     </button>
                 </div>

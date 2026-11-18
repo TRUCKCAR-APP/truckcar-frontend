@@ -212,7 +212,9 @@ window.app = {
             coordinatorTab: 'fleet',
             selectedShipmentId: null,
             shipmentFilter: 'ALL',
-            generatorFormError: null
+            generatorFormError: null,
+            twoFactor: null,
+            authMode: 'login'
         });
     },
 
@@ -222,11 +224,59 @@ window.app = {
         const form = new FormData(event.target);
         window.store.setState({ busyAction: 'auth', authError: null });
         try {
-            const session = await window.TruckCarApi.auth.login(form.get('email').trim(), form.get('password'));
-            await this.startSession(session);
+            const email = form.get('email').trim();
+            const result = await window.TruckCarApi.auth.login(email, form.get('password'));
+            if (result && result.requiresTwoFactor) {
+                // Contraseña correcta y cuenta con 2FA: paso 2 (el token temporal vive solo en memoria).
+                window.store.setState({ busyAction: null, authError: null, authMode: '2fa',
+                    twoFactor: { tempToken: result.tempToken, expiresAt: result.expiresAt, email, backup: false } });
+                return;
+            }
+            await this.startSession(result);
         } catch (error) {
             window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
         }
+    },
+
+    /** Paso 2 del login: código de la app autenticadora o código de respaldo. */
+    async submitTwoFactor(event) {
+        event.preventDefault();
+        const pending = window.store.state.twoFactor;
+        if (!pending || Date.now() > pending.expiresAt) {
+            this.cancelTwoFactor('La verificación venció. Inicie sesión de nuevo.');
+            return;
+        }
+        const code = String(new FormData(event.target).get('code') || '').trim();
+        const valid = pending.backup ? /^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$/.test(code) : /^\d{6}$/.test(code);
+        if (!valid) {
+            window.store.setState({ authError: pending.backup
+                ? 'Escriba un código de respaldo como ABCD-2345.'
+                : 'Escriba los 6 dígitos que muestra su app autenticadora.' });
+            return;
+        }
+        window.store.setState({ busyAction: 'auth', authError: null });
+        try {
+            const session = await window.TruckCarApi.auth.verifyTwoFactor(pending.tempToken, code);
+            window.store.setState({ twoFactor: null, authMode: 'login' });
+            await this.startSession(session);
+        } catch (error) {
+            const expired = error && error.details && /invalid-2fa-token$/.test(String(error.details.type || ''));
+            if (expired) {
+                this.cancelTwoFactor(window.ui.errorMessage(error));
+                return;
+            }
+            window.store.setState({ busyAction: null, authError: window.ui.errorMessage(error) });
+        }
+    },
+
+    toggleBackupCode() {
+        const pending = window.store.state.twoFactor;
+        if (pending) window.store.setState({ twoFactor: { ...pending, backup: !pending.backup }, authError: null });
+    },
+
+    /** Vuelve al primer paso (botón Volver, token vencido o rechazado). */
+    cancelTwoFactor(message = null) {
+        window.store.setState({ authMode: 'login', twoFactor: null, busyAction: null, authError: message });
     },
 
     authErrorMessage(error) {
@@ -400,7 +450,9 @@ window.app = {
         this.updateHeader(state);
         if (!state.isAuthenticated) {
             mount.innerHTML = window.LoginView.render(state);
-            window.Native.markScreen(mount, 'login');
+            window.Native.markScreen(mount, state.authMode === '2fa' ? 'login:2fa' : 'login');
+            const code = mount.querySelector('#two-factor-code');
+            if (code) code.focus({ preventScroll: true });
             this.renderHooks.forEach(hook => hook(state));
             window.Native.NetworkStatus.render();
             return;

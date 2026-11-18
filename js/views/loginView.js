@@ -1,5 +1,6 @@
 window.LoginView = {
     render(state) {
+        if (state.authMode === '2fa' && state.twoFactor) return this.renderTwoFactor(state);
         const isRegister = state.authMode === 'register';
         const busy = state.busyAction === 'auth';
         const config = window.TruckCarConfig;
@@ -82,6 +83,50 @@ window.LoginView = {
                             </button>
                         </div>
                     </div>` : ''}
+                </form>
+            </div>
+        `;
+    },
+
+    /** Paso 2 del login con doble autenticación: código de 6 dígitos o código de respaldo. */
+    renderTwoFactor(state) {
+        const esc = window.ui.escape;
+        const busy = state.busyAction === 'auth';
+        const pending = state.twoFactor;
+        const icon = (name) => `<svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
+        const input = pending.backup
+            ? '<input id="two-factor-code" name="code" type="text" required maxlength="9" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="ABCD-2345" class="field-input two-factor-input" aria-describedby="two-factor-help">'
+            : '<input id="two-factor-code" name="code" type="text" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" enterkeyhint="go" placeholder="123456" class="field-input two-factor-input" aria-describedby="two-factor-help">';
+        return `
+            <div data-screen class="login-screen">
+                <form onsubmit="window.app.submitTwoFactor(event)" class="login-form" novalidate data-two-factor>
+                    <span class="brand-logo login-mark">
+                        <img src="assets/brand/truckcar-logo.png" alt="TruckCar" class="brand-logo-light" width="854" height="831">
+                        <img src="assets/brand/truckcar-logo-blanco.png" alt="TruckCar" class="brand-logo-dark" width="854" height="831">
+                    </span>
+                    <h1>Verificación en dos pasos</h1>
+                    <p class="login-lead">${pending.backup
+                        ? 'Escriba uno de los códigos de respaldo que guardó al activar la verificación. Cada uno sirve una sola vez.'
+                        : 'Abra su app autenticadora (Google Authenticator, Authy o Microsoft Authenticator) y escriba el código de 6 dígitos de TruckCar.'}</p>
+                    ${state.authError ? `
+                        <div class="notice login-error" role="alert">
+                            <div class="warn-line">${icon('warning-fill')}<span>${esc(state.authError)}</span></div>
+                        </div>` : ''}
+                    <label class="field">
+                        <span class="field-label">${pending.backup ? 'Código de respaldo' : 'Código de verificación'}</span>
+                        ${input}
+                    </label>
+                    <p id="two-factor-help" class="field-help">Cuenta: ${esc(pending.email || '')}</p>
+                    <button type="submit" ${busy ? 'disabled' : ''} class="btn-accent login-submit">
+                        ${busy ? '<span class="spinner" aria-hidden="true"></span>' : icon('sign-in')}
+                        <span>Verificar y entrar</span>
+                    </button>
+                    <p class="login-alt">
+                        <button type="button" onclick="window.app.toggleBackupCode()">${pending.backup ? 'Usar el código de la app' : 'Usar un código de respaldo'}</button>
+                    </p>
+                    <p class="login-alt">
+                        <button type="button" onclick="window.app.cancelTwoFactor()">Volver al inicio de sesión</button>
+                    </p>
                 </form>
             </div>
         `;

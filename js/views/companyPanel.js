@@ -225,6 +225,7 @@ window.CompanyPanel = (function () {
                         ${stat('Afiliados', company ? company.activeDrivers : 0, 'company-active')}
                         ${stat('Solicitudes', company ? company.pendingRequests : 0, 'company-pending')}
                         <div class="hidden md:block text-xs font-bold text-slate-200 pl-3 border-l border-slate-800">${esc(user ? user.firstName + ' ' + user.lastName : 'Transportadora')}</div>
+                        <button onclick="window.TwoFactorUI.open()" class="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-white text-xs" title="Seguridad de la cuenta" aria-label="Seguridad de la cuenta" data-security-button><i class="fas fa-shield-halved"></i></button>
                         <button onclick="window.app.logout()" class="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-white text-xs" title="Cerrar sesión" aria-label="Cerrar sesión"><i class="fas fa-right-from-bracket"></i></button>
                     </div>
                 </header>

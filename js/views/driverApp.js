@@ -262,6 +262,15 @@ window.DriverApp = {
                     ${this.listRow('Estado', this.dotText(status, driver.onTrip ? 'ok' : ''))}
                 </div>
 
+                <h2 class="list-title">Seguridad</h2>
+                <div class="list">
+                    ${this.listRow('Verificación en dos pasos', this.dotText(window.TwoFactorUI ? window.TwoFactorUI.statusLabel(state.currentUser) : '—',
+                        state.currentUser && state.currentUser.twoFactorEnabled ? 'ok' : ''))}
+                </div>
+                <div class="vehicle-actions">
+                    <button onclick="window.TwoFactorUI.open()" class="btn-quiet" data-security-button>${this.icon('shield-check')}Seguridad de la cuenta</button>
+                </div>
+
                 ${v ? `
                     <h2 class="list-title">Dimensiones y peso</h2>
                     <div class="list">
