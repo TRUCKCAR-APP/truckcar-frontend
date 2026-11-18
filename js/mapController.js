@@ -353,7 +353,7 @@ class MapController {
         const alerts = window.TruckCarData.communityAlerts || [];
         alerts.filter(alert => alert.coords).forEach(alert => {
             const icon = { scale: 'fa-weight-hanging', bridge: 'fa-ruler-vertical', police: 'fa-shield-alt', rest: 'fa-mug-hot',
-                workshop: 'fa-wrench', danger: 'fa-car-burst' }[alert.type] || 'fa-triangle-exclamation';
+                workshop: 'fa-wrench', danger: 'fa-car-burst', traffic: 'fa-traffic-light' }[alert.type] || 'fa-triangle-exclamation';
             const tone = alert.type === 'rest' ? '' : ' is-warn';
 
             const alertIcon = L.divIcon({

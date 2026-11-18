@@ -47,12 +47,11 @@ window.VoiceIntents = (function () {
         { type: 'police', label: 'retén', re: /\b(reten|retenes|policia|control policial|puesto de control|transito|operativo)\b/ },
         { type: 'scale', label: 'báscula', re: /\b(bascula|basculas|pesaje)\b/ },
         { type: 'bridge', label: 'gálibo bajo', re: /\b(galibo|puente bajo|paso bajo|altura baja|altura limitada)\b/ },
-        { type: 'rest', label: 'parador seguro', re: /\b(parador|paradero seguro|parqueadero seguro|zona de descanso)\b/ }
+        { type: 'rest', label: 'parador seguro', re: /\b(parador|paradero seguro|parqueadero seguro|zona de descanso)\b/ },
+        { type: 'traffic', label: 'tráfico pesado', re: /\b(trafico|trancon|congestion|congestionado|embotellamiento|embotellado|atasco|atascado|tacos?|cola de carros)\b/ }
     ];
-    // Lo que el backend no tiene como tipo de alerta: se le dice al conductor qué sí puede reportar.
-    const UNSUPPORTED_REPORTS = [
-        { label: 'tráfico pesado', re: /\b(trafico|trancon|congestion|embotellamiento|atasco|atascado|tacos?|cola de carros)\b/ }
-    ];
+    // Pedir salir del tráfico es recalcular la ruta, no reportarlo ("sácame de este trancón", "evita el tráfico").
+    const ESCAPE = /\b(sacame|sacarme|saquemos|sal de|salir de|salgamos de|evita|evitar|esquiva|esquivar|desviame|desvio|otra ruta|otro camino|ruta (alterna|alternativa))\b/;
 
     const LOAD_FIELDS = [
         { field: 'eta', re: /\b(cuanto (me )?falta|cuanto (tiempo|tiempo me) falta|a que hora llego|cuando llego|hora de llegada|tiempo de llegada|eta|distancia (restante|que falta)|cuantos kilometros (faltan|me faltan|quedan))\b/ },
@@ -62,7 +61,8 @@ window.VoiceIntents = (function () {
     ];
 
     const RULES = [
-        { type: 'SOS', re: /\b(sos|s o s|auxilio|socorro|emergencia|boton de panico|alerta de panico|necesito ayuda urgente)\b/ },
+        // Un robo o un atraco es SOS aunque mencione la carga ("me están robando la mercancía"): va antes que todo.
+        { type: 'SOS', re: /\b(sos|s o s|auxilio|socorro|emergencia|boton de panico|alerta de panico|necesito ayuda urgente|(me|nos) (estan|quieren|van a) (robar|robando|atracar|atracando|asaltar|asaltando|secuestrar|secuestrando)|(me|nos) (roban|atracan|asaltan|robaron|atracaron|asaltaron)|robo|atraco|asalto|secuestro|extorsion|disparos|nos disparan|me disparan|piratas? (de la )?(via|carretera))\b/ },
         { type: 'COPILOT_OFF', re: /\b((apaga|apagar|desactiva|desactivar|cierra|cerrar|salir del?) (el )?(copiloto|asistente)|deja de escuchar|no escuches mas)\b/ },
         { type: 'HELP', re: /^(ayuda|ayudame|que puedo decir|que (sabes|puedes) hacer|comandos|opciones|que comandos hay)\b/ },
         { type: 'NEARBY_ALERTS', re: /\b((alertas|reportes|novedades|peligros) (cerca|cercanas|cercanos|adelante|en la ruta|en la via|en mi ruta)|que hay (adelante|en la via|en la ruta))\b/ },
@@ -82,7 +82,7 @@ window.VoiceIntents = (function () {
     /**
      * Intención de una orden. Tipos: SOS, COPILOT_OFF, HELP, NEARBY_ALERTS, ACCEPT_LOAD, REJECT_LOAD, CONFIRM_DELIVERY,
      * START_TRIP, HOURS, REPEAT, REROUTE { avoidAhead }, REPORT { alertType, label, closure, description },
-     * UNSUPPORTED_REPORT { label }, LOAD_INFO { field }, UNKNOWN.
+     * LOAD_INFO { field }, UNKNOWN.
      */
     function parse(text) {
         const plain = clean(text);
@@ -92,12 +92,13 @@ window.VoiceIntents = (function () {
         }
         // Un peligro en la vía va antes que las órdenes de carga o ruta ("hay un derrumbe, evita este tramo" es reporte).
         const report = REPORT_TYPES.find(r => r.re.test(plain));
+        if (report && report.type === 'traffic' && ESCAPE.test(plain)) {
+            return { type: 'REROUTE', avoidAhead: true, text: plain };
+        }
         if (report && (REPORT_VERB.test(plain) || plain.split(' ').length <= 4)) {
             return { type: 'REPORT', alertType: report.type, label: report.label, closure: !!report.closure,
                 description: report.closure ? 'Vía cerrada (reporte por voz)' : null, text: plain };
         }
-        const unsupported = UNSUPPORTED_REPORTS.find(r => r.re.test(plain));
-        if (unsupported) return { type: 'UNSUPPORTED_REPORT', label: unsupported.label, text: plain };
         for (const rule of RULES.slice(4)) {
             if (rule.re.test(plain)) {
                 return rule.type === 'REROUTE'

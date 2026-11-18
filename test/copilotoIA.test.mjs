@@ -135,6 +135,7 @@ test("lo que la app no sabe ejecutar se descarta aunque venga de la IA", () => {
   assert.equal(obra.label, "obra en vía");
   assert.equal(obra.description, null);
   assert.equal(from({ intent: "REPORT", alertType: "danger", closure: true }).label, "accidente");
+  assert.equal(from({ intent: "REPORT", alertType: "traffic" }).label, "tráfico pesado");
   assert.equal(from({ intent: "CHAT", reply: "x".repeat(500) }).reply.length, 300);
 });
 

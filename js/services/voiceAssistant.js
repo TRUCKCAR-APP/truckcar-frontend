@@ -53,9 +53,9 @@ window.VoiceAssistant = (function () {
         return message.replace(/\s*\[trace [^\]]*\]\s*$/, '').replace(/[.\s]+$/, '');
     }
 
-    const HELP = 'Puede decir: reportar derrumbe o accidente, enviar SOS, recalcular ruta, qué llevo, cuánto falta, '
-        + 'cuántas horas llevo, alertas cercanas, aceptar carga, iniciar viaje o confirmar entrega.';
-    const REPORTABLE = 'derrumbe, accidente, vía cerrada, obra, retén, báscula, gálibo bajo o parador seguro';
+    const REPORTABLE = 'derrumbe, accidente, vía cerrada, obra, retén, báscula, gálibo bajo, parador seguro o tráfico pesado';
+    const HELP = 'Puede reportar ' + REPORTABLE + '. También puede decir: enviar SOS, recalcular ruta, qué llevo, '
+        + 'cuánto falta, cuántas horas llevo, alertas cercanas, aceptar carga, iniciar viaje o confirmar entrega.';
     const NOT_UNDERSTOOD = 'No entendí. Puede decir, por ejemplo: reportar accidente, recalcular ruta, qué llevo, o ayuda.';
 
     // Intenciones que puede devolver el intérprete con IA (Voice-AI-Assistant) y que este controlador ejecuta.
@@ -175,10 +175,6 @@ window.VoiceAssistant = (function () {
                 }
                 return send();
             }
-
-            case 'UNSUPPORTED_REPORT':
-                await say('Todavía no puedo reportar ' + intent.label + '. Puede reportar ' + REPORTABLE + '.');
-                return { status: 'unsupported', intent };
 
             case 'SOS':
                 return askConfirmation('¿Envío una alerta SOS a la torre de control con su ubicación? Diga sí o cancelar.',

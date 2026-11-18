@@ -9,7 +9,8 @@
         PARADOR_SEGURO: 'rest',
         DERRUMBE: 'danger',
         ACCIDENTE: 'danger',
-        OBRA_EN_VIA: 'workshop'
+        OBRA_EN_VIA: 'workshop',
+        TRAFICO_PESADO: 'traffic'
     };
     const UI_TO_ALERT_TYPE = {
         scale: 'BASCULA',
@@ -18,7 +19,8 @@
         rest: 'PARADOR_SEGURO',
         danger: 'ACCIDENTE',
         landslide: 'DERRUMBE',
-        workshop: 'OBRA_EN_VIA'
+        workshop: 'OBRA_EN_VIA',
+        traffic: 'TRAFICO_PESADO'
     };
     const ALERT_BADGES = {
         BASCULA: 'Báscula Activa',
@@ -27,7 +29,8 @@
         PARADOR_SEGURO: 'Parqueadero Seguro',
         DERRUMBE: 'Derrumbe',
         ACCIDENTE: 'Accidente',
-        OBRA_EN_VIA: 'Obra en Vía'
+        OBRA_EN_VIA: 'Obra en Vía',
+        TRAFICO_PESADO: 'Tráfico pesado'
     };
 
     function truckTypes() {

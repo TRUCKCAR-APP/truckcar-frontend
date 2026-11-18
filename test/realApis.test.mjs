@@ -226,13 +226,13 @@ test("sin señal GPS el SOS usa la última posición real confirmada y dice su a
   await again;
 });
 
-test("la hoja de reportar muestra los 7 tipos en una cuadrícula, con íconos neutros y sin colores", async () => {
+test("la hoja de reportar muestra los 8 tipos en una cuadrícula, con íconos neutros y sin colores", async () => {
   const { w } = browser();
   w.DriverActions.openReportSheet();
   await sleep(10);
   const tiles = [...w.document.querySelectorAll(".report-grid .report-tile")];
   assert.deepEqual(tiles.map((t) => t.textContent.trim()),
-    ["Derrumbe", "Accidente", "Obra en vía", "Retén", "Báscula", "Gálibo bajo", "Parador seguro"]);
+    ["Derrumbe", "Accidente", "Obra en vía", "Retén", "Báscula", "Gálibo bajo", "Parador seguro", "Tráfico pesado"]);
   assert.ok(tiles.every((t) => !t.disabled), "con posición GPS, los tipos se pueden tocar");
   assert.ok(tiles.every((t) => t.querySelector("svg use").getAttribute("href").startsWith("assets/icons.svg#")));
   assert.doesNotMatch(w.document.querySelector(".sheet").innerHTML, /text-(rose|amber|sky|emerald)-/);

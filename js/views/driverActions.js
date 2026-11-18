@@ -42,7 +42,8 @@ window.DriverActions = (function () {
         { type: 'police', label: 'Retén', icon: 'police-car' },
         { type: 'scale', label: 'Báscula', icon: 'scales' },
         { type: 'bridge', label: 'Gálibo bajo', icon: 'arrows-vertical' },
-        { type: 'rest', label: 'Parador seguro', icon: 'bed' }
+        { type: 'rest', label: 'Parador seguro', icon: 'bed' },
+        { type: 'traffic', label: 'Tráfico pesado', icon: 'traffic-signal' }
     ];
     const warn = (text) => `<div class="warn-line">${icon('warning-fill')}<span>${esc(text)}</span></div>`;
 
