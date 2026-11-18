@@ -432,6 +432,12 @@
             historyByPlate: (plate) => http.get('/routes/history/' + enc(plate))
         },
 
+        // Copiloto de voz: interpreta con IA (Voice-AI-Assistant) el texto que las reglas del teléfono no entendieron.
+        // Solo viaja el texto ya transcrito, nunca el audio. Tiempo corto: el conductor espera la respuesta en voz alta.
+        assistant: {
+            interpret: (text, context) => http.post('/assistant/interpret', { text, context }, { timeoutMs: 6000 })
+        },
+
         alerts: {
             listActive: () => http.get('/alerts'),
             nearby: (latitude, longitude, radiusMeters = 50000) =>

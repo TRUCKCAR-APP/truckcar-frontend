@@ -40,6 +40,15 @@ usan el botón y las teclas multimedia.
 
 **Lo que no entiende:** responde con ejemplos breves. No abre ventanas ni bloquea la pantalla.
 
+**Respaldo con IA (Voice-AI-Assistant):**
+- Cuando las reglas no entienden una frase ("se vino la montaña encima de la vía", "llévame por otro lado"), el copiloto la consulta una vez en `POST /api/v1/assistant/interpret`.
+- **Qué viaja:** solo el texto y si hay carga o navegación activa, nunca el audio. El tiempo límite es de 6 s.
+- **Qué se ejecuta:** la respuesta vuelve a validarse en la app contra las intenciones que conoce, y se ejecuta con las mismas confirmaciones de siempre.
+- **Reportes:** un reporte que solo entendió la IA se confirma ("¿Reporto vía cerrada en su ubicación?") antes de publicarse para los demás conductores.
+- **Preguntas generales de conducción:** reciben una respuesta corta, sin acción.
+- **Si falla:** sin conexión, si el servicio falla o si Azure no está configurado, el copiloto responde las opciones de siempre.
+- **Qué nunca se delega:** lo que las reglas sí entienden nunca se envía a la IA, y apagar el copiloto nunca se le delega.
+
 **Tráfico pesado:** Community-Alerts no tiene un tipo para eso. El copiloto lo dice y enumera lo que sí se puede
 reportar, en lugar de publicarlo con un tipo equivocado. Para reportarlo habría que agregar un tipo nuevo al enum
 `AlertType` del backend.
@@ -53,7 +62,7 @@ reportar, en lugar de publicarlo con un tipo equivocado. Para reportarlo habría
 | `js/speechEngine.js` | Voz. En la APK usa el plugin nativo `TextToSpeech`, en cola propia, porque el plugin siempre interrumpe la frase anterior. En el navegador usa `speechSynthesis`. `say()` resuelve al terminar de hablar, así el copiloto no se escucha a sí mismo |
 | `js/navigation.js` | `RouteGuidance.recalculate({ avoidAhead })` y `remaining()`, sobre la misma lógica de rutas y desvíos de la navegación |
 
-Las acciones son las funciones reales de la app, sin endpoints nuevos:
+El único endpoint propio del copiloto es el respaldo con IA (`TruckCarApi.assistant.interpret`). Las acciones son las funciones reales de la app:
 - `TruckCarService.reportAlert`, `DriverActions.activate` (SOS) y `TruckCarService.loadDriverProfile`;
 - `app.handleAcceptTrip`, `app.performRejectTrip`, `app.startNavigation` y `app.finishTrip`.
 
@@ -76,6 +85,14 @@ empaquetar `@capacitor/core`. Ver [ANDROID-APK-BUILD.md](ANDROID-APK-BUILD.md).
   - lecturas de carga y jornada;
   - recálculo;
   - voz nativa en cola.
+- **`test/copilotoIA.test.mjs`** (8 pruebas):
+  - lo que entienden las reglas no se envía;
+  - los reportes de la IA se confirman;
+  - SOS, carga, tiempo restante y recálculo desde la IA;
+  - respuesta general;
+  - aclaración y caída del servicio;
+  - validación de lo que devuelve;
+  - qué viaja al servicio y que no se llama sin conexión.
 - **`test/stageAndroid.test.mjs`:** los plugins nativos registrados en Gradle y en `capacitor.plugins.json`, y el permiso de micrófono.
 
 ## Límites conocidos
