@@ -56,6 +56,39 @@ window.VoiceAssistant = (function () {
     const HELP = 'Puede decir: reportar derrumbe o accidente, enviar SOS, recalcular ruta, qué llevo, cuánto falta, '
         + 'cuántas horas llevo, alertas cercanas, aceptar carga, iniciar viaje o confirmar entrega.';
     const REPORTABLE = 'derrumbe, accidente, vía cerrada, obra, retén, báscula, gálibo bajo o parador seguro';
+    const NOT_UNDERSTOOD = 'No entendí. Puede decir, por ejemplo: reportar accidente, recalcular ruta, qué llevo, o ayuda.';
+
+    // Intenciones que puede devolver el intérprete con IA (Voice-AI-Assistant) y que este controlador ejecuta.
+    const ASSISTANT_INTENTS = ['REPORT', 'SOS', 'NEARBY_ALERTS', 'ACCEPT_LOAD', 'REJECT_LOAD', 'START_TRIP',
+        'CONFIRM_DELIVERY', 'REROUTE', 'REPEAT', 'HOURS', 'LOAD_INFO', 'HELP', 'CHAT'];
+    const LOAD_INFO_FIELDS = ['eta', 'destination', 'weight', 'summary'];
+
+    /**
+     * Respuesta del intérprete con IA → intención con la misma forma que VoiceIntents.parse, o null si no sirve.
+     * Se vuelve a validar aquí: un tipo de alerta o un campo que la app no conoce no se ejecuta.
+     */
+    function fromAssistant(response, text) {
+        if (!response || typeof response !== 'object' || !ASSISTANT_INTENTS.includes(response.intent)) return null;
+        const base = { type: response.intent, text, fromAssistant: true };
+        switch (response.intent) {
+        case 'REPORT': {
+            const closure = response.alertType === 'workshop' && response.closure === true;
+            const report = intents.REPORT_TYPES.find(r => r.type === response.alertType && Boolean(r.closure) === closure);
+            if (!report) return null;
+            return { ...base, alertType: report.type, label: report.label, closure,
+                description: closure ? 'Vía cerrada (reporte por voz)' : null };
+        }
+        case 'LOAD_INFO':
+            return LOAD_INFO_FIELDS.includes(response.field) ? { ...base, field: response.field } : null;
+        case 'REROUTE':
+            return { ...base, avoidAhead: response.avoidAhead === true };
+        case 'CHAT':
+            return typeof response.reply === 'string' && response.reply.trim()
+                ? { ...base, reply: response.reply.trim().slice(0, 300) } : null;
+        default:
+            return base;
+        }
+    }
 
     // ── 1. Controlador ──────────────────────────────────────────────────────────────────────────────────────────
 
@@ -64,6 +97,8 @@ window.VoiceAssistant = (function () {
      *  say(text) → Promise           habla y resuelve al terminar.
      *  listen()                      pide escuchar de nuevo (respuesta a una confirmación).
      *  actions                       operaciones reales de la app (ver defaultActions).
+     *  interpret(text) → Promise     opcional: intérprete con IA para lo que VoiceIntents no entendió; resuelve con
+     *                                la respuesta de Voice-AI-Assistant o null (sin conexión, error o tiempo agotado).
      *  now() → ms                    reloj (inyectable en pruebas).
      */
     function createController(deps) {
@@ -113,14 +148,17 @@ window.VoiceAssistant = (function () {
             if (pending && now() > pending.expiresAt) pending = null;
             if (pending) return answer(text);
 
-            const intent = intents.parse(text);
+            return dispatch(intents.parse(text));
+        }
+
+        async function dispatch(intent) {
             const a = deps.actions;
             switch (intent.type) {
             case 'EMPTY':
                 return { status: 'ignored', intent };
 
-            case 'REPORT':
-                return run('enviar el reporte', async () => {
+            case 'REPORT': {
+                const send = () => run('enviar el reporte', async () => {
                     const result = await a.report(intent.alertType, intent.description);
                     if (result && result.noPosition) {
                         await say('No tengo su posición GPS. Active la ubicación para reportar.');
@@ -131,6 +169,12 @@ window.VoiceAssistant = (function () {
                         : 'Reporte de ' + intent.label + ' registrado en su ubicación.');
                     return { status: 'done', intent };
                 });
+                // Lo que interpretó la IA se confirma antes de publicarlo para los demás conductores.
+                if (intent.fromAssistant) {
+                    return askConfirmation('¿Reporto ' + intent.label + ' en su ubicación? Diga sí o cancelar.', send);
+                }
+                return send();
+            }
 
             case 'UNSUPPORTED_REPORT':
                 await say('Todavía no puedo reportar ' + intent.label + '. Puede reportar ' + REPORTABLE + '.');
@@ -275,10 +319,32 @@ window.VoiceAssistant = (function () {
                 a.copilotOff();
                 return { status: 'off', intent };
 
+            case 'CHAT':
+                await say(intent.reply);
+                return { status: 'done', intent };
+
             default:
-                await say('No entendí. Puede decir, por ejemplo: reportar accidente, recalcular ruta, qué llevo, o ayuda.');
-                return { status: 'unknown', intent };
+                return notUnderstood(intent);
             }
+        }
+
+        /** Lo que las reglas no entendieron se consulta una vez al intérprete con IA; si no ayuda, opciones breves. */
+        async function notUnderstood(intent) {
+            if (deps.interpret && intent.type === 'UNKNOWN' && !intent.fromAssistant && intent.text) {
+                let response = null;
+                try { response = await deps.interpret(intent.text); } catch (e) { response = null; }
+                const next = fromAssistant(response, intent.text);
+                if (next) {
+                    const result = await dispatch(next);
+                    return { ...result, source: 'assistant' };
+                }
+                if (response && response.intent === 'UNKNOWN' && typeof response.reply === 'string' && response.reply.trim()) {
+                    await say(response.reply.trim().slice(0, 300));
+                    return { status: 'unknown', intent, source: 'assistant' };
+                }
+            }
+            await say(NOT_UNDERSTOOD);
+            return { status: 'unknown', intent };
         }
 
         function loadName(load) {
@@ -396,6 +462,24 @@ window.VoiceAssistant = (function () {
             },
             copilotOff: () => copilot.deactivate()
         };
+    }
+
+    /**
+     * Intérprete con IA a través del api-gateway. Sin conexión o si falla, null: el copiloto responde con sus opciones.
+     * Solo viaja el texto de la orden y si hay carga o navegación activa, nunca el audio.
+     */
+    async function remoteInterpret(text, actions) {
+        const api = window.TruckCarApi;
+        if (!api || !api.assistant || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
+        let load = null;
+        try { load = actions.currentLoad(); } catch (e) { load = null; }
+        const context = { hasLoad: Boolean(load), navigating: Boolean(actions.hasRoute()),
+            loadStatus: load && load.status ? String(load.status).slice(0, 40) : null };
+        try {
+            return await api.assistant.interpret(String(text).slice(0, 300), context);
+        } catch (e) {
+            return null;
+        }
     }
 
     // ── 2. Reconocedores ────────────────────────────────────────────────────────────────────────────────────────
@@ -556,10 +640,12 @@ window.VoiceAssistant = (function () {
         init() {
             if (this.controller) return;
             this.recognizer = pickRecognizer();
+            const actions = defaultActions(this);
             this.controller = createController({
                 say: (text) => this.say(text),
                 listen: () => { this.wantsAnswer = true; },
-                actions: defaultActions(this)
+                actions,
+                interpret: (text) => remoteInterpret(text, actions)
             });
         },
 
@@ -762,6 +848,6 @@ window.VoiceAssistant = (function () {
         }
     };
 
-    return { createController, copilot, spokenDistance, spokenDuration, errorText,
+    return { createController, fromAssistant, remoteInterpret, copilot, spokenDistance, spokenDuration, errorText,
         press: () => copilot.press(), sync: (state) => copilot.sync(state) };
 })();
