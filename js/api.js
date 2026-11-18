@@ -429,6 +429,8 @@
 
         routes: {
             plan: (request) => http.post('/routes/plan', request, { timeoutMs: 45000 }),
+            // Recálculo durante el viaje con HERE (perfil de camión y tráfico). Corto: si tarda, la guía usa su respaldo.
+            reroute: (request) => http.post('/routes/reroute', request, { timeoutMs: 12000 }),
             historyByPlate: (plate) => http.get('/routes/history/' + enc(plate))
         },
 

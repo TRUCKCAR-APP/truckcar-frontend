@@ -123,7 +123,8 @@ function controller({ actions = {}, now = () => 1_000 } = {}) {
     report: async () => ({ pendingSync: false }),
     sos: () => Promise.resolve(),
     hasRoute: () => true,
-    reroute: async () => ({ ok: true, remainingM: 85200, durationS: 6000, restricted: false }),
+    planReroute: async () => ({ ok: true, remainingM: 85200, durationS: 6000, restricted: false, needsConfirmation: false }),
+    applyReroute: async (plan) => ({ ok: true, remainingM: plan.remainingM, durationS: plan.durationS, restricted: plan.restricted, provider: plan.provider }),
     remaining: () => ({ remainingM: 42000, durationS: 2700, arrived: false }),
     currentLoad: () => ({ id: "CARGA-7", cargoType: "Cemento", netWeight: 24, volumeM3: null,
       origin: { name: "Bogotá, Cundinamarca" }, destination: { name: "Tunja, Boyacá" } }),
@@ -255,7 +256,7 @@ test("consultas: carga, peso, destino, tiempo restante y jornada con datos reale
 
 test("recalcular lee la nueva distancia y tiempo; sin navegación activa explica qué hacer", async () => {
   const calls = [];
-  const { ctrl, said } = controller({ actions: { reroute: async (options) => { calls.push(options.avoidAhead); return { ok: true, remainingM: 85200, durationS: 6000, restricted: true }; } } });
+  const { ctrl, said } = controller({ actions: { planReroute: async (options) => { calls.push(options.avoidAhead); return { ok: true, remainingM: 85200, durationS: 6000, restricted: true, needsConfirmation: false }; } } });
   await ctrl.handle("buscar ruta alterna");
   assert.deepEqual(calls, [true]);
   assert.equal(said.at(-2), "Buscando una ruta que evite este tramo.");
@@ -265,7 +266,7 @@ test("recalcular lee la nueva distancia y tiempo; sin navegación activa explica
   await idle.ctrl.handle("recalcular ruta");
   assert.match(idle.said.at(-1), /No hay una navegación activa/);
 
-  const noDetour = controller({ actions: { reroute: async () => ({ ok: false, reason: "no-detour" }) } });
+  const noDetour = controller({ actions: { planReroute: async () => ({ ok: false, reason: "no-detour" }) } });
   await noDetour.ctrl.handle("evitar este tramo");
   assert.match(noDetour.said.at(-1), /No encontré una ruta que evite ese tramo/);
 });
@@ -292,7 +293,7 @@ test("sin carga o sin propuesta no se inventa nada; lo no reconocido responde co
 
 test("sácame de este trancón recalcula evitando el tramo; me están robando pide confirmar el SOS", async () => {
   const reroutes = [];
-  const { ctrl, said } = controller({ actions: { reroute: async (options) => { reroutes.push(options.avoidAhead); return { ok: true, remainingM: 85200, durationS: 6000 }; } } });
+  const { ctrl, said } = controller({ actions: { planReroute: async (options) => { reroutes.push(options.avoidAhead); return { ok: true, remainingM: 85200, durationS: 6000, needsConfirmation: false }; } } });
   await ctrl.handle("sácame de este trancón");
   assert.deepEqual(reroutes, [true]);
   assert.equal(said[0], "Buscando una ruta que evite este tramo.");

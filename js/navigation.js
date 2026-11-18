@@ -4,6 +4,11 @@ window.RouteGuidance = (function () {
     const CLEARANCE_ANNOUNCE_M = 3000;
     const CLEARANCE_MAX_POINTS = 400;
     const MAX_ALTERNATIVES = 3;
+    // Una ruta alterna más larga que esto (en tiempo o en distancia) se pregunta antes de tomarla.
+    const LONGER_ASK_S = 300;
+    const LONGER_ASK_M = 5000;
+    const AVOID_RADIUS_M = 300;
+    const TRUCK_CODE = /^[A-Z][A-Z0-9_]{2,39}$/;
     const ARRIVED_M = 60;
     const NEAR_ANNOUNCE_M = 300;
     const NEARBY_CORRIDOR_M = 500;
@@ -75,6 +80,10 @@ window.RouteGuidance = (function () {
 
     function instruction(step, isLast) {
         const m = step.maneuver || {};
+        if (step.hereText && m.type !== 'arrive') {
+            const text = step.hereText.replace(/\s*Siga durante[^.]*\.?\s*$/i, '').replace(/[.\s]+$/, '').trim();
+            if (text) return text;
+        }
         const mod = MODIFIERS[m.modifier] || '';
         const road = street(step);
         const via = road ? ' por ' + road : '';
@@ -141,6 +150,58 @@ window.RouteGuidance = (function () {
         return points.length >= 2 ? { key: 'CARGA-' + load.backendId, source: 'carga', points } : null;
     }
 
+    /** Maniobra de HERE → forma de OSRM que entienden instruction(), icon() y glyph(). */
+    const HERE_TYPES = { depart: 'depart', arrive: 'arrive', turn: 'turn', uTurn: 'turn', keep: 'fork',
+        roundaboutEnter: 'roundabout', roundaboutPass: 'roundabout', roundaboutExit: 'roundabout',
+        ramp: 'on ramp', exit: 'off ramp', enterHighway: 'merge' };
+
+    function hereModifier(step) {
+        if (step.action === 'uTurn') return 'uturn';
+        if (step.direction === 'middle') return 'straight';
+        if (step.direction !== 'left' && step.direction !== 'right') return undefined;
+        if (step.severity === 'light') return 'slight ' + step.direction;
+        if (step.severity === 'heavy') return 'sharp ' + step.direction;
+        return step.direction;
+    }
+
+    function fromHere(option) {
+        const steps = (option.steps || []).map(s => ({
+            distance: Number(s.distanceMeters) || 0,
+            duration: Number(s.durationSeconds) || 0,
+            name: '',
+            hereText: s.instruction || '',
+            maneuver: { type: HERE_TYPES[s.action] || 'continue', modifier: hereModifier(s), exit: s.exit || undefined,
+                location: Number.isFinite(s.longitude) && Number.isFinite(s.latitude) ? [s.longitude, s.latitude] : undefined }
+        }));
+        return { geometry: { coordinates: option.geometry.map(p => [p[1], p[0]]) }, legs: [{ steps }],
+            duration: option.durationSeconds, distance: option.distanceMeters, provider: 'HERE',
+            violations: Array.isArray(option.violations) ? option.violations : [] };
+    }
+
+    /**
+     * Rutas de HERE para el camión (altura, peso, ejes y tráfico) desde la posición actual, evitando las zonas dadas.
+     * null si no hay vehículo, si el servicio no responde o si no devuelve rutas: quien llama usa el respaldo OSRM.
+     */
+    async function hereRoutes(position, destination, avoid) {
+        const api = window.TruckCarApi && window.TruckCarApi.routes;
+        const vehicle = currentVehicle();
+        if (!api || !api.reroute || !vehicle || !position || !destination) return null;
+        try {
+            const response = await api.reroute({
+                originLatitude: position[0], originLongitude: position[1],
+                destinationLatitude: destination[0], destinationLongitude: destination[1],
+                heightMeters: vehicle.height, grossWeightTons: vehicle.grossWeight,
+                ...(TRUCK_CODE.test(vehicle.category || '') ? { truckType: vehicle.category } : {}),
+                avoid: avoid.slice(-10).map(p => ({ latitude: p.lat, longitude: p.lng, radiusMeters: AVOID_RADIUS_M }))
+            });
+            const routes = (response && Array.isArray(response.routes) ? response.routes : [])
+                .filter(r => Array.isArray(r.geometry) && r.geometry.length >= 2).slice(0, MAX_ALTERNATIVES);
+            return routes.length ? routes.map(fromHere) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     async function requestRoutes(points) {
         const found = await window.TruckCarApi.routing.drivingRoutes(points, { steps: true, alternatives: points.length === 2 });
         const routes = found.filter(r => r.legs).slice(0, MAX_ALTERNATIVES);
@@ -170,7 +231,8 @@ window.RouteGuidance = (function () {
             start += s.distance;
             return step;
         });
-        return { key, source, geometry, cumulative, steps, totalM: cumulative[cumulative.length - 1], durationS: osrm.duration };
+        return { key, source, geometry, cumulative, steps, totalM: cumulative[cumulative.length - 1], durationS: osrm.duration,
+            provider: osrm.provider || 'OSRM', violations: osrm.violations || [] };
     }
 
     function notify() {
@@ -273,35 +335,67 @@ window.RouteGuidance = (function () {
      *  - avoidAhead=true: evita el tramo que tiene adelante (≈1,5 km) con el mismo mecanismo de desvío de los bloqueos.
      * Devuelve { ok, remainingM, durationS, restricted } o { ok: false, reason } sin hablar: quien llama lo anuncia.
      */
-    async function recalculate({ avoidAhead = false } = {}) {
+    /**
+     * Calcula una ruta nueva sin aplicarla. Primero HERE para camión; si no responde, OSRM.
+     *  - avoidAhead=false: nueva ruta desde la posición actual hasta el destino.
+     *  - avoidAhead=true: evita el tramo de adelante (≈1,5 km), con las mismas zonas evitadas de los bloqueos.
+     * Reglas: nunca propone una ruta con restricciones de gálibo o peso si la actual no las tiene
+     * (reason 'restricted-alternatives'); needsConfirmation si es más larga (5 min o 5 km) o no se pudo verificar.
+     */
+    async function planReroute({ avoidAhead = false } = {}) {
         if (!route) return { ok: false, reason: 'no-route' };
         const key = route.key;
         const position = currentPosition();
         try {
-            let candidates;
+            let extraAvoid = null;
             if (avoidAhead) {
                 const done = progress && progress.alongM != null ? progress.alongM : project(route.geometry, route.cumulative, position).alongM;
                 const point = pointAlong(done + 1500);
-                avoidPoints.push({ lat: point[0], lng: point[1], alertId: null });
-                candidates = await detourCandidates(position, point);
-            } else {
-                const destination = route.geometry[route.geometry.length - 1];
-                candidates = avoiding((await requestRoutes([position, destination])).map(osrm => buildRoute(osrm, key, 'recalculada')));
+                extraAvoid = { lat: point[0], lng: point[1], alertId: null };
             }
+            const avoidList = extraAvoid ? [...avoidPoints, extraAvoid] : avoidPoints;
+            const candidates = await rerouteCandidates(position, avoidList, extraAvoid ? [extraAvoid.lat, extraAvoid.lng] : null);
             if (!route || route.key !== key) return { ok: false, reason: 'changed' };
             if (!candidates.length) return { ok: false, reason: 'no-detour' };
             const chosen = await chooseRoute(candidates);
             if (!route || route.key !== key) return { ok: false, reason: 'changed' };
-            announced.clear();
-            useRoute(chosen, candidates);
-            lastReroute = Date.now();
-            persist();
-            refreshNearby(chosen);
-            update({ coords: position });
-            return { ok: true, remainingM: chosen.totalM, durationS: chosen.durationS, restricted: !!(chosen.choice && chosen.choice.restricted) };
+            const choice = chosen.choice;
+            const currentRestricted = Boolean((clearance && clearance.key === route.key && clearance.blocking > 0)
+                || (route.choice && route.choice.restricted));
+            if (choice.restricted && !currentRestricted) {
+                return { ok: false, reason: 'restricted-alternatives', blocking: choice.blocking };
+            }
+            const left = remaining();
+            const extraM = left && Number.isFinite(left.remainingM) ? chosen.totalM - left.remainingM : null;
+            const extraS = left && Number.isFinite(left.durationS) && Number.isFinite(chosen.durationS) ? chosen.durationS - left.durationS : null;
+            const longer = (extraS != null && extraS > LONGER_ASK_S) || (extraM != null && extraM > LONGER_ASK_M);
+            const unchecked = !choice.verified;
+            return { ok: true, key, chosen, candidates, extraAvoid, position,
+                remainingM: chosen.totalM, durationS: chosen.durationS, restricted: Boolean(choice.restricted),
+                provider: chosen.provider, longer, unchecked, extraM, extraS, needsConfirmation: longer || unchecked };
         } catch (e) {
             return { ok: false, reason: 'offline' };
         }
+    }
+
+    /** Aplica una ruta de planReroute (si la ruta guiada no cambió mientras el conductor confirmaba). */
+    function applyReroute(plan) {
+        if (!plan || !plan.ok) return plan || { ok: false, reason: 'no-plan' };
+        if (!route || route.key !== plan.key) return { ok: false, reason: 'changed' };
+        if (plan.extraAvoid) avoidPoints.push(plan.extraAvoid);
+        announced.clear();
+        useRoute(plan.chosen, plan.candidates);
+        lastReroute = Date.now();
+        persist();
+        refreshNearby(plan.chosen);
+        update({ coords: plan.position });
+        return { ok: true, remainingM: plan.remainingM, durationS: plan.durationS, restricted: plan.restricted, provider: plan.provider };
+    }
+
+    /** Calcula y aplica sin preguntar (sigue sin aceptar una ruta con restricciones si la actual está limpia). */
+    async function recalculate(options) {
+        const plan = await planReroute(options);
+        return plan.ok ? applyReroute(plan) : plan;
     }
 
     /** Distancia y tiempo que faltan según la ruta guiada (el tiempo se prorratea con la duración de la ruta). */
@@ -414,9 +508,21 @@ window.RouteGuidance = (function () {
     }
 
     async function chooseRoute(candidates) {
-        const results = await Promise.all(candidates.map(candidate => validateRoute(candidate)));
+        const validated = await Promise.all(candidates.map(candidate => validateRoute(candidate)));
+        // Una restricción que HERE marca en la ruta (violations) cuenta igual que una de Routing-Restrictions.
+        const results = validated.map((r, i) => {
+            const extra = (candidates[i].violations || []).length;
+            return extra ? { ...r, blocking: r.blocking + extra } : r;
+        });
         const checked = results.every(r => r.status === 'ok' || r.status === 'found');
+        // HERE calcula para el camión: sus rutas ya vienen verificadas contra altura y peso aunque Routing-Restrictions
+        // no responda.
+        const byHere = candidates.every(c => c.provider === 'HERE');
         let index = 0;
+        if (!checked && byHere) {
+            const fit = candidates.findIndex(c => !(c.violations || []).length);
+            index = fit >= 0 ? fit : 0;
+        }
         if (checked) {
             const clean = results.findIndex(r => r.blocking === 0);
             index = clean >= 0 ? clean : results.reduce((best, r, i) =>
@@ -429,7 +535,9 @@ window.RouteGuidance = (function () {
             evaluated: candidates.length,
             index,
             checked,
-            restricted: checked && results[index].blocking > 0,
+            verified: checked || byHere,
+            provider: chosen.provider,
+            restricted: (checked || byHere) && results[index].blocking > 0,
             blocking: results[index].blocking,
             avoided: checked && index > 0 && results[index].blocking === 0
                 ? results.slice(0, index).reduce((sum, r) => sum + r.blocking, 0) : 0
@@ -545,16 +653,34 @@ window.RouteGuidance = (function () {
         return fix && fix.coords ? fix.coords : route.geometry[0];
     }
 
-    async function detourCandidates(position, point) {
+    async function detourCandidates(position, point, avoidList = avoidPoints) {
         const destination = route.geometry[route.geometry.length - 1];
         const key = route.key;
         const direct = (await requestRoutes([position, destination])).map(osrm => buildRoute(osrm, key, 'desvío'));
-        let clean = direct.filter(c => !passesNear(c, avoidPoints));
+        let clean = direct.filter(c => !passesNear(c, avoidList));
         if (clean.length) return clean;
         const viaRoutes = await Promise.all(detourVias(point).map(via =>
             requestRoutes([position, via, destination]).then(rs => rs.map(osrm => buildRoute(osrm, key, 'desvío')), () => [])));
-        clean = viaRoutes.flat().filter(c => !passesNear(c, avoidPoints));
+        clean = viaRoutes.flat().filter(c => !passesNear(c, avoidList));
         return clean;
+    }
+
+    /**
+     * Candidatas de un recálculo: HERE para camión evitando las zonas; si HERE no está disponible, OSRM (con el desvío
+     * por puntos laterales cuando hay un tramo que evitar).
+     */
+    async function rerouteCandidates(position, avoidList, avoidPoint) {
+        const destination = route.geometry[route.geometry.length - 1];
+        const key = route.key;
+        const here = await hereRoutes(position, destination, avoidList);
+        if (here) {
+            return here.map(option => buildRoute(option, key, avoidPoint ? 'desvío' : 'recalculada'))
+                .filter(c => !passesNear(c, avoidList));
+        }
+        if (avoidPoint) return detourCandidates(position, avoidPoint, avoidList);
+        const found = (await requestRoutes([position, destination])).map(osrm => buildRoute(osrm, key, 'recalculada'));
+        const clean = found.filter(c => !passesNear(c, avoidList));
+        return clean.length ? clean : found;
     }
 
     async function handleBlockage(blockage) {
@@ -579,7 +705,7 @@ window.RouteGuidance = (function () {
 
         const key = route.key;
         try {
-            const candidates = await detourCandidates(currentPosition(), point);
+            const candidates = await rerouteCandidates(currentPosition(), avoidPoints, point);
             if (!route || route.key !== key) return true;
             if (!candidates.length) {
                 aiAlert = { text: headline, sub: 'no hay un desvío que evite el bloqueo: avance con precaución', warning: true };
@@ -924,7 +1050,7 @@ window.RouteGuidance = (function () {
 
     return {
         prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, durationText, handleBlockage, layoutAlerts, toggleAlerts,
-        recalculate, remaining,
+        recalculate, planReroute, applyReroute, remaining,
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
         get clearance() { return clearance; },
