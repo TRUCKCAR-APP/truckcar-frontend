@@ -107,8 +107,8 @@ window.VoiceAssistant = (function () {
 
         const say = (text) => deps.say(text);
 
-        function askConfirmation(prompt, execute) {
-            pending = { execute, expiresAt: now() + CONFIRM_TIMEOUT_MS, retried: false };
+        function askConfirmation(prompt, execute, cancelText) {
+            pending = { execute, cancelText, expiresAt: now() + CONFIRM_TIMEOUT_MS, retried: false };
             return say(prompt).then(() => { deps.listen(); return { status: 'confirming' }; });
         }
 
@@ -121,7 +121,7 @@ window.VoiceAssistant = (function () {
             }
             if (reply === 'no') {
                 pending = null;
-                await say('Cancelado.');
+                await say(current.cancelText || 'Cancelado.');
                 return { status: 'cancelled' };
             }
             if (!text || current.retried) {
@@ -193,17 +193,36 @@ window.VoiceAssistant = (function () {
                 }
                 await say(intent.avoidAhead ? 'Buscando una ruta que evite este tramo.' : 'Recalculando la ruta.');
                 return run('recalcular la ruta', async () => {
-                    const result = await a.reroute({ avoidAhead: intent.avoidAhead });
-                    if (!result || !result.ok) {
-                        await say(result && result.reason === 'no-detour'
-                            ? 'No encontré una ruta que evite ese tramo. Siga con precaución.'
-                            : 'Sin conexión con el servicio de rutas. Siga la ruta actual.');
+                    const plan = await a.planReroute({ avoidAhead: intent.avoidAhead });
+                    if (!plan || !plan.ok) {
+                        const reason = plan && plan.reason;
+                        await say(reason === 'no-detour' ? 'No encontré una ruta que evite ese tramo. Siga con precaución.'
+                            : reason === 'restricted-alternatives'
+                                ? 'Las rutas alternas tienen restricciones de gálibo o peso para su camión. Siga por la ruta actual.'
+                                : 'Sin conexión con el servicio de rutas. Siga la ruta actual.');
                         return { status: 'unavailable', intent };
                     }
-                    const time = spokenDuration(result.durationS);
-                    await say('Nueva ruta: ' + spokenDistance(result.remainingM) + (time ? ', aproximadamente ' + time : '') + '.'
-                        + (result.restricted ? ' Atención: tiene restricciones de gálibo o peso para su vehículo.' : ''));
-                    return { status: 'done', intent };
+                    const apply = () => run('cambiar la ruta', async () => {
+                        const result = await a.applyReroute(plan);
+                        if (!result || !result.ok) {
+                            await say('La ruta cambió mientras confirmaba. Pida de nuevo otra ruta si la necesita.');
+                            return { status: 'unavailable', intent };
+                        }
+                        const time = spokenDuration(result.durationS);
+                        await say('Nueva ruta: ' + spokenDistance(result.remainingM) + (time ? ', aproximadamente ' + time : '') + '.'
+                            + (result.provider === 'HERE' ? ' Calculada para su camión con el tráfico actual.' : '')
+                            + (result.restricted ? ' Atención: tiene restricciones de gálibo o peso para su vehículo.' : ''));
+                        return { status: 'done', intent };
+                    });
+                    if (!plan.needsConfirmation) return apply();
+                    const parts = [];
+                    if (plan.longer) {
+                        const km = plan.extraM > 0 ? spokenDistance(plan.extraM) + ' más larga' : '';
+                        const min = plan.extraS > 0 ? spokenDuration(plan.extraS) + ' más' : '';
+                        parts.push('La ruta alterna es ' + [km, min].filter(Boolean).join(', unos ') + '.');
+                    }
+                    if (plan.unchecked) parts.push('No pude verificar gálibo y peso en la ruta alterna.');
+                    return askConfirmation(parts.join(' ') + ' ¿La tomo? Diga sí o cancelar.', apply, 'Sigo por la ruta actual.');
                 });
             }
 
@@ -425,7 +444,8 @@ window.VoiceAssistant = (function () {
             },
             sos: () => window.DriverActions.activate(),
             hasRoute: () => Boolean(window.RouteGuidance && window.RouteGuidance.route),
-            reroute: (options) => window.RouteGuidance.recalculate(options),
+            planReroute: (options) => window.RouteGuidance.planReroute(options),
+            applyReroute: (plan) => window.RouteGuidance.applyReroute(plan),
             remaining: () => (window.RouteGuidance ? window.RouteGuidance.remaining() : null),
             currentLoad() {
                 const load = data().activeLoadOrder;

@@ -23,7 +23,7 @@ usan el botón y las teclas multimedia.
 | Reporte vial | "reportar accidente", "hay un derrumbe adelante", "vía cerrada", "retén", "báscula", "gálibo bajo", "parador seguro", "hay un trancón" | Toma la posición GPS actual, publica en Community-Alerts con el tipo exacto (`DERRUMBE`, `ACCIDENTE`, `OBRA_EN_VIA`, `RETEN`, `BASCULA`, `GALIBO_REDUCIDO`, `PARADOR_SEGURO` o `TRAFICO_PESADO`) y confirma: «Reporte de derrumbe registrado en su ubicación». Sin señal, lo guarda en la cola offline. Sin GPS, no envía nada y lo dice |
 | SOS | "enviar alerta SOS", "auxilio", "emergencia", "me están robando la mercancía", "nos están atracando" | Pide confirmación y abre el mismo flujo del botón SOS (posición, torre de control y llamada al 123) |
 | Recalcular ruta | "recalcular ruta" | Nueva ruta desde la posición actual. Lee la distancia y el tiempo nuevos |
-| Ruta alterna | "cambiar de ruta", "buscar ruta alterna", "evitar este tramo", "sácame de este trancón", "evita el tráfico" | Evita el tramo de adelante (≈1,5 km), con el mismo mecanismo de desvío de los bloqueos. Valida gálibo y peso y avisa si la alternativa tiene restricciones |
+| Ruta alterna | "cambiar de ruta", "buscar ruta alterna", "evitar este tramo", "sácame de este trancón", "cambia la ruta que hay trancón" | Evita el tramo de adelante (≈1,5 km), con el mismo mecanismo de desvío de los bloqueos. Valida gálibo y peso y avisa si la alternativa tiene restricciones |
 | Datos de la carga | "qué llevo", "especificaciones de la carga", "cuál es el peso", "dirección de destino" | Lee la carga asignada real (Load-Allocation) |
 | Tiempo restante | "cuánto falta para llegar" | Distancia y tiempo restantes de la ruta guiada, y hora estimada de llegada |
 | Jornada | "cuántas horas llevo manejando", "cuánto me falta para descansar" | `drivingHoursToday` y `remainingDrivingHours` de fleets-drivers (calculadas con la telemetría), o el descanso obligatorio |
@@ -52,6 +52,12 @@ usan el botón y las teclas multimedia.
 **Tráfico pesado:** se reporta como `TRAFICO_PESADO`, que vence a las 2 horas porque la congestión cambia rápido.
 - **Salir del tráfico no es reportarlo:** "sácame de este trancón" o "evita el tráfico" recalculan la ruta evitando el tramo de adelante.
 - **Un peligro físico sigue siendo reporte aunque pida evitarlo:** "hay un derrumbe, evita este tramo".
+
+**Recalcular y ruta alterna:**
+- **De dónde sale la ruta:** primero de HERE para camión (`POST /api/v1/routes/reroute` en Route-AI-agent), con la altura, el peso y los ejes del vehículo, la zona a evitar y el tráfico actual. Si HERE no responde en 12 s, se usa el OSRM público como respaldo.
+- **Nunca hacia una ruta con restricciones:** si la ruta actual está limpia y todas las alternas tienen restricciones de gálibo o peso, no cambia y lo dice: «Las rutas alternas tienen restricciones de gálibo o peso para su camión. Siga por la ruta actual».
+- **Pregunta antes de una ruta más larga:** si la alterna es más de 5 minutos o 5 km más larga: «La ruta alterna es 18 kilómetros más larga, unos 37 minutos más. ¿La tomo?». Con «no» o silencio, sigue por la actual.
+- **Pregunta si no pudo verificar:** con la ruta del respaldo y Routing-Restrictions sin responder, avisa que no pudo verificar gálibo y peso y pide confirmación.
 
 **Robo o atraco:** es SOS aunque la frase mencione la carga. "Me están robando la mercancía" pide confirmar el SOS en lugar de leer los datos de la carga.
 

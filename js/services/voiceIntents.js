@@ -92,7 +92,7 @@ window.VoiceIntents = (function () {
         }
         // Un peligro en la vía va antes que las órdenes de carga o ruta ("hay un derrumbe, evita este tramo" es reporte).
         const report = REPORT_TYPES.find(r => r.re.test(plain));
-        if (report && report.type === 'traffic' && ESCAPE.test(plain)) {
+        if (report && report.type === 'traffic' && (ESCAPE.test(plain) || RULES.find(r => r.type === 'REROUTE').re.test(plain))) {
             return { type: 'REROUTE', avoidAhead: true, text: plain };
         }
         if (report && (REPORT_VERB.test(plain) || plain.split(' ').length <= 4)) {
