@@ -214,6 +214,7 @@ window.app = {
             shipmentFilter: 'ALL',
             generatorFormError: null,
             twoFactor: null,
+            passwordReset: null,
             authMode: 'login'
         });
     },
@@ -277,6 +278,103 @@ window.app = {
     /** Vuelve al primer paso (botón Volver, token vencido o rechazado). */
     cancelTwoFactor(message = null) {
         window.store.setState({ authMode: 'login', twoFactor: null, busyAction: null, authError: message });
+    },
+
+    // ── Recuperar la contraseña ──────────────────────────────────────────────────────────────────────────────────
+
+    /** Abre "¿Olvidó su contraseña?" con el correo que ya estaba escrito en el login. */
+    startPasswordReset() {
+        clearTimeout(this.resetTimer);
+        const typed = document.querySelector('.login-form input[name="email"]');
+        const current = window.store.state.passwordReset;
+        const email = (typed && typed.value.trim()) || (current && current.email) || window.store.state.loginEmail || '';
+        window.store.setState({ authMode: 'forgot', authError: null, authNotice: null, busyAction: null,
+            passwordReset: { step: 'email', email, resetToken: null, resendAt: 0 } });
+    },
+
+    async submitResetEmail(event) {
+        event.preventDefault();
+        if (window.ui.reportFormProblem(event.target)) return;
+        const email = String(new FormData(event.target).get('email') || '').trim();
+        await this.requestResetCode(email);
+    },
+
+    async requestResetCode(email) {
+        window.store.setState({ busyAction: 'auth', authError: null });
+        try {
+            const response = await window.TruckCarApi.auth.password.forgot(email);
+            const wait = (response && response.resendAfterSeconds ? response.resendAfterSeconds : 60) * 1000;
+            window.store.setState({ busyAction: null,
+                passwordReset: { step: 'code', email, resetToken: null, resendAt: Date.now() + wait } });
+            // Habilita "Enviarme otro código" cuando termina la espera.
+            clearTimeout(this.resetTimer);
+            this.resetTimer = setTimeout(() => {
+                const reset = window.store.state.passwordReset;
+                if (reset && reset.step === 'code') window.store.setState({ passwordReset: { ...reset } });
+            }, wait + 50);
+        } catch (error) {
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
+        }
+    },
+
+    async resendResetCode() {
+        const reset = window.store.state.passwordReset;
+        if (!reset || Date.now() < reset.resendAt) return;
+        await this.requestResetCode(reset.email);
+        if (!window.store.state.authError) window.store.setState({ authError: null });
+    },
+
+    async submitResetCode(event) {
+        event.preventDefault();
+        const reset = window.store.state.passwordReset;
+        if (!reset) return;
+        const code = String(new FormData(event.target).get('code') || '').replace(/\s/g, '');
+        if (!/^\d{6}$/.test(code)) {
+            window.store.setState({ authError: 'Escriba los 6 dígitos que le llegaron al correo.' });
+            return;
+        }
+        window.store.setState({ busyAction: 'auth', authError: null });
+        try {
+            const response = await window.TruckCarApi.auth.password.verify(reset.email, code);
+            window.store.setState({ busyAction: null, passwordReset: { ...reset, step: 'password', resetToken: response.resetToken } });
+        } catch (error) {
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
+        }
+    },
+
+    async submitNewPassword(event) {
+        event.preventDefault();
+        const reset = window.store.state.passwordReset;
+        if (!reset || !reset.resetToken) return;
+        const form = new FormData(event.target);
+        const password = String(form.get('newPassword') || '');
+        if (password.length < 8 || password.length > 72) {
+            window.store.setState({ authError: 'La contraseña debe tener entre 8 y 72 caracteres.' });
+            return;
+        }
+        if (password !== String(form.get('confirmPassword') || '')) {
+            window.store.setState({ authError: 'Las dos contraseñas no coinciden.' });
+            return;
+        }
+        window.store.setState({ busyAction: 'auth', authError: null });
+        try {
+            await window.TruckCarApi.auth.password.reset(reset.resetToken, password);
+            window.store.setState({ busyAction: null, authMode: 'login', passwordReset: null, loginEmail: reset.email,
+                authNotice: 'Contraseña actualizada. Inicie sesión con la contraseña nueva.' });
+        } catch (error) {
+            const expired = error && error.details && /invalid-reset-token$/.test(String(error.details.type || ''));
+            window.store.setState(expired
+                ? { busyAction: null, authError: window.ui.errorMessage(error),
+                    passwordReset: { step: 'email', email: reset.email, resetToken: null, resendAt: 0 } }
+                : { busyAction: null, authError: this.authErrorMessage(error) });
+        }
+    },
+
+    cancelPasswordReset() {
+        clearTimeout(this.resetTimer);
+        const reset = window.store.state.passwordReset;
+        window.store.setState({ authMode: 'login', passwordReset: null, busyAction: null, authError: null,
+            loginEmail: reset && reset.email ? reset.email : window.store.state.loginEmail });
     },
 
     authErrorMessage(error) {
@@ -450,9 +548,10 @@ window.app = {
         this.updateHeader(state);
         if (!state.isAuthenticated) {
             mount.innerHTML = window.LoginView.render(state);
-            window.Native.markScreen(mount, state.authMode === '2fa' ? 'login:2fa' : 'login');
-            const code = mount.querySelector('#two-factor-code');
-            if (code) code.focus({ preventScroll: true });
+            window.Native.markScreen(mount, state.authMode === '2fa' ? 'login:2fa'
+                : state.authMode === 'forgot' ? 'login:forgot' : 'login');
+            const code = mount.querySelector('#two-factor-code, #reset-code, #reset-password, #reset-email');
+            if (code && !(code.id === 'reset-email' && code.value)) code.focus({ preventScroll: true });
             this.renderHooks.forEach(hook => hook(state));
             window.Native.NetworkStatus.render();
             return;

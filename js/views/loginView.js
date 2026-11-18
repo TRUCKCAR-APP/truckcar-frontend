@@ -1,6 +1,7 @@
 window.LoginView = {
     render(state) {
         if (state.authMode === '2fa' && state.twoFactor) return this.renderTwoFactor(state);
+        if (state.authMode === 'forgot' && state.passwordReset) return this.renderPasswordReset(state);
         const isRegister = state.authMode === 'register';
         const busy = state.busyAction === 'auth';
         const config = window.TruckCarConfig;
@@ -29,6 +30,10 @@ window.LoginView = {
                         <div class="notice login-error" role="alert">
                             <div class="warn-line">${icon('warning-fill')}<span>${esc(state.authError)}</span></div>
                         </div>` : ''}
+                    ${state.authNotice && !isRegister ? `
+                        <div class="notice login-error login-ok" role="status">
+                            <div class="warn-line">${icon('check-circle-fill')}<span>${esc(state.authNotice)}</span></div>
+                        </div>` : ''}
 
                     ${isRegister ? `
                         <div class="login-pair">
@@ -50,7 +55,7 @@ window.LoginView = {
                         </div>
                     ` : ''}
 
-                    ${field('Correo', '<input name="email" type="email" inputmode="email" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="correo@empresa.com" class="field-input">')}
+                    ${field('Correo', `<input name="email" type="email" inputmode="email" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="correo@empresa.com" class="field-input" value="${esc(isRegister ? '' : state.loginEmail || '')}">`)}
                     <label class="field">
                         <span class="field-label">Contraseña${isRegister ? ' <span class="field-req">· mínimo 8 caracteres</span>' : ''}</span>
                         <span class="login-password">
@@ -61,6 +66,7 @@ window.LoginView = {
                             </button>
                         </span>
                     </label>
+                    ${isRegister ? '' : '<p class="login-forgot"><button type="button" onclick="window.app.startPasswordReset()">¿Olvidó su contraseña?</button></p>'}
                     ${isRegister ? '<p class="field-help">Las cuentas de coordinador (torre de control) las habilita un administrador. Un conductor de transportadora también puede ser registrado por su empresa.</p>' : ''}
 
                     <button type="submit" ${busy ? 'disabled' : ''} class="btn-accent login-submit">
@@ -128,6 +134,87 @@ window.LoginView = {
                         <button type="button" onclick="window.app.cancelTwoFactor()">Volver al inicio de sesión</button>
                     </p>
                 </form>
+            </div>
+        `;
+    },
+
+    /**
+     * Recuperar la contraseña en tres pasos: correo → código de 6 dígitos que llega al correo → contraseña nueva.
+     * El correo de confirmación no dice si la cuenta existe (el servidor responde igual en ambos casos).
+     */
+    renderPasswordReset(state) {
+        const esc = window.ui.escape;
+        const busy = state.busyAction === 'auth';
+        const reset = state.passwordReset;
+        const icon = (name) => `<svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#${name}"></use></svg>`;
+        const field = (label, input, hint = '') => `<label class="field"><span class="field-label">${label}</span>${input}${hint}</label>`;
+        const submit = (text, iconName) => `
+            <button type="submit" ${busy ? 'disabled' : ''} class="btn-accent login-submit">
+                ${busy ? '<span class="spinner" aria-hidden="true"></span>' : icon(iconName)}<span>${text}</span>
+            </button>`;
+        const error = state.authError ? `
+            <div class="notice login-error" role="alert">
+                <div class="warn-line">${icon('warning-fill')}<span>${esc(state.authError)}</span></div>
+            </div>` : '';
+        const back = `<p class="login-alt"><button type="button" onclick="window.app.cancelPasswordReset()">Volver al inicio de sesión</button></p>`;
+        const password = (id, name, label, help) => `
+            <label class="field">
+                <span class="field-label">${label}</span>
+                <span class="login-password">
+                    <input id="${id}" name="${name}" type="password" required minlength="8" maxlength="72" autocomplete="new-password" enterkeyhint="next" class="field-input"${help ? ' aria-describedby="' + id + '-help"' : ''}>
+                    <button type="button" class="header-icon-btn" aria-label="Mostrar la contraseña" aria-pressed="false"
+                            onclick="const i = document.getElementById('${id}'); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; this.setAttribute('aria-pressed', String(show)); this.setAttribute('aria-label', show ? 'Ocultar la contraseña' : 'Mostrar la contraseña'); this.querySelector('use').setAttribute('href', 'assets/icons.svg#' + (show ? 'eye-slash' : 'eye'));">
+                        ${icon('eye')}
+                    </button>
+                </span>
+                ${help ? `<span id="${id}-help" class="field-help">${help}</span>` : ''}
+            </label>`;
+
+        let body;
+        if (reset.step === 'code') {
+            const wait = Math.max(0, Math.ceil((reset.resendAt - Date.now()) / 1000));
+            body = `
+                <h1>Revise su correo</h1>
+                <p class="login-lead">Si <strong>${esc(reset.email)}</strong> tiene una cuenta, le enviamos un código de 6 dígitos. Vence en 10 minutos; revise también la carpeta de spam.</p>
+                ${error}
+                <form onsubmit="window.app.submitResetCode(event)" class="login-form-step" novalidate data-reset-step="code">
+                    ${field('Código del correo', '<input id="reset-code" name="code" type="text" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" enterkeyhint="go" placeholder="123456" class="field-input two-factor-input">')}
+                    ${submit('Verificar código', 'check')}
+                </form>
+                <p class="login-alt">${wait > 0
+                    ? `<span data-reset-wait>Puede pedir otro código en ${wait} s</span>`
+                    : '<button type="button" onclick="window.app.resendResetCode()" data-reset-resend>Enviarme otro código</button>'}</p>
+                <p class="login-alt"><button type="button" onclick="window.app.startPasswordReset()">Cambiar el correo</button></p>`;
+        } else if (reset.step === 'password') {
+            body = `
+                <h1>Cree una contraseña nueva</h1>
+                <p class="login-lead">Para ${esc(reset.email)}. Al guardarla se cerrará la sesión en los demás dispositivos.</p>
+                ${error}
+                <form onsubmit="window.app.submitNewPassword(event)" class="login-form-step" novalidate data-reset-step="password">
+                    ${password('reset-password', 'newPassword', 'Contraseña nueva <span class="field-req">· mínimo 8 caracteres</span>', '')}
+                    ${password('reset-password-confirm', 'confirmPassword', 'Repita la contraseña nueva', '')}
+                    ${submit('Guardar contraseña', 'lock')}
+                </form>`;
+        } else {
+            body = `
+                <h1>¿Olvidó su contraseña?</h1>
+                <p class="login-lead">Escriba el correo de su cuenta y le enviaremos un código de 6 dígitos para crear una contraseña nueva.</p>
+                ${error}
+                <form onsubmit="window.app.submitResetEmail(event)" class="login-form-step" novalidate data-reset-step="email">
+                    ${field('Correo', `<input id="reset-email" name="email" type="email" inputmode="email" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="correo@empresa.com" class="field-input" value="${esc(reset.email || '')}">`)}
+                    ${submit('Enviarme el código', 'paper-plane-tilt')}
+                </form>`;
+        }
+        return `
+            <div data-screen class="login-screen">
+                <div class="login-form" data-password-reset="${esc(reset.step)}">
+                    <span class="brand-logo login-mark">
+                        <img src="assets/brand/truckcar-logo.png" alt="TruckCar" class="brand-logo-light" width="854" height="831">
+                        <img src="assets/brand/truckcar-logo-blanco.png" alt="TruckCar" class="brand-logo-dark" width="854" height="831">
+                    </span>
+                    ${body}
+                    ${back}
+                </div>
             </div>
         `;
     },
