@@ -348,6 +348,12 @@
                 return session.save(response);
             },
             // Gestión de la doble autenticación (requiere sesión completa).
+            // Recuperar la contraseña: sin sesión (auth: false). El token de verify vive solo en memoria.
+            password: {
+                forgot: (email) => http.post('/auth/password/forgot', { email }, { auth: false }),
+                verify: (email, code) => http.post('/auth/password/verify', { email, code }, { auth: false }),
+                reset: (resetToken, newPassword) => http.post('/auth/password/reset', { resetToken, newPassword }, { auth: false })
+            },
             twoFactor: {
                 setup: () => http.post('/auth/2fa/setup', {}),
                 verifySetup: (code) => http.post('/auth/2fa/verify-setup', { code }),
