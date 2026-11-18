@@ -30,6 +30,9 @@ export const SURFACES = {
     "js/views/driverApp.js",
     "js/views/driverActions.js",
     "js/views/vehicleForm.js",
+    // Copiloto de voz: parser de intenciones y asistente (usa DriverActions, RouteGuidance y TruckCarService).
+    "js/services/voiceIntents.js",
+    "js/services/voiceAssistant.js",
     "js/surfaces/driver.js",
   ],
   panel: [

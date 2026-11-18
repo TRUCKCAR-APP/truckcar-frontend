@@ -2,7 +2,8 @@ import js from "@eslint/js";
 import globals from "globals";
 
 export default [
-  { ignores: ["node_modules/", "src/", "out/", "assets/vendor/"] },
+  // android/: proyecto nativo; su app/src/main/assets/public es la copia de la web que genera npm run build:apk.
+  { ignores: ["node_modules/", "src/", "out/", "assets/vendor/", "android/"] },
   js.configs.recommended,
   {
     rules: {

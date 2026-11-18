@@ -1,17 +1,29 @@
+// Voz de la app (TTS). En el navegador usa window.speechSynthesis; en la APK usa el plugin nativo TextToSpeech
+// (@capacitor-community/text-to-speech), porque el WebView de Android no implementa la Web Speech API y la guía de voz
+// quedaría muda. El plugin se llama por el puente de Capacitor (Capacitor.nativePromise), sin empaquetar @capacitor/core.
 class VoiceGuidanceEngine {
     constructor() {
-        this.synth = window.speechSynthesis;
+        this.synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
         this.voice = null;
         this.enabled = true;
         this.unlocked = false;
+        this.nativeQueue = Promise.resolve();
         this.initVoice();
+    }
+
+    /** Puente al TTS nativo, o null en el navegador. */
+    nativeTts() {
+        const cap = typeof window !== 'undefined' ? window.Capacitor : null;
+        const native = cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform();
+        return native && typeof cap.nativePromise === 'function' ? cap : null;
     }
 
     initVoice() {
         if (!this.synth) return;
         const setVoice = () => {
             const voices = this.synth.getVoices();
-            this.voice = voices.find(v => v.lang.startsWith('es') || v.name.includes('Spanish')) || voices[0];
+            this.voice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('es-co'))
+                || voices.find(v => v.lang && (v.lang.startsWith('es') || v.name.includes('Spanish'))) || voices[0];
         };
         setVoice();
         if (this.synth.onvoiceschanged !== undefined) {
@@ -19,24 +31,57 @@ class VoiceGuidanceEngine {
         }
     }
 
-    speak(text, priority = false) {
-        if (!this.synth || !this.enabled || !window.store.getState().voiceEnabled) {
-            return;
-        }
+    /** Hay con qué hablar (TTS nativo o del navegador). */
+    get available() {
+        return Boolean(this.nativeTts() || this.synth);
+    }
 
+    /**
+     * Habla si la guía de voz está activa. priority interrumpe lo que esté sonando. Con { force: true } habla aunque la
+     * guía esté apagada: lo usa el copiloto, que el conductor activó explícitamente. Devuelve una promesa que se
+     * resuelve al terminar de hablar (o enseguida si no habla).
+     */
+    speak(text, priority = false, { force = false } = {}) {
+        const state = window.store && window.store.getState ? window.store.getState() : {};
+        if (!text || !this.enabled || (!force && !state.voiceEnabled)) return Promise.resolve(false);
+        const cap = this.nativeTts();
+        if (cap) return this.speakNative(cap, String(text), priority);
+        if (!this.synth) return Promise.resolve(false);
+        if (priority) this.synth.cancel();
+        return new Promise((resolve) => {
+            const utterance = new SpeechSynthesisUtterance(text);
+            if (this.voice) utterance.voice = this.voice;
+            utterance.rate = 1.05;
+            utterance.pitch = 0.95;
+            utterance.lang = 'es-CO';
+            let done = false;
+            const finish = () => { if (!done) { done = true; resolve(true); } };
+            utterance.onend = finish;
+            utterance.onerror = finish;
+            // Algunos navegadores no disparan onend: no se bloquea a quien espera.
+            setTimeout(finish, Math.min(20000, 1500 + String(text).length * 90));
+            this.synth.speak(utterance);
+        });
+    }
+
+    /** El plugin nativo siempre interrumpe (QUEUE_FLUSH): la cola se hace aquí para no cortar frases normales. */
+    speakNative(cap, text, priority) {
+        const run = () => cap.nativePromise('TextToSpeech', 'speak', { text, lang: 'es-CO', rate: 1.0, pitch: 1.0, volume: 1.0 })
+            .then(() => true, () => false);
         if (priority) {
-            this.synth.cancel();
+            this.nativeQueue = Promise.resolve();
+            const spoken = cap.nativePromise('TextToSpeech', 'stop', {}).catch(() => {}).then(run);
+            this.nativeQueue = spoken;
+            return spoken;
         }
+        const spoken = this.nativeQueue.then(run);
+        this.nativeQueue = spoken;
+        return spoken;
+    }
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        if (this.voice) {
-            utterance.voice = this.voice;
-        }
-        utterance.rate = 1.05;
-        utterance.pitch = 0.95;
-        utterance.lang = 'es-CO';
-
-        this.synth.speak(utterance);
+    /** Habla siempre (copiloto) e interrumpe lo anterior. */
+    say(text) {
+        return this.speak(text, true, { force: true });
     }
 
     alert() {
@@ -66,20 +111,20 @@ class VoiceGuidanceEngine {
         } catch (e) { }
     }
 
-    tone() {
+    beep(notes) {
         try {
             const ctx = this.audio;
             if (!ctx || ctx.state !== 'running') return false;
-            [[880, 0], [660, 0.22]].forEach(([freq, at]) => {
+            notes.forEach(([freq, at, length = 0.2, peak = 0.25]) => {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.frequency.value = freq;
                 gain.gain.setValueAtTime(0.0001, ctx.currentTime + at);
-                gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + at + 0.02);
-                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.2);
+                gain.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + at + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + length);
                 osc.connect(gain).connect(ctx.destination);
                 osc.start(ctx.currentTime + at);
-                osc.stop(ctx.currentTime + at + 0.21);
+                osc.stop(ctx.currentTime + at + length + 0.01);
             });
             return true;
         } catch (e) {
@@ -87,7 +132,24 @@ class VoiceGuidanceEngine {
         }
     }
 
+    tone() {
+        return this.beep([[880, 0], [660, 0.22]]);
+    }
+
+    /** Tonos cortos del copiloto: empieza a escuchar (ascendente), deja de escuchar (descendente), error (grave). */
+    cue(kind) {
+        this.resumeAudio();
+        if (kind === 'start') return this.beep([[660, 0, 0.09, 0.18], [990, 0.1, 0.12, 0.18]]);
+        if (kind === 'end') return this.beep([[990, 0, 0.09, 0.15], [660, 0.1, 0.12, 0.15]]);
+        return this.beep([[330, 0, 0.25, 0.2]]);
+    }
+
     cancel() {
+        const cap = this.nativeTts();
+        if (cap) {
+            this.nativeQueue = Promise.resolve();
+            cap.nativePromise('TextToSpeech', 'stop', {}).catch(() => {});
+        }
         if (this.synth) {
             this.synth.cancel();
         }

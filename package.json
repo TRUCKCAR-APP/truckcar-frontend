@@ -12,9 +12,11 @@
     "cap:add:android": "cap add android",
     "cap:sync": "cap sync",
     "cap:open:android": "cap open android",
-    "build:apk": "cap sync android && node scripts/inject-config.mjs android/app/src/main/assets/public/index.html --require-url --require-https"
+    "build:apk": "node scripts/stage-android.mjs"
   },
   "devDependencies": {
+    "@capacitor-community/speech-recognition": "6.0.1",
+    "@capacitor-community/text-to-speech": "4.1.1",
     "@capacitor/android": "^6.2.0",
     "@capacitor/cli": "^6.2.0",
     "@capacitor/core": "^6.2.0",

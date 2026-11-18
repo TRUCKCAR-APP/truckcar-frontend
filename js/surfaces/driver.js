@@ -12,6 +12,7 @@
 
     app.onRender((state) => {
         window.DriverActions.syncSos(state);
+        window.VoiceAssistant.sync(state);
         window.DeviceLocation.sync(state);
         if (state.isAuthenticated) window.DriverTelemetry.renderSimulationToggle();
     });

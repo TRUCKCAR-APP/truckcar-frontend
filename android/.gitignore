@@ -1,0 +1,12 @@
+# Salida de Gradle y de la compilación
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
+
+# Generado por scripts/stage-android.mjs (npm run build:apk): copia de la web y configuración de Capacitor
+app/src/main/assets/public/
+app/src/main/assets/capacitor.config.json
+app/src/main/assets/capacitor.plugins.json
