@@ -851,5 +851,21 @@ window.app = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    if (typeof truckCarVoiceAssistant !== 'undefined') {
+        const checkRoleAndInit = () => {
+            const role = window.store && window.store.state ? window.store.state.activeRole : null;
+            if (role !== 'coordinator') {
+                truckCarVoiceAssistant.init();
+            }
+        };
+        if (window.store && typeof window.store.subscribe === 'function') {
+            window.store.subscribe((state) => {
+                if (state.activeRole === 'driver' && !truckCarVoiceAssistant.isListening) {
+                    truckCarVoiceAssistant.init();
+                }
+            });
+        }
+                checkRoleAndInit();
+    }
     window.app.init();
 });
