@@ -388,16 +388,18 @@ class MapController {
             this.cachedOptimalRoadGeometry = null;
             this.cachedRouteKey = routeKey;
         }
-        const polylineCoords = this.cachedOptimalRoadGeometry || waypoints.map(w => w.coords);
-
-        this.routeProgressLines = this.routeLines(polylineCoords);
+        // La línea va por las vías: mientras llega la geometría (o si el servicio de rutas no responde) solo se ven las
+        // paradas, nunca rectas entre ellas.
+        const road = this.cachedOptimalRoadGeometry;
+        this.routeProgressLines = road && road.length > 1 ? this.routeLines(road) : null;
+        const lineLayers = this.routeProgressLines ? this.routeProgressLines.layers : [];
         const markers = waypoints.map((wp, index) => {
             const kind = index === 0 ? 'origin' : index === waypoints.length - 1 ? 'destination' : 'stop';
             return L.marker(wp.coords, { icon: ROUTE_PINS[kind](), title: wp.name || '' })
                 .bindPopup('<b>' + window.ui.escape(wp.name) + '</b><br><span class="map-popup-sub">' + window.ui.escape(wp.instruction) + '</span>');
         });
 
-        this.optimalRouteLayer = L.layerGroup(this.routeProgressLines.layers.concat(markers)).addTo(this.map);
+        this.optimalRouteLayer = L.layerGroup(lineLayers.concat(markers)).addTo(this.map);
 
         if (!this.cachedOptimalRoadGeometry && !this.isFetchingRoute) {
             this.fetchRealRoadGeometry(waypoints, routeKey);
@@ -639,9 +641,12 @@ class MapController {
             layers.push(L.marker(destination, { icon: ROUTE_PINS.destination(), title: load.destination.city || '' }).bindPopup('<b>Destino</b><br>' + esc(load.destination.city)));
             points.push(destination);
         }
-        if (origin && destination) {
-            layers.push(L.polyline([origin, destination], { color: mapToken('--color-route', '#5AA2FF'), weight: 3, opacity: 0.9, dashArray: '6 8' }));
-        }
+        // La ruta va por las vías, nunca una recta entre origen y destino: si el servicio de rutas no responde, solo
+        // se ven los pines.
+        const roadKey = origin && destination ? origin.join(',') + '|' + destination.join(',') : null;
+        const road = roadKey && this.shipmentRoads ? this.shipmentRoads[roadKey] : null;
+        if (road) layers.unshift(this.shipmentRoadLine(road));
+        else if (roadKey) this.fetchShipmentRoad(roadKey, origin, destination);
         if (truck && truck.coords) {
             this.shipmentTruckMarker = L.marker(truck.coords, { zIndexOffset: 1000, icon: this.shipmentTruckIcon(truck) })
                 .bindPopup(this.shipmentTruckPopup(truck));
@@ -649,11 +654,42 @@ class MapController {
             points.push(truck.coords);
         }
         this.shipmentLayer = L.layerGroup(layers).addTo(this.map);
+        this.shipmentLayer.roadKey = roadKey;
         if (!fit) return;
         if (points.length === 1) {
             this.map.setView(points[0], 10, { animate: false });
         } else if (points.length > 1) {
             this.map.fitBounds(L.latLngBounds(points), { padding: [36, 36], animate: false });
+        }
+    }
+
+    shipmentRoadLine(geometry) {
+        return L.polyline(geometry, { color: mapToken('--color-route', '#5AA2FF'), weight: 4, opacity: 0.9,
+            lineCap: 'round', lineJoin: 'round', interactive: false });
+    }
+
+    /** Pide una vez la ruta por vías de un envío y la agrega al mapa si ese envío sigue en pantalla. */
+    async fetchShipmentRoad(key, origin, destination) {
+        this.shipmentRoads = this.shipmentRoads || {};
+        this.shipmentRoadRequests = this.shipmentRoadRequests || {};
+        const routing = window.TruckCarApi && window.TruckCarApi.routing;
+        if (this.shipmentRoadRequests[key] || !routing || !routing.drivingRoute) return;
+        this.shipmentRoadRequests[key] = true;
+        try {
+            const route = await routing.drivingRoute([origin, destination]);
+            const geometry = route.geometry.coordinates.map(pt => [pt[1], pt[0]]);
+            if (geometry.length < 2) return;
+            this.shipmentRoads[key] = geometry;
+            const layer = this.shipmentLayer;
+            if (layer && this.map && this.map.hasLayer(layer) && layer.roadKey === key) {
+                const line = this.shipmentRoadLine(geometry);
+                layer.addLayer(line);
+                line.bringToBack();
+            }
+        } catch (e) {
+            // Sin ruta por vías no se dibuja nada: una recta engañaría sobre el recorrido.
+        } finally {
+            delete this.shipmentRoadRequests[key];
         }
     }
 
