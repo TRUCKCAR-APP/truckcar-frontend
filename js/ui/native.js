@@ -27,7 +27,7 @@ window.Native = (function () {
             }
             if (pending > 0) {
                 return {
-                    state: 'syncing', icon: 'fa-arrows-rotate', spin: true,
+                    state: 'syncing', icon: 'fa-arrows-rotate', spin: true, short: 'Enviando ' + pending + '…',
                     label: `Sincronizando ${pending} pendiente${pending === 1 ? '' : 's'}…`,
                     detail: queue.lastError
                         ? `Reintento automático${queue.nextRetryAt ? ' a las ' + new Date(queue.nextRetryAt).toLocaleTimeString('es-CO') : ''}: ${queue.lastError}`
@@ -35,7 +35,8 @@ window.Native = (function () {
                 };
             }
             if (state.isAuthenticated && telemetry === 'reconnecting') {
-                return { state: 'reconnecting', icon: 'fa-tower-broadcast', label: 'Reconectando telemática…', detail: 'La posición en vivo se reanuda sola.' };
+                return { state: 'reconnecting', icon: 'fa-tower-broadcast', short: 'Reconectando',
+                    label: 'Reconectando la posición en vivo', detail: 'La posición en vivo se reanuda sola; las demás funciones siguen disponibles.' };
             }
             return {
                 state: 'online', icon: 'fa-signal',
@@ -54,7 +55,11 @@ window.Native = (function () {
                 const mark = warn
                     ? '<svg class="net-warn" aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>'
                     : `<span class="net-dot${s.spin ? ' is-busy' : ''}" aria-hidden="true"></span>`;
-                el.innerHTML = `<span class="net-status" data-state="${s.state}" role="status" title="${esc(s.detail)}">${mark}<span>${esc(s.short || s.label)}</span></span>`;
+                el.innerHTML = `<button type="button" class="net-status" data-state="${s.state}" role="status" title="${esc(s.detail)}"
+                    aria-label="${esc(s.label + '. ' + s.detail)}">${mark}<span>${esc(s.short || s.label)}</span></button>`;
+                el.querySelector('.net-status').onclick = () => {
+                    if (window.ui && window.ui.toast) window.ui.toast(s.label, s.state === 'online' ? 'success' : 'warning', { description: s.detail });
+                };
             });
         },
 

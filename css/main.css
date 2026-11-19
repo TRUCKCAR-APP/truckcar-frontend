@@ -384,6 +384,7 @@ body[data-view="driver"] .toaster { --toaster-offset: calc(var(--tabbar-height) 
     white-space: nowrap;
 }
 .net-status > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+button.net-status { background: none; border: 0; padding: 0; min-height: 32px; cursor: pointer; touch-action: manipulation; }
 .net-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--color-text-secondary); flex: none; }
 .net-status[data-state="online"] .net-dot { background: var(--color-ok); }
 .net-status[data-state="syncing"] .net-dot { background: var(--color-accent); }
@@ -1215,7 +1216,13 @@ body[data-view="driver"].sos-open .copilot-fab { visibility: hidden; }
 }
 .btn-accent { min-height: 56px; background: var(--color-accent); color: var(--color-on-accent); font-weight: var(--weight-bold); }
 .btn-accent:active { background: var(--color-accent-pressed); transform: scale(var(--press-scale)); }
-.btn-quiet { min-height: 48px; color: var(--color-text); font-weight: var(--weight-semibold); }
+.btn-quiet {
+    min-height: 52px; padding: 0 var(--space-4);
+    color: var(--color-text); font-weight: var(--weight-semibold);
+    background: var(--color-surface); border: var(--border-elevated); box-shadow: var(--elev-1);
+}
+.btn-quiet .ui-icon { color: var(--color-accent); }
+@media (hover: hover) and (pointer: fine) { .btn-quiet:hover { background: var(--color-elevated); } }
 .btn-quiet:active { background: var(--color-elevated); transform: scale(var(--press-scale)); }
 .btn-accent:disabled, .btn-quiet:disabled { opacity: 0.55; transform: none; }
 .btn-accent .ui-icon, .btn-quiet .ui-icon { width: 22px; height: 22px; }
