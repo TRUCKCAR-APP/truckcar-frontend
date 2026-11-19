@@ -574,6 +574,8 @@ window.DriverApp = {
             <div class="nav-screen${isLandscape ? ' is-landscape' : ''}">
                 <div class="nav-map-area">
                     <div id="live-nav-map-container" class="route-map" aria-label="Mapa de navegación"></div>
+                    <button type="button" class="recenter-pill" data-recenter ${window.mapCtrl && window.mapCtrl.navFollow === false ? '' : 'hidden'}
+                            onclick="window.mapCtrl.centerOnPosition()">${this.icon('navigation-arrow-fill')}Recentrar</button>
 
                     <section class="hud-card" aria-label="Próxima maniobra">
                         <button type="button" class="hud-turn" onclick="window.app.repeatInstruction()" aria-label="Repetir la instrucción en voz alta">

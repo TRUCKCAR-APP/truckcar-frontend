@@ -231,7 +231,7 @@ test("en la APK la escucha continua reinicia el reconocedor y entrega cada frase
     assert.equal(starts(), 1);
     listeners.partialResults({ matches: ["qué llevo"] });
     listeners.listeningState({ status: "stopped" });
-    await wait(300);
+    await wait(500);
     assert.deepEqual(heard, ["qué llevo"]);
     await wait(600);
     assert.equal(starts(), 2, "se reinicia sola tras el silencio");

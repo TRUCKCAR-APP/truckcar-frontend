@@ -708,6 +708,11 @@ window.app = {
                 window.mapCtrl.drawOverviewRoutes();
             } else if (state.driverScreen === 'navigation') {
                 if (!document.getElementById('live-nav-map-container')) return;
+                if (window.mapCtrl.isMountedOn('live-nav-map-container')) {
+                    window.mapCtrl.refreshLiveNavigation();
+                    window.RouteGuidance.renderHud();
+                    return;
+                }
                 const point = window.DriverTelemetry.lastPoint;
                 const fix = point ? point.coords : (window.DeviceLocation.last() || {}).coords;
                 window.mapCtrl.initMap('live-nav-map-container', fix || null, fix ? 15 : 7);

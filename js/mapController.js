@@ -55,6 +55,7 @@ class MapController {
         this.bottomInset = 0;
         this.navFramed = false;
         this.navGuidanceFramed = false;
+        this.navFollow = true;
         if (this.map) {
             try {
                 this.map.stop();
@@ -162,9 +163,71 @@ class MapController {
         this.fitAllRoute();
     }
 
+    /**
+     * Seguimiento como en las apps de navegación: mientras navFollow, el mapa sigue al camión con zoom de calle y el
+     * camión un poco abajo del centro (se ve más vía por delante). Al mover o pellizcar el mapa con el dedo deja de
+     * seguirlo hasta que el conductor toque «Recentrar».
+     */
+    bindNavGestures() {
+        if (!this.map || this.navGesturesBound === this.map) return;
+        this.navGesturesBound = this.map;
+        const stop = () => this.pauseFollow();
+        this.map.on('dragstart', stop);
+        const container = this.map.getContainer();
+        container.addEventListener('wheel', stop, { passive: true });
+        container.addEventListener('touchstart', (event) => { if (event.touches && event.touches.length > 1) stop(); }, { passive: true });
+    }
+
+    pauseFollow() {
+        if (!this.navFollow) return;
+        this.navFollow = false;
+        this.syncRecenter();
+    }
+
+    syncRecenter() {
+        document.querySelectorAll('[data-recenter]').forEach(el => { el.hidden = this.navFollow; });
+    }
+
+    /** Zoom de calle según la velocidad: más cerca en ciudad, un poco más lejos en carretera. */
+    navZoom() {
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        const fix = window.DeviceLocation && window.DeviceLocation.last(60000);
+        const speed = point && Number.isFinite(point.speed) ? point.speed : fix && Number.isFinite(fix.speedKmH) ? fix.speedKmH : 0;
+        return speed >= 80 ? 15 : speed >= 40 ? 16 : 17;
+    }
+
+    followTruck(position, { animate = true } = {}) {
+        if (!this.map || !position) return;
+        const zoom = this.navZoom();
+        const size = this.map.getSize();
+        const inset = this.navInsets();
+        // El camión queda a ~65 % de la altura visible (debajo de la tarjeta de la maniobra), con la vía por delante.
+        const visibleTop = inset.top;
+        const targetY = visibleTop + (size.y - visibleTop) * 0.65;
+        const offsetY = targetY - size.y / 2;
+        const point = this.map.project(L.latLng(position), zoom).subtract([0, offsetY]);
+        this.map.setView(this.map.unproject(point, zoom), zoom, { animate, duration: 0.6 });
+        this.navFramed = true;
+    }
+
+    /** Actualización sin recrear el mapa: alertas, línea de la guía y marcador; respeta si el conductor lo movió. */
+    refreshLiveNavigation() {
+        if (!this.map) return;
+        this.renderAlerts();
+        const guided = window.RouteGuidance && window.RouteGuidance.route;
+        if (guided && guided.geometry !== this.guidanceGeometry) this.drawGuidanceLine(guided.geometry);
+        if (!guided && this.guidanceLayer) {
+            try { this.map.removeLayer(this.guidanceLayer); } catch (e) { }
+            this.guidanceLayer = null;
+            this.guidanceGeometry = null;
+        }
+        this.syncRecenter();
+    }
+
     drawLiveNavigation(position) {
         if (!this.map) return;
         if (this.map.zoomControl) this.map.removeControl(this.map.zoomControl);
+        this.bindNavGestures();
         this.renderRoutes();
         this.renderAlerts();
         this.guidanceLayer = null;
@@ -172,7 +235,7 @@ class MapController {
         if (guided) this.drawGuidanceLine(guided.geometry);
         if (position) {
             this.createTruckMarker(position);
-            this.frameNextLeg(position);
+            this.followTruck(position, { animate: false });
         } else {
             this.truckMarker = null;
             this.deviceFramed = false;
@@ -213,9 +276,9 @@ class MapController {
         if (!this.map || !position || !document.getElementById('live-nav-map-container')) return;
         if (this.truckMarker) this.truckMarker.setLatLng(position);
         else this.createTruckMarker(position);
-        if (!this.deviceFramed) {
+        if (!this.deviceFramed && this.navFollow) {
             this.deviceFramed = true;
-            this.map.setView(position, Math.max(this.map.getZoom(), 15), { animate: false });
+            this.followTruck(position, { animate: false });
         }
     }
 
@@ -230,8 +293,14 @@ class MapController {
         }
         if (this.truckMarker) this.truckMarker.setLatLng(position);
         else this.createTruckMarker(position);
-        if (document.getElementById('live-nav-map-container')) this.frameNextLeg(position);
-        else this.map.setView(position, Math.max(this.map.getZoom(), 12), { animate: true });
+        if (document.getElementById('live-nav-map-container')) {
+            // «Recentrar»: vuelve a seguir al camión con zoom de calle.
+            this.navFollow = true;
+            this.syncRecenter();
+            this.followTruck(position);
+        } else {
+            this.map.setView(position, Math.max(this.map.getZoom(), 12), { animate: true });
+        }
     }
 
     drawGuidanceLine(geometry, discarded = []) {
@@ -245,9 +314,10 @@ class MapController {
             lineCap: 'round', lineJoin: 'round', interactive: false
         }));
         this.guidanceLayer = L.layerGroup(alternatives.concat(this.guidanceLines.layers)).addTo(this.map);
+        this.guidanceGeometry = geometry;
         if (this.truckMarker && !this.navGuidanceFramed) {
             this.navGuidanceFramed = true;
-            this.frameNextLeg(this.truckMarker.getLatLng());
+            if (this.navFollow) this.followTruck(this.truckMarker.getLatLng());
         }
     }
 
@@ -520,8 +590,12 @@ class MapController {
         this.refreshRouteProgress();
 
         if (this.map) {
-            const inset = document.getElementById('live-nav-map-container') ? this.navInsets() : { top: 0, left: 0 };
-            const target = this.map.project([lat, lng]).subtract([inset.left / 2, inset.top / 2]);
+            if (document.getElementById('live-nav-map-container')) {
+                // Navegar: sigue al camión solo si el conductor no movió el mapa.
+                if (this.navFollow) this.followTruck([lat, lng]);
+                return;
+            }
+            const target = this.map.project([lat, lng]);
             this.map.panTo(this.map.unproject(target), { animate: true, duration: 0.8 });
         }
     }
