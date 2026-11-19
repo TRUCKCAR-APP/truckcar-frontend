@@ -491,7 +491,7 @@
 
     // Cada posición nueva del teléfono actualiza el indicador y, sin viaje en curso, el marcador del mapa (con viaje lo
     // hace la telemetría en cada envío).
-    window.DeviceLocation.onFix((fix) => {
+    if (window.DeviceLocation && window.DeviceLocation.onFix) window.DeviceLocation.onFix((fix) => {
         renderDriverBadge();
         if (!driver.timer && window.mapCtrl && window.mapCtrl.showDevicePosition) window.mapCtrl.showDevicePosition(fix.coords);
     });
