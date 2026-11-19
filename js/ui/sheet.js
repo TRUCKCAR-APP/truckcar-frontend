@@ -103,7 +103,10 @@ window.Sheet = (function () {
             if (opts.onMount) opts.onMount(sheet, close);
             requestAnimationFrame(() => requestAnimationFrame(() => {
                 backdrop.classList.add('is-open');
-                const focusTarget = sheet.querySelector('[autofocus], input, textarea, [data-sheet-action]');
+                // initialFocus: selector de lo que se enfoca al abrir. Enfocar un campo abre el teclado del teléfono; una
+                // hoja que ya trae lo que el conductor debe elegir enfoca eso.
+                const focusTarget = (opts.initialFocus && sheet.querySelector(opts.initialFocus))
+                    || sheet.querySelector('[autofocus], input, textarea, [data-sheet-action]');
                 if (focusTarget) focusTarget.focus({ preventScroll: true });
             }));
         });

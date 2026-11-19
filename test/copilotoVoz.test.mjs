@@ -183,9 +183,12 @@ test("aceptar una carga exige un sí explícito; cancelar o el silencio no cambi
   assert.equal(said.at(-1), "Cancelado.");
 
   await ctrl.handle("aceptar carga");
-  await ctrl.handle("");
+  const before = said.length;
+  const quiet = await ctrl.handle("");
   assert.equal(accepted, 1);
-  assert.equal(said.at(-1), "No escuché respuesta. Acción cancelada.");
+  assert.equal(quiet.status, "silence", "el silencio termina la sesión");
+  assert.equal(said.length, before, "sin hablar ni volver a preguntar");
+  assert.equal(ctrl.awaitingAnswer, false);
 });
 
 test("una respuesta confusa pide repetir una vez y luego cancela; una confirmación vencida no se ejecuta", async () => {

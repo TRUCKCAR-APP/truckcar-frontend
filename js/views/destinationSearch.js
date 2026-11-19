@@ -51,6 +51,8 @@ window.DestinationSearch = (function () {
             title: '¿A dónde va?',
             subtitle: 'Busque cualquier destino, aunque no sea el de una carga.',
             body,
+            // Con lugares ya buscados (por voz) se enfoca la primera opción, no el campo: así no se abre el teclado.
+            ...(places ? { initialFocus: places.length ? '[data-dest-index="0"]' : '.sheet-title' } : {}),
             onMount(sheet, close) {
                 let found = places || [];
                 current = { sheet, close, setPlaces };

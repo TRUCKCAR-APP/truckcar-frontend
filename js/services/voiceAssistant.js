@@ -160,9 +160,14 @@ window.VoiceAssistant = (function () {
                 await say(current.cancelText || 'Cancelado.');
                 return { status: 'cancelled' };
             }
-            if (!text || current.retried) {
+            if (!text) {
+                // Silencio: la sesión termina sin hablar; el conductor vuelve con la frase o el botón.
                 pending = null;
-                await say(text ? 'No le entendí. Acción cancelada.' : 'No escuché respuesta. Acción cancelada.');
+                return { status: 'silence' };
+            }
+            if (current.retried) {
+                pending = null;
+                await say('No le entendí. Acción cancelada.');
                 return { status: 'cancelled' };
             }
             current.retried = true;
@@ -614,7 +619,7 @@ window.VoiceAssistant = (function () {
             },
             /**
              * Una orden. El plugin de Android no responde a stop() y, si hay silencio, termina la sesión con un error que no
-             * llega a la app: por eso el fin se decide aquí (silencio tras hablar, nada en 7 s o 12 s como máximo) y stop()
+             * llega a la app: por eso el fin se decide aquí (silencio tras hablar, nada en 6 s o 12 s como máximo) y stop()
              * se llama sin esperarlo.
              */
             listenOnce({ onPartial }) {
@@ -644,7 +649,7 @@ window.VoiceAssistant = (function () {
                     handles.push(cap.addListener('SpeechRecognition', 'listeningState', (event) => {
                         if (event && event.status === 'stopped') settle(400);
                     }));
-                    timers.push(setTimeout(() => { if (!last) finish(); }, 7000));
+                    timers.push(setTimeout(() => { if (!last) finish(); }, 6000));
                     timers.push(setTimeout(finish, 12000));
                     stopping = finish;
                     call('start', { language: 'es-CO', maxResults: 3, partialResults: true, popup: false })
@@ -751,7 +756,8 @@ window.VoiceAssistant = (function () {
                         if (onPartial) onPartial((finalText + ' ' + interim).trim());
                     };
                     r.onerror = () => {};
-                    r.onend = () => { session = null; resolve((finalText || interim).trim()); };
+                    const silence = setTimeout(() => { if (!finalText && !interim) { try { r.abort(); } catch (e) { } } }, 6000);
+                    r.onend = () => { clearTimeout(silence); session = null; resolve((finalText || interim).trim()); };
                     session = r;
                     try { r.start(); } catch (e) { session = null; resolve(''); }
                 });
@@ -834,15 +840,42 @@ window.VoiceAssistant = (function () {
             return Boolean(this.recognizer);
         },
 
+        // Sesión: una conversación con el Copiloto. Empieza con el botón o la frase y termina al cumplir la orden, con
+        // 6 s de silencio o al tocar otra vez el botón. Cada sesión tiene su número: lo que llega de una sesión
+        // terminada se descarta.
+        session: 0,
+        processing: null,
+        lastSpoken: '',
+        spokeAt: 0,
+        wakeTimer: null,
+
         async say(text) {
+            // Una sesión cancelada con el botón ya no habla.
+            if (this.processing != null && this.processing !== this.session) return;
             // La escucha de la frase se pausa mientras el Copiloto habla, para que no se oiga a sí mismo.
+            clearTimeout(this.wakeTimer);
             if (this.recognizer && this.recognizer.stopWake) this.recognizer.stopWake();
+            // Al terminar vuelve a la fase anterior: en medio de una respuesta sigue «processing» (el botón la apaga).
+            const before = this.phase === 'speaking' ? 'idle' : this.phase;
             this.phase = 'speaking';
+            this.lastSpoken = text;
             this.showBanner(text, 'speaking');
-            try { await window.voiceEngine.say(text); } finally { if (this.phase === 'speaking') this.phase = 'idle'; }
+            try { await window.voiceEngine.say(text); } finally {
+                this.spokeAt = Date.now();
+                if (this.phase === 'speaking') this.phase = before === 'listening' ? 'idle' : before;
+            }
         },
 
-        /** Botón: si está apagado lo enciende y escucha; si está encendido, escucha una orden. */
+        /** Lo oído es el eco de lo que el Copiloto acaba de decir (el altavoz se cuela en el micrófono). */
+        isEcho(heard) {
+            if (!this.lastSpoken || Date.now() - this.spokeAt > 5000) return false;
+            const spoken = new Set(intents.normalize(this.lastSpoken).split(' '));
+            const words = intents.normalize(heard).split(' ').filter(w => w.length >= 3);
+            if (!words.length) return false;
+            return words.filter(w => spoken.has(w)).length / words.length >= 0.6;
+        },
+
+        /** Botón: si el Copiloto está quieto, abre una sesión y escucha; si está en una sesión, la termina. */
         async press() {
             this.init();
             window.voiceEngine.resumeAudio();
@@ -850,81 +883,120 @@ window.VoiceAssistant = (function () {
                 await window.voiceEngine.say('Este dispositivo no tiene reconocimiento de voz.');
                 return;
             }
-            if (!this.on) {
-                await this.activate();
+            if (this.phase !== 'idle') {
+                this.endSession();
                 return;
             }
+            if (!(await this.ensureReady())) return;
             this.listenNow();
         },
 
-        /**
-         * Enciende el Copiloto. listen=false (al guardar «Activar con la voz» o al entrar con esa opción): queda esperando
-         * la frase, sin abrir el micrófono para una orden.
-         */
-        async activate({ listen = true } = {}) {
+        /** Permiso del micrófono y teclas del volante, una vez. No habla ni escucha una orden. */
+        async ensureReady() {
             this.init();
-            if (this.on || !this.recognizer) return;
+            if (this.on) return true;
+            if (!this.recognizer) return false;
             const ok = await this.recognizer.available() && await this.recognizer.ensurePermission();
             if (!ok) {
                 await window.voiceEngine.say('No tengo permiso para usar el micrófono. Actívelo en los ajustes del teléfono.');
-                return;
+                return false;
             }
             this.on = true;
             this.enableMediaKeys();
             this.render();
-            if (!listen) {
-                await this.say('Copiloto listo. Diga ' + this.settings.wakePhrase + ' para hablarme.');
-                this.hideBanner(1500);
-                this.resumeWake();
-                return;
-            }
-            const wakeWord = this.wakeAvailable() ? ' Diga ' + this.settings.wakePhrase + ' seguido de su orden,' : '';
-            await this.say('Copiloto activado.' + wakeWord + ' Toque el micrófono o el botón multimedia del volante para hablar.');
-            this.listenNow();
+            return true;
+        },
+
+        /**
+         * Deja el Copiloto listo sin hablar. listen=true además escucha una orden (como el botón); con listen=false y
+         * «Activar con la voz» queda esperando la frase.
+         */
+        async activate({ listen = true } = {}) {
+            if (!(await this.ensureReady())) return;
+            if (listen) this.listenNow();
+            else this.resumeWakeSoon(0);
+        },
+
+        /** Termina la sesión en curso (escucha, respuesta o pregunta pendiente) y vuelve a esperar la frase. */
+        endSession() {
+            this.session++;
+            this.controller.cancelPending();
+            this.wantsAnswer = false;
+            if (this.recognizer) this.recognizer.abort();
+            window.voiceEngine.cancel();
+            window.voiceEngine.cue('end');
+            this.phase = 'idle';
+            this.hideBanner(0);
+            this.render();
+            this.resumeWakeSoon();
         },
 
         async deactivate() {
             if (!this.on) return;
             this.on = false;
+            this.session++;
+            clearTimeout(this.wakeTimer);
             this.controller.cancelPending();
             if (this.recognizer.stopWake) this.recognizer.stopWake();
             this.recognizer.abort();
+            window.voiceEngine.cancel();
             this.disableMediaKeys();
             this.phase = 'idle';
-            this.render();
-            await this.say('Copiloto desactivado.');
             this.hideBanner();
+            this.render();
         },
 
         async listenNow() {
             if (!this.on || this.phase === 'listening' || this.phase === 'processing') return;
+            const id = ++this.session;
+            clearTimeout(this.wakeTimer);
             if (this.recognizer.stopWake) this.recognizer.stopWake();
             window.voiceEngine.cancel();
             this.phase = 'listening';
             this.transcript = '';
             this.showBanner('Escuchando…', 'listening');
             window.voiceEngine.cue('start');
-            const text = await this.recognizer.listenOnce({ onPartial: (partial) => this.showBanner(partial, 'listening') });
+            const text = await this.recognizer.listenOnce({ onPartial: (partial) => { if (id === this.session) this.showBanner(partial, 'listening'); } });
+            if (id !== this.session) return;
             window.voiceEngine.cue('end');
-            await this.process(text);
+            await this.process(text, id);
         },
 
-        async process(text) {
-            this.phase = 'processing';
+        async process(text, id = ++this.session) {
             this.wantsAnswer = false;
-            if (text) this.showBanner('«' + text + '»', 'processing');
-            try {
-                await this.controller.handle(text || '');
-            } finally {
+            if (!text) {
+                // 6 s sin oír nada: la sesión termina en silencio y no se vuelve a abrir sola.
+                this.controller.cancelPending();
                 this.phase = 'idle';
+                this.hideBanner(0);
+                this.render();
+                this.resumeWakeSoon();
+                return;
             }
+            this.phase = 'processing';
+            this.processing = id;
+            this.showBanner('«' + text + '»', 'processing');
+            try {
+                await this.controller.handle(text);
+            } finally {
+                if (this.processing === id) this.processing = null;
+                if (id === this.session) this.phase = 'idle';
+            }
+            if (id !== this.session) return;
             if (!this.on) { this.hideBanner(2500); return; }
             if (this.wantsAnswer && this.controller.awaitingAnswer) {
                 this.listenNow();
                 return;
             }
             this.hideBanner(2500);
-            this.resumeWake();
+            this.render();
+            this.resumeWakeSoon();
+        },
+
+        /** Vuelve a esperar la frase tras una pausa, para no oír el final de la propia voz. */
+        resumeWakeSoon(delay = 900) {
+            clearTimeout(this.wakeTimer);
+            this.wakeTimer = setTimeout(() => { if (this.phase === 'idle') this.resumeWake(); }, delay);
         },
 
         /** En el navegador siempre; en la APK solo con «Activar con la voz» (escucha continua). */
@@ -935,7 +1007,7 @@ window.VoiceAssistant = (function () {
         resumeWake() {
             if (!this.on || !this.wakeAvailable()) return;
             this.recognizer.startWake((heard) => {
-                if (this.phase !== 'idle') return;
+                if (this.phase !== 'idle' || this.isEcho(heard)) return;
                 const { woke, rest } = intents.stripWakeWord(heard);
                 if (!woke) return;
                 this.recognizer.stopWake();
@@ -945,7 +1017,7 @@ window.VoiceAssistant = (function () {
                 } else {
                     this.listenNow();
                 }
-            }, (text) => intents.stripWakeWord(text).woke);
+            }, (text) => !this.isEcho(text) && intents.stripWakeWord(text).woke);
         },
 
         enableMediaKeys() {
@@ -980,18 +1052,7 @@ window.VoiceAssistant = (function () {
             button.type = 'button';
             button.className = 'copilot-fab';
             button.innerHTML = '<svg aria-hidden="true"><use href="assets/icons.svg#microphone"></use></svg><span class="copilot-fab-label">Copiloto</span>';
-            let holdTimer = null;
-            let held = false;
-            button.addEventListener('pointerdown', () => {
-                held = false;
-                clearTimeout(holdTimer);
-                holdTimer = setTimeout(() => { held = true; if (this.on) this.deactivate(); }, 800);
-            });
-            const cancelHold = () => clearTimeout(holdTimer);
-            button.addEventListener('pointerup', cancelHold);
-            button.addEventListener('pointercancel', cancelHold);
-            button.addEventListener('pointerleave', cancelHold);
-            button.addEventListener('click', () => { if (held) { held = false; return; } this.press(); });
+            button.addEventListener('click', () => this.press());
             button.addEventListener('contextmenu', (event) => event.preventDefault());
             const banner = document.createElement('div');
             banner.className = 'copilot-banner';
@@ -1006,12 +1067,11 @@ window.VoiceAssistant = (function () {
         render() {
             if (!this.ui) return;
             const { button } = this.ui;
-            button.classList.toggle('is-on', this.on);
+            const active = this.phase !== 'idle';
+            button.classList.toggle('is-on', active);
             button.classList.toggle('is-listening', this.phase === 'listening');
-            button.setAttribute('aria-pressed', String(this.on));
-            button.setAttribute('aria-label', this.on
-                ? 'Copiloto activo: toque para dar una orden por voz, mantenga presionado para apagarlo'
-                : 'Activar el copiloto de voz');
+            button.setAttribute('aria-pressed', String(active));
+            button.setAttribute('aria-label', active ? 'Copiloto activo: toque para apagarlo' : 'Activar el copiloto de voz');
             button.querySelector('.copilot-fab-label').textContent = this.phase === 'listening' ? 'Escuchando' : 'Copiloto';
         },
 
@@ -1039,7 +1099,9 @@ window.VoiceAssistant = (function () {
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch (e) { }
             intents.setWakePhrase(this.settings.wakePhrase);
             if (this.settings.wakeEnabled) {
-                if (this.on) this.resumeWake(); else this.activate({ listen: false });
+                this.activate({ listen: false });
+                if (window.ui && window.ui.toast) window.ui.toast('Ajustes guardados', 'success',
+                    { description: 'Diga «' + this.settings.wakePhrase + '» y su orden para usar el Copiloto.' });
             } else if (this.recognizer && this.recognizer.kind !== 'web' && this.recognizer.stopWake) {
                 this.recognizer.stopWake();
             }

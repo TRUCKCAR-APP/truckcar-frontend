@@ -56,6 +56,15 @@ class MapController {
         this.navFramed = false;
         this.navGuidanceFramed = false;
         this.navFollow = true;
+        this.navOversized = false;
+        this.navLayoutKey = null;
+        this.navRotation = 0;
+        this.navHidden = null;
+        if (this.navAreaObserver) {
+            this.navAreaObserver.disconnect();
+            this.navAreaObserver = null;
+            this.navAreaObserved = null;
+        }
         if (this.map) {
             try {
                 this.map.stop();
@@ -181,7 +190,122 @@ class MapController {
     pauseFollow() {
         if (!this.navFollow) return;
         this.navFollow = false;
+        // Mapa libre: norte arriba al instante, para que el arrastre siga al dedo.
+        this.applyNavRotation(null, { instant: true });
         this.syncRecenter();
+    }
+
+    /**
+     * Vista de conducción (como Waze o Google Maps): el mapa gira para que la dirección de viaje quede siempre hacia
+     * arriba. Leaflet no gira el mapa, así que se gira su contenedor; para que al girar no queden esquinas vacías, el
+     * contenedor es un cuadrado más grande que la pantalla, centrado en el punto donde va el camión (~65 % de la altura
+     * visible, debajo de la tarjeta de la maniobra).
+     */
+    layoutNavMap() {
+        const container = this.map && this.map.getContainer();
+        const area = container && container.id === 'live-nav-map-container' ? container.closest('.nav-map-area') : null;
+        if (!area) { this.navOversized = false; return; }
+        const width = area.clientWidth;
+        const height = area.clientHeight;
+        if (!width || !height) return;
+        const inset = this.navInsets();
+        const anchorX = inset.left + (width - inset.left - inset.right) / 2;
+        const anchorY = inset.top + (height - inset.top) * 0.65;
+        const key = [width, height, anchorX, anchorY].map(Math.round).join('x');
+        // Con keepAliveMaps el mismo mapa pasa a un área nueva en cada actualización: se vuelve a preparar.
+        if (key === this.navLayoutKey && this.navOversized && this.navAreaObserved === area && area.classList.contains('is-heading-view')) return;
+        this.navLayoutKey = key;
+        const reach = Math.max(...[[0, 0], [width, 0], [0, height], [width, height]]
+            .map(([x, y]) => Math.hypot(x - anchorX, y - anchorY)));
+        const side = Math.ceil(2 * reach + 16);
+        Object.assign(container.style, {
+            width: side + 'px', height: side + 'px', right: 'auto', bottom: 'auto',
+            left: Math.round(anchorX - side / 2) + 'px', top: Math.round(anchorY - side / 2) + 'px'
+        });
+        area.classList.add('is-heading-view');
+        this.navOversized = true;
+        this.navHidden = {
+            left: Math.round(side / 2 - anchorX), top: Math.round(side / 2 - anchorY),
+            right: Math.round(anchorX + side / 2 - width), bottom: Math.round(anchorY + side / 2 - height)
+        };
+        if (!area.querySelector('.nav-attribution')) {
+            // Las esquinas del mapa quedan fuera de la pantalla: los créditos de las teselas van fijos en la vista.
+            const credit = document.createElement('div');
+            credit.className = 'nav-attribution';
+            credit.innerHTML = window.TruckCarConfig.map.attribution || '';
+            area.appendChild(credit);
+        }
+        if (typeof ResizeObserver === 'function' && this.navAreaObserved !== area) {
+            if (this.navAreaObserver) this.navAreaObserver.disconnect();
+            this.navAreaObserved = area;
+            this.navAreaObserver = new ResizeObserver(() => {
+                if (!this.map || !this.navOversized) return;
+                this.layoutNavMap();
+                if (this.navFollow && this.truckMarker) this.followTruck(this.truckMarker.getLatLng(), { animate: false });
+            });
+            this.navAreaObserver.observe(area);
+        }
+        this.map.invalidateSize({ pan: false });
+    }
+
+    /** Gira el mapa para que el rumbo quede hacia arriba (null: norte arriba). Toma el giro más corto. */
+    applyNavRotation(heading, { instant = false } = {}) {
+        if (!this.navOversized || !this.map) return;
+        const container = this.map.getContainer();
+        const target = heading == null ? 0 : -heading;
+        const current = this.navRotation || 0;
+        const delta = ((((target - current) % 360) + 540) % 360) - 180;
+        this.navRotation = instant && heading == null ? 0 : current + delta;
+        if (instant) {
+            container.style.transition = 'none';
+            container.style.transform = 'rotate(' + this.navRotation + 'deg)';
+            void container.offsetWidth;
+            container.style.transition = '';
+        } else {
+            container.style.transform = 'rotate(' + this.navRotation + 'deg)';
+        }
+    }
+
+    /**
+     * Rumbo del camión para la vista de conducción: el del GPS si va andando; si no (detenido o sin brújula), la
+     * dirección de la ruta por delante; si tampoco, el último conocido.
+     */
+    navHeading(position) {
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        const fix = window.DeviceLocation && window.DeviceLocation.last && window.DeviceLocation.last(60000);
+        const speed = point && Number.isFinite(point.speed) ? point.speed : fix && Number.isFinite(fix.speedKmH) ? fix.speedKmH : 0;
+        const gps = point && Number.isFinite(point.heading) ? point.heading : null;
+        let heading = gps != null && speed >= 5 ? gps : this.routeBearing(position);
+        if (heading == null) heading = gps;
+        if (heading != null) this.lastNavHeading = heading;
+        return this.lastNavHeading != null ? this.lastNavHeading : null;
+    }
+
+    /** Dirección de la ruta unos 30 m por delante del punto de la ruta más cercano al camión (null si va fuera de ella). */
+    routeBearing(position) {
+        const geometry = this.guidanceGeometry || (this.routeProgressLines && this.routeProgressLines.coords);
+        if (!position || !geometry || geometry.length < 2) return null;
+        const here = L.latLng(position);
+        let nearest = 0;
+        let best = Infinity;
+        geometry.forEach((p, i) => {
+            const d = here.distanceTo(p);
+            if (d < best) { best = d; nearest = i; }
+        });
+        if (best > 80) return null;
+        let ahead = nearest;
+        let walked = 0;
+        while (ahead < geometry.length - 1 && walked < 30) {
+            walked += L.latLng(geometry[ahead]).distanceTo(geometry[ahead + 1]);
+            ahead++;
+        }
+        const from = ahead === nearest ? geometry[Math.max(0, nearest - 1)] : geometry[nearest];
+        const to = geometry[ahead];
+        if (!to || (from[0] === to[0] && from[1] === to[1])) return null;
+        const rad = Math.PI / 180;
+        const y = Math.sin((to[1] - from[1]) * rad) * Math.cos(to[0] * rad);
+        const x = Math.cos(from[0] * rad) * Math.sin(to[0] * rad) - Math.sin(from[0] * rad) * Math.cos(to[0] * rad) * Math.cos((to[1] - from[1]) * rad);
+        return (Math.atan2(y, x) / rad + 360) % 360;
     }
 
     syncRecenter() {
@@ -199,6 +323,15 @@ class MapController {
     followTruck(position, { animate = true } = {}) {
         if (!this.map || !position) return;
         const zoom = this.navZoom();
+        this.layoutNavMap();
+        if (this.navOversized) {
+            // El centro del contenedor ya es el punto del camión en pantalla: se centra ahí y se gira según el rumbo.
+            this.map.setView(position, zoom, { animate, duration: 0.6 });
+            this.applyNavRotation(this.navHeading(position));
+            this.updateTruckHeading();
+            this.navFramed = true;
+            return;
+        }
         const size = this.map.getSize();
         const inset = this.navInsets();
         // El camión queda a ~65 % de la altura visible (debajo de la tarjeta de la maniobra), con la vía por delante.
@@ -213,6 +346,7 @@ class MapController {
     /** Actualización sin recrear el mapa: alertas, línea de la guía y marcador; respeta si el conductor lo movió. */
     refreshLiveNavigation() {
         if (!this.map) return;
+        this.layoutNavMap();
         this.renderAlerts();
         const guided = window.RouteGuidance && window.RouteGuidance.route;
         if (guided && guided.geometry !== this.guidanceGeometry) this.drawGuidanceLine(guided.geometry);
@@ -227,6 +361,7 @@ class MapController {
     drawLiveNavigation(position) {
         if (!this.map) return;
         if (this.map.zoomControl) this.map.removeControl(this.map.zoomControl);
+        this.layoutNavMap();
         this.bindNavGestures();
         this.renderRoutes();
         this.renderAlerts();
@@ -533,6 +668,8 @@ class MapController {
     }
 
     truckHeading() {
+        // En la vista de conducción la flecha usa el mismo rumbo que gira el mapa (apunta siempre hacia arriba).
+        if (this.navOversized && this.currentCoords) return this.navHeading(this.currentCoords);
         const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
         return point && typeof point.heading === 'number' ? point.heading : null;
     }
@@ -616,7 +753,12 @@ class MapController {
         if (points.length === 1) {
             this.map.setView(points[0], 11, { animate: false });
         } else if (points.length > 1) {
-            this.map.fitBounds(L.latLngBounds(points), { paddingTopLeft: [40, 40], paddingBottomRight: [40, 40 + this.bottomInset], animate: false });
+            // En la vista de conducción parte del contenedor queda fuera de la pantalla: se encuadra en lo visible.
+            const hidden = this.navOversized && this.navHidden ? this.navHidden : { left: 0, top: 0, right: 0, bottom: 0 };
+            if (this.navOversized) this.applyNavRotation(null, { instant: true });
+            this.map.fitBounds(L.latLngBounds(points), {
+                paddingTopLeft: [40 + hidden.left, 40 + hidden.top],
+                paddingBottomRight: [40 + hidden.right, 40 + hidden.bottom + this.bottomInset], animate: false });
         }
     }
 
