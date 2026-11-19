@@ -1586,3 +1586,30 @@ select.field-input { appearance: none; -webkit-appearance: none; }
 
 .status-badge { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; font-size: var(--text-caption); font-weight: var(--weight-semibold); color: var(--color-text); }
 .status-badge.is-warn { color: var(--color-warn); }
+
+/* Navegación libre: buscar un destino y elegir entre los resultados */
+.dest-input { position: relative; display: block; }
+.dest-input .field-input { padding-right: 52px; }
+.dest-input .header-icon-btn { position: absolute; right: 4px; top: 4px; }
+.dest-results { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.dest-result {
+    display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; padding: var(--space-3);
+    border-radius: var(--radius-md); background: var(--color-surface); text-align: left; color: var(--color-text);
+    touch-action: manipulation;
+}
+.dest-result:active { transform: scale(0.98); }
+.dest-number {
+    flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+    background: var(--color-accent, var(--color-warn)); color: var(--color-bg); font-weight: var(--weight-bold);
+}
+.dest-text { display: grid; min-width: 0; flex: 1; }
+.dest-title { font-weight: var(--weight-bold); overflow-wrap: anywhere; }
+.dest-sub { font-size: var(--text-footnote); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+
+/* En Navegar, el botón del Copiloto queda redondo (solo el micrófono) sobre la barra del viaje, y la barra le deja
+   espacio a la derecha: así no tapa «Llegué», «Terminar» ni «Buscar destino». */
+#phone-mockup-frame:has(.nav-screen:not(.is-landscape)) .copilot-fab { width: 64px; min-width: 64px; padding: 0; justify-content: center; }
+#phone-mockup-frame:has(.nav-screen:not(.is-landscape)) .copilot-fab .copilot-fab-label { display: none; }
+#phone-mockup-frame:has(.copilot-fab:not([hidden])) .nav-screen:not(.is-landscape) .trip-bar {
+    padding-right: calc(var(--gutter) + var(--safe-right) + 80px);
+}

@@ -271,6 +271,15 @@ window.DriverApp = {
                     <button onclick="window.TwoFactorUI.open()" class="btn-quiet" data-security-button>${this.icon('shield-check')}Seguridad de la cuenta</button>
                 </div>
 
+                <h2 class="list-title">Copiloto de voz</h2>
+                <div class="list">
+                    ${this.listRow('Activar con la voz', this.dotText(window.VoiceAssistant && window.VoiceAssistant.settings.wakeEnabled
+                        ? 'Sí, diciendo «' + window.VoiceAssistant.settings.wakePhrase + '»' : 'No: con el botón Copiloto', window.VoiceAssistant && window.VoiceAssistant.settings.wakeEnabled ? 'ok' : ''))}
+                </div>
+                <div class="vehicle-actions">
+                    <button onclick="window.VoiceAssistant.openSettings()" class="btn-quiet" data-copilot-settings>${this.icon('microphone')}Ajustes del copiloto</button>
+                </div>
+
                 ${v ? `
                     <h2 class="list-title">Dimensiones y peso</h2>
                     <div class="list">
@@ -554,9 +563,11 @@ window.DriverApp = {
         const vehicle = window.TruckCarData.currentDriver && window.TruckCarData.currentDriver.vehicle;
         const load = window.TruckCarData.activeLoadOrder;
         const km = this.roadDistanceKm();
-        const routeLine = load
-            ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) + (km != null ? ' · ' + km + ' km' : '')
-            : 'Sin carga en tránsito';
+        const free = window.RouteGuidance.freeDestination;
+        const routeLine = free ? 'Hacia ' + free.title
+            : load
+                ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) + (km != null ? ' · ' + km + ' km' : '')
+                : 'Sin destino: toque «Buscar destino»';
         const voice = state.voiceEnabled;
 
         return `
@@ -590,16 +601,21 @@ window.DriverApp = {
                         <button type="button" class="hud-btn" onclick="window.mapCtrl.centerOnPosition()" aria-label="Centrar en mi posición">${this.icon('crosshair')}</button>
                         <button type="button" class="hud-btn${voice ? '' : ' is-off'}" onclick="window.app.toggleVoice()" aria-pressed="${voice ? 'true' : 'false'}" aria-label="${voice ? 'Silenciar la voz de navegación' : 'Activar la voz de navegación'}">${this.icon(voice ? 'speaker-high' : 'speaker-slash')}</button>
                         <button type="button" class="hud-btn" onclick="window.app.openReportModal()" aria-label="Reportar novedad en la vía">${this.icon('megaphone')}</button>
+                        <button type="button" class="hud-btn" onclick="window.app.openDestinationSearch()" aria-label="Buscar destino" data-dest-open>${this.icon('magnifying-glass')}</button>
                     </div>
                 </div>
 
                 <div class="trip-bar">
-                    <div class="trip-remaining">
+                    ${!free && !load ? '' : `<div class="trip-remaining">
                         <b>Faltan <span data-nav-remaining>${esc(s.remaining)}</span></b>
                         <span data-nav-eta>${esc(window.RouteGuidance.durationText(s))}</span>
                         <span>${esc(routeLine)}</span>
-                    </div>
-                    <button type="button" onclick="window.app.finishTrip()" class="btn-trip">${this.icon('flag-checkered')}Llegué</button>
+                    </div>`}
+                    ${free
+                        ? `<button type="button" onclick="window.app.endFreeNavigation()" class="btn-trip" data-dest-end>${this.icon('x')}Terminar</button>`
+                        : load
+                            ? `<button type="button" onclick="window.app.finishTrip()" class="btn-trip">${this.icon('flag-checkered')}Llegué</button>`
+                            : `<button type="button" onclick="window.app.openDestinationSearch()" class="btn-trip is-wide" data-dest-start>${this.icon('magnifying-glass')}Buscar destino</button>`}
                 </div>
             </div>
         `;

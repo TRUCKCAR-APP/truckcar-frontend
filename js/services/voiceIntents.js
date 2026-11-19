@@ -18,13 +18,53 @@ window.VoiceIntents = (function () {
     const WAKE_ANYWHERE = new RegExp('(?:^|\\s)(?:(?:hola|oye|ok|okey|hey|ey)\\s+)?(?:' + TRUCKCAR + '|copiloto)(?:\\s|$)');
     const FILLER = /^(?:por favor|porfa|eh|este|pues|bueno|oiga|necesito|quiero|puedes|podrias|me puedes|me podrias)\s+/;
 
+    // Frase de activación propia del conductor (además de «TruckCar» y «Copiloto»), ya normalizada.
+    let customWake = null;
+
+    /** Configura la frase de activación del conductor; vacía la quita. */
+    function setWakePhrase(phrase) {
+        const plain = normalize(phrase || '');
+        customWake = plain.length >= 3 ? plain : null;
+        return customWake;
+    }
+
     /** Quita la palabra de activación del inicio: { woke, rest }. */
     function stripWakeWord(text) {
         const plain = normalize(text);
+        if (customWake) {
+            const index = (' ' + plain + ' ').indexOf(' ' + customWake + ' ');
+            if (index !== -1) return { woke: true, rest: plain.slice(index + customWake.length).replace(/^[\s,]+/, '').trim() };
+        }
         const at = plain.search(WAKE_ANYWHERE);
         if (at === -1) return { woke: false, rest: plain };
         const fromWake = plain.slice(at).trim();
         return { woke: true, rest: fromWake.replace(WAKE, '').trim() };
+    }
+
+    // «necesito ir a la Escuela Colombiana de Ingeniería», «llévame a Tunja», «cómo llego al peaje de Andes».
+    // El relleno («necesito», «quiero») ya se quitó en clean(). Si lo que sigue es un verbo («voy a reportar…») no es un
+    // lugar: lo resuelven las demás reglas o la IA.
+    const NAVIGATE = /^(?:(?:tengo que|me toca|hay que)\s+)?(?:ir|irme|llegar|vamos|voy|llevame|lleveme|llevarme|guiame|navegar|navega|como llego|como llegar|ruta|buscar ruta|busca la ruta|buscame la ruta)\s+(?:a|al|hasta|hacia|para)\s+(.+)$/;
+    const NOT_A_PLACE = /^(?:(?:el|la|los|las)\s+)?(?:destino|entrega|carga|siguiente|proxima)\b/;
+
+    function navigateTarget(plain) {
+        const match = plain.match(NAVIGATE);
+        if (!match) return null;
+        const place = match[1].replace(/^(?:(?:el|la|los|las|un|una)\s+)/, '').trim();
+        const first = place.split(' ')[0];
+        if (place.length < 2 || NOT_A_PLACE.test(place) || /(?:ar|er|ir)$/.test(first)) return null;
+        return place;
+    }
+
+    const ORDINALS = [/^(?:la |el )?(?:primera|primero|uno|una|1)\b/, /^(?:la |el )?(?:segunda|segundo|dos|2)\b/,
+        /^(?:la |el )?(?:tercera|tercero|tres|3)\b/, /^(?:la |el )?(?:cuarta|cuarto|cuatro|4)\b/, /^(?:la |el )?(?:quinta|quinto|cinco|5)\b/];
+
+    /** «la segunda», «opción dos», «la última»: índice (desde 0) entre count opciones, o null. */
+    function parseChoice(text, count) {
+        const plain = clean(text).replace(/^(?:la opcion|opcion|numero|el numero|la numero)\s+/, '');
+        if (/^(?:la |el )?(?:ultima|ultimo)\b/.test(plain)) return count > 0 ? count - 1 : null;
+        const index = ORDINALS.findIndex(re => re.test(plain));
+        return index >= 0 && index < count ? index : null;
     }
 
     function clean(text) {
@@ -82,7 +122,7 @@ window.VoiceIntents = (function () {
     /**
      * Intención de una orden. Tipos: SOS, COPILOT_OFF, HELP, NEARBY_ALERTS, ACCEPT_LOAD, REJECT_LOAD, CONFIRM_DELIVERY,
      * START_TRIP, HOURS, REPEAT, REROUTE { avoidAhead }, REPORT { alertType, label, closure, description },
-     * LOAD_INFO { field }, UNKNOWN.
+     * LOAD_INFO { field }, NAVIGATE { place }, UNKNOWN.
      */
     function parse(text) {
         const plain = clean(text);
@@ -90,6 +130,8 @@ window.VoiceIntents = (function () {
         for (const rule of RULES.slice(0, 4)) {
             if (rule.re.test(plain)) return { type: rule.type, text: plain };
         }
+        const place = navigateTarget(plain);
+        if (place) return { type: 'NAVIGATE', place, text: plain };
         // Un peligro en la vía va antes que las órdenes de carga o ruta ("hay un derrumbe, evita este tramo" es reporte).
         const report = REPORT_TYPES.find(r => r.re.test(plain));
         if (report && report.type === 'traffic' && (ESCAPE.test(plain) || RULES.find(r => r.type === 'REROUTE').re.test(plain))) {
@@ -126,5 +168,5 @@ window.VoiceIntents = (function () {
         return null;
     }
 
-    return { normalize, stripWakeWord, parse, parseAnswer, REPORT_TYPES };
+    return { normalize, stripWakeWord, setWakePhrase, parse, parseAnswer, parseChoice, REPORT_TYPES };
 })();

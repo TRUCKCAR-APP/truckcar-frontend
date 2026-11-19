@@ -1,6 +1,6 @@
 ﻿importScripts('js/tileStore.js');
 
-const VERSION = 'v36';
+const VERSION = 'v37';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v2';
@@ -51,6 +51,7 @@ const SHELL = [
     'js/views/coordinatorPanel.js',
     'js/views/podModals.js',
     'js/views/vehicleForm.js',
+    'js/views/destinationSearch.js',
     'js/services/voiceIntents.js',
     'js/services/voiceAssistant.js',
     'js/views/towerAdmin.js',

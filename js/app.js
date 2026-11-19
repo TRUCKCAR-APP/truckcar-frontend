@@ -893,6 +893,43 @@ window.app = {
         return true;
     },
 
+    /** Destinos por nombre cerca de la posición del conductor. */
+    async searchPlaces(query) {
+        const fix = window.DeviceLocation && window.DeviceLocation.last(10 * 60 * 1000);
+        const places = await window.TruckCarApi.routes.places(query, fix ? fix.coords[0] : undefined, fix ? fix.coords[1] : undefined);
+        return Array.isArray(places) ? places : [];
+    },
+
+    openDestinationSearch() {
+        window.DestinationSearch.open();
+    },
+
+    /** Lleva la guía al lugar elegido (desde la búsqueda o por voz) y abre la pantalla Navegar. */
+    async goToPlace(place, { silent = false } = {}) {
+        window.store.setState({ driverScreen: 'navigation' });
+        const result = await window.RouteGuidance.navigateTo(place);
+        if (!result.ok && !silent) {
+            if (result.reason === 'no-position') {
+                window.ui.toast('Sin posición GPS', 'warning', { description: 'Encienda la ubicación del teléfono para calcular la ruta desde donde está.' });
+            } else if (result.reason !== 'changed') {
+                window.ui.toast('No se pudo calcular la ruta', 'warning', { description: 'Sin conexión con el servicio de rutas. Intente de nuevo.' });
+            }
+        } else if (result.ok && !silent) {
+            window.voiceEngine.speak('Ruta a ' + place.title + ' calculada.', true);
+        }
+        window.store.setState({});
+        return result;
+    },
+
+    endFreeNavigation() {
+        if (window.RouteGuidance.endFreeNavigation()) {
+            window.ui.toast('Navegación terminada', 'success');
+            const load = window.TruckCarData.activeLoadOrder;
+            if (load) window.RouteGuidance.prepare(load);
+            window.store.setState({});
+        }
+    },
+
     async finishTrip() {
         const load = window.TruckCarData.activeLoadOrder;
         if (!load || !window.TruckCarService.loadActions(load).deliver) {

@@ -242,6 +242,8 @@ window.RouteGuidance = (function () {
 
     async function prepare(load) {
         if (!load) return;
+        // Un destino elegido por el conductor manda hasta que termine esa navegación.
+        if (freeDestination) return;
         if (loadId !== load.backendId) {
             avoidPoints = [];
             aiAlert = null;
@@ -396,6 +398,73 @@ window.RouteGuidance = (function () {
     async function recalculate(options) {
         const plan = await planReroute(options);
         return plan.ok ? applyReroute(plan) : plan;
+    }
+
+    let freeDestination = null;
+
+    function deviceFix() {
+        const point = window.DriverTelemetry && window.DriverTelemetry.lastPoint;
+        if (point && point.coords) return point.coords;
+        const fix = window.DeviceLocation && window.DeviceLocation.last(2 * 60 * 1000);
+        return fix ? fix.coords : null;
+    }
+
+    /**
+     * Navegación libre: ruta para el camión (HERE, respaldo OSRM) desde la posición actual hasta un lugar elegido por el
+     * conductor, aunque no sea el destino de una carga. place: { title, address, latitude, longitude }.
+     */
+    async function navigateTo(place) {
+        if (!place || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) return { ok: false, reason: 'no-place' };
+        const here = deviceFix();
+        if (!here) return { ok: false, reason: 'no-position' };
+        const destination = [place.latitude, place.longitude];
+        const key = 'DESTINO-' + Date.now();
+        freeDestination = { key, title: place.title, address: place.address || null, coords: destination };
+        loadId = null;
+        currentLoad = null;
+        avoidPoints = [];
+        aiAlert = null;
+        handledBlockages.clear();
+        nearby = [];
+        status = 'loading';
+        progress = null;
+        announced.clear();
+        notify();
+        try {
+            const viaHere = await hereRoutes(here, destination, []);
+            const candidates = viaHere
+                ? viaHere.map(option => buildRoute(option, key, 'destino'))
+                : (await requestRoutes([here, destination])).map(osrm => buildRoute(osrm, key, 'destino'));
+            if (!freeDestination || freeDestination.key !== key) return { ok: false, reason: 'changed' };
+            if (!candidates.length) throw new Error('sin rutas');
+            const chosen = await chooseRoute(candidates);
+            if (!freeDestination || freeDestination.key !== key) return { ok: false, reason: 'changed' };
+            const last = chosen.steps[chosen.steps.length - 1];
+            if (last) last.text = 'Llegó a ' + place.title;
+            useRoute(chosen, candidates);
+            status = 'ready';
+            acquireWakeLock();
+            announceChoice(chosen);
+            refreshNearby(chosen);
+            update({ coords: here });
+            return { ok: true, title: place.title, remainingM: chosen.totalM, durationS: chosen.durationS,
+                provider: chosen.provider, restricted: Boolean(chosen.choice && chosen.choice.restricted) };
+        } catch (e) {
+            if (!freeDestination || freeDestination.key !== key) return { ok: false, reason: 'changed' };
+            freeDestination = null;
+            route = null;
+            status = 'unavailable';
+            notify();
+            return { ok: false, reason: 'offline' };
+        }
+    }
+
+    /** Termina la navegación libre; si hay una carga en tránsito, la guía vuelve a su destino. */
+    function endFreeNavigation() {
+        if (!freeDestination) return false;
+        reset();
+        notify();
+        return true;
     }
 
     /** Distancia y tiempo que faltan según la ruta guiada (el tiempo se prorratea con la duración de la ruta). */
@@ -832,6 +901,11 @@ window.RouteGuidance = (function () {
     }
 
     function durationText(s) {
+        if (freeDestination && route) {
+            const left = remaining();
+            const minutes = left && Number.isFinite(left.durationS) ? Math.max(1, Math.round(left.durationS / 60)) : null;
+            if (minutes != null) return "Llegada en unos " + (minutes >= 60 ? Math.floor(minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min") + (route.provider === "HERE" ? " · HERE" : "");
+        }
         return s.plannedDuration ? 'Viaje completo: ' + s.plannedDuration + ' · Route-AI' : 'Duración: ' + window.ui.NOT_AVAILABLE;
     }
 
@@ -857,6 +931,9 @@ window.RouteGuidance = (function () {
     function hudText(s) {
         if (s.status === 'loading') return { distance: '…', instruction: 'Calculando la ruta paso a paso…', street: '' };
         if (s.status === 'unavailable') return { distance: '—', instruction: 'Guía paso a paso no disponible', street: 'Sin conexión con el servicio de rutas: siga el mapa.' };
+        if (s.status === 'idle' && !currentLoad && !freeDestination) {
+            return { distance: '—', instruction: 'Sin destino', street: 'Busque un lugar con la lupa o diga «llévame a…»' };
+        }
         if (s.status === 'idle') return { distance: '—', instruction: 'Preparando la navegación…', street: '' };
         if (!s.hasPosition || s.offRoute) return { distance: s.distance, instruction: s.instruction, street: '' };
         if (s.restored) return { distance: s.distance, instruction: s.instruction, street: 'Sin señal: guía con la ruta guardada en el teléfono' };
@@ -996,6 +1073,7 @@ window.RouteGuidance = (function () {
     if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', () => layoutAlerts());
 
     function reset() {
+        freeDestination = null;
         route = null;
         status = 'idle';
         progress = null;
@@ -1050,7 +1128,8 @@ window.RouteGuidance = (function () {
 
     return {
         prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, durationText, handleBlockage, layoutAlerts, toggleAlerts,
-        recalculate, planReroute, applyReroute, remaining,
+        recalculate, planReroute, applyReroute, remaining, navigateTo, endFreeNavigation,
+        get freeDestination() { return freeDestination; },
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
         get clearance() { return clearance; },
