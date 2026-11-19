@@ -45,7 +45,8 @@ window.DeviceLocation = (function () {
             return 'El GPS no respondió a tiempo. Verifique tener vista despejada al cielo.';
         }
         status = 'offline';
-        return 'Sin señal GPS.';
+        // Código 2 (POSITION_UNAVAILABLE): casi siempre la ubicación del teléfono está apagada o en modo de ahorro.
+        return 'No se pudo obtener la ubicación: encienda la ubicación del teléfono (en Xiaomi, también la "ubicación precisa").';
     }
 
     const isCapacitor = typeof window.Capacitor !== 'undefined';

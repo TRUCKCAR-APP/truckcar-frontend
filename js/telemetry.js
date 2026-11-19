@@ -370,9 +370,31 @@
         if (window.RouteGuidance && window.RouteGuidance.layoutAlerts) window.RouteGuidance.layoutAlerts();
     }
 
+    /**
+     * Sin viaje en curso no hay telemetría que transmitir, pero el GPS del teléfono sí funciona: se muestra su estado
+     * (antes el indicador decía "Sin posición" aunque el teléfono ya tuviera ubicación).
+     */
+    function paintIdleBadge(el) {
+        const fix = window.DeviceLocation.last(GPS_STALE_MS);
+        const esc = window.ui.escape;
+        if (fix) {
+            el.dataset.state = 'ok';
+            el.innerHTML = `<span class="dot ok" aria-hidden="true"></span><span class="telemetry-main">GPS activo</span>
+                <span class="telemetry-sub">· ${fix.accuracy ? 'precisión ±' + Math.round(fix.accuracy) + ' m · ' : ''}sin viaje en curso: no se envía a la torre</span>`;
+            return;
+        }
+        el.dataset.state = 'warn';
+        el.innerHTML = `<span class="telemetry-warn"><svg aria-hidden="true"><use href="assets/icons.svg#warning-fill"></use></svg>Buscando GPS</span>
+            <span class="telemetry-sub">· ${esc(window.DeviceLocation.error || 'Verifique que la ubicación del teléfono esté encendida. Al aire libre la señal llega más rápido.')}</span>`;
+    }
+
     function paintDriverBadge(el) {
         const live = status === 'online' && driver.lastSent && Date.now() - driver.lastSent < 8000;
         const p = driver.lastPoint;
+        if (!driver.timer && !simulating()) {
+            paintIdleBadge(el);
+            return;
+        }
         if (driver.mode === 'waiting' || !driver.mode) {
             const reason = window.DeviceLocation.error || 'Esperando la señal GPS del dispositivo…';
             el.dataset.state = 'warn';
@@ -466,6 +488,13 @@
         renderBadge: renderDriverBadge,
         renderSimulationToggle
     };
+
+    // Cada posición nueva del teléfono actualiza el indicador y, sin viaje en curso, el marcador del mapa (con viaje lo
+    // hace la telemetría en cada envío).
+    window.DeviceLocation.onFix((fix) => {
+        renderDriverBadge();
+        if (!driver.timer && window.mapCtrl && window.mapCtrl.showDevicePosition) window.mapCtrl.showDevicePosition(fix.coords);
+    });
 
     let fleetUnsubscribe = null;
     const tripSubscriptions = new Map();
