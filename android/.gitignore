@@ -10,3 +10,6 @@ local.properties
 app/src/main/assets/public/
 app/src/main/assets/capacitor.config.json
 app/src/main/assets/capacitor.plugins.json
+
+# Modelo de voz Vosk (58 MB), lo copia scripts/stage-android.mjs
+app/src/main/assets/model-es/

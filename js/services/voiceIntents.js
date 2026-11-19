@@ -86,10 +86,47 @@ window.VoiceIntents = (function () {
     const NAVIGATE = /^(?:(?:tengo que|me toca|hay que)\s+)?(?:ir|irme|llegar|vamos|voy|llevame|lleveme|llevarme|guiame|navegar|navega|como llego|como llegar|ruta|buscar ruta|busca la ruta|buscame la ruta)\s+(?:a|al|hasta|hacia|para)\s+(.+)$/;
     const NOT_A_PLACE = /^(?:(?:el|la|los|las)\s+)?(?:destino|entrega|carga|siguiente|proxima)\b/;
 
+    // Números dichos en palabras («portal de la ochenta», «calle setenta y dos») a cifras para buscar el lugar: el
+    // reconocedor del teléfono (Vosk) los escribe en letras. De 1 a 199.
+    const UNITS = { uno: 1, un: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9 };
+    const TEENS = { diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, dieciseis: 16, diecisiete: 17,
+        dieciocho: 18, diecinueve: 19, veinte: 20, veintiuno: 21, veintiun: 21, veintidos: 22, veintitres: 23,
+        veinticuatro: 24, veinticinco: 25, veintiseis: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29 };
+    const TENS = { treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90 };
+
+    function numbersToDigits(text) {
+        const words = text.split(' ');
+        const out = [];
+        for (let i = 0; i < words.length; i++) {
+            let value = null;
+            let j = i;
+            let hundred = 0;
+            if (words[j] === 'cien') { value = 100; j++; } else if (words[j] === 'ciento') { hundred = 100; j++; }
+            const w = words[j];
+            if (value === null && TENS[w] != null) {
+                value = hundred + TENS[w];
+                if (words[j + 1] === 'y' && UNITS[words[j + 2]] != null) { value += UNITS[words[j + 2]]; j += 2; }
+                j++;
+            } else if (value === null && TEENS[w] != null) {
+                value = hundred + TEENS[w]; j++;
+            } else if (value === null && hundred && UNITS[w] != null) {
+                value = hundred + UNITS[w]; j++;
+            } else if (value === null && hundred) {
+                value = hundred;
+            } else if (value === null && UNITS[w] != null && !['un', 'una', 'uno'].includes(w)) {
+                value = UNITS[w]; j++;
+            }
+            if (value === null) { out.push(words[i]); continue; }
+            out.push(String(value));
+            i = j - 1;
+        }
+        return out.join(' ');
+    }
+
     function navigateTarget(plain) {
         const match = plain.match(NAVIGATE);
         if (!match) return null;
-        const place = match[1].replace(/^(?:(?:el|la|los|las|un|una)\s+)/, '').trim();
+        const place = numbersToDigits(match[1].replace(/^(?:(?:el|la|los|las|un|una)\s+)/, '').trim());
         const first = place.split(' ')[0];
         if (place.length < 2 || NOT_A_PLACE.test(place) || /(?:ar|er|ir)$/.test(first)) return null;
         return place;

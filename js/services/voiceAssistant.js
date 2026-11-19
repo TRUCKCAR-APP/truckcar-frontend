@@ -600,19 +600,77 @@ window.VoiceAssistant = (function () {
     /** Plugin nativo de Android. Una sesión por orden: el reconocedor del sistema se corta solo con el silencio. */
     function nativeRecognizer(cap) {
         const call = (method, options = {}) => cap.nativePromise('SpeechRecognition', method, options);
+        const wakeCall = (method, options = {}) => cap.nativePromise('WakeWord', method, options);
+        const hasVosk = () => typeof cap.isPluginAvailable === 'function' && cap.isPluginAvailable('WakeWord');
         let stopping = null;
         let wake = null;
+
+        /**
+         * Frase con Vosk (plugin WakeWord de la APK): un solo micrófono abierto mientras la app está al frente, sin
+         * reiniciar sesiones ni pitidos. Vosk transcribe en el teléfono; al oír la frase se junta lo que sigue y, tras una
+         * pausa, se entrega. Si el plugin o el modelo no están, onUnavailable() vuelve al reconocedor de Android.
+         */
+        function startVosk(onFinal, isWake, onUnavailable) {
+            let active = true;
+            let committed = '';
+            let partial = '';
+            let heardWake = false;
+            let timer = null;
+            let paused = false;
+            const handles = [];
+            const reset = () => { committed = ''; partial = ''; heardWake = false; clearTimeout(timer); };
+            const deliver = () => {
+                if (!active) return;
+                const heard = (committed + ' ' + partial).trim();
+                reset();
+                if (heard) onFinal(heard);
+            };
+            const onText = (text, final) => {
+                if (!active || !text) return;
+                if (!heardWake) {
+                    if (!isWake || !isWake(text)) return;
+                    heardWake = true;
+                }
+                if (final) { committed = (committed + ' ' + text).trim(); partial = ''; } else partial = text;
+                clearTimeout(timer);
+                timer = setTimeout(deliver, final ? 900 : 1600);
+            };
+            const begin = () => wakeCall('start').then(() => { paused = false; }).catch((error) => {
+                if (!active) return;
+                const reason = String((error && error.message) || error || '');
+                // El modelo se está copiando al teléfono (primera vez): se reintenta.
+                if (/loading/.test(reason)) { setTimeout(() => { if (active) begin(); }, 2000); return; }
+                stop();
+                onUnavailable();
+            });
+            const onVisible = () => { if (active && paused && document.visibilityState === 'visible') begin(); };
+            handles.push(cap.addListener('WakeWord', 'partial', (e) => onText(e && e.text, false)));
+            handles.push(cap.addListener('WakeWord', 'result', (e) => onText(e && e.text, true)));
+            handles.push(cap.addListener('WakeWord', 'stopped', () => { paused = true; reset(); }));
+            handles.push(cap.addListener('WakeWord', 'error', () => { if (active) { stop(); onUnavailable(); } }));
+            document.addEventListener('visibilitychange', onVisible);
+            function stop() {
+                if (!active) return Promise.resolve();
+                active = false;
+                reset();
+                handles.forEach(h => h && h.remove && h.remove());
+                document.removeEventListener('visibilitychange', onVisible);
+                return wakeCall('stop').catch(() => {});
+            }
+            begin();
+            return { stop, vosk: true };
+        }
         return {
             kind: 'native',
             continuous: false,
             async available() {
                 try { return Boolean((await call('available')).available); } catch (e) { return false; }
             },
-            async ensurePermission() {
+            async ensurePermission({ request = true } = {}) {
                 const granted = (s) => s && (s.speechRecognition === 'granted' || s.microphone === 'granted');
                 try {
                     if (granted(await call('checkPermissions'))) return true;
-                    return granted(await call('requestPermissions'));
+                    return request ? granted(await call('requestPermissions')) : false;
                 } catch (e) {
                     return false;
                 }
@@ -693,6 +751,15 @@ window.VoiceAssistant = (function () {
              */
             startWake(onFinal, isWake) {
                 if (wake) return;
+                if (hasVosk() && !this.voskFailed) {
+                    wake = startVosk(onFinal, isWake, () => {
+                        // Sin Vosk (modelo ausente o error): la frase sigue con el reconocedor de Android.
+                        this.voskFailed = true;
+                        wake = null;
+                        this.startWake(onFinal, isWake);
+                    });
+                    return;
+                }
                 let active = true;
                 let handles = [];
                 let timers = [];
@@ -750,7 +817,12 @@ window.VoiceAssistant = (function () {
                 wake = { stop() { active = false; session++; clear(); call('stop').catch(() => {}); } };
                 loop();
             },
-            stopWake() { if (wake) { wake.stop(); wake = null; } }
+            stopWake() {
+                if (!wake) return Promise.resolve();
+                const released = wake.stop();
+                wake = null;
+                return released || Promise.resolve();
+            }
         };
     }
 
@@ -916,18 +988,25 @@ window.VoiceAssistant = (function () {
                 this.endSession();
                 return;
             }
-            if (!(await this.ensureReady())) return;
+            if (!(await this.ensureReady({ interactive: true }))) return;
             this.listenNow();
         },
 
-        /** Permiso del micrófono y teclas del volante, una vez. No habla ni escucha una orden. */
-        async ensureReady() {
+        /**
+         * Permiso del micrófono y teclas del volante, una vez. No escucha una orden.
+         * interactive: el conductor tocó el botón (puede pedir el permiso y decir en voz alta si falta).
+         * request: puede mostrar el diálogo de permiso (al guardar los ajustes). Sin ninguno de los dos (al entrar a la
+         * app) solo consulta y nunca habla: el Copiloto no dice nada que el conductor no haya pedido.
+         */
+        async ensureReady({ interactive = false, request = interactive, notify = false } = {}) {
             this.init();
             if (this.on) return true;
             if (!this.recognizer) return false;
-            const ok = await this.recognizer.available() && await this.recognizer.ensurePermission();
+            const ok = await this.recognizer.available() && await this.recognizer.ensurePermission({ request });
             if (!ok) {
-                await window.voiceEngine.say('No tengo permiso para usar el micrófono. Actívelo en los ajustes del teléfono.');
+                const text = 'No tengo permiso para usar el micrófono. Actívelo en los ajustes del teléfono.';
+                if (interactive) await window.voiceEngine.say(text);
+                else if (notify && window.ui && window.ui.toast) window.ui.toast('Micrófono sin permiso', 'warning', { description: 'Actívelo en los ajustes del teléfono para usar el Copiloto con la voz.' });
                 return false;
             }
             this.on = true;
@@ -940,8 +1019,8 @@ window.VoiceAssistant = (function () {
          * Deja el Copiloto listo sin hablar. listen=true además escucha una orden (como el botón); con listen=false y
          * «Activar con la voz» queda esperando la frase.
          */
-        async activate({ listen = true } = {}) {
-            if (!(await this.ensureReady())) return;
+        async activate({ listen = true, request = false, notify = false } = {}) {
+            if (!(await this.ensureReady({ request, notify }))) return;
             if (listen) this.listenNow();
             else this.resumeWakeSoon(0);
         },
@@ -983,11 +1062,13 @@ window.VoiceAssistant = (function () {
             if (!this.on || this.phase === 'listening' || this.phase === 'processing') return;
             const id = ++this.session;
             clearTimeout(this.wakeTimer);
-            if (this.recognizer.stopWake) this.recognizer.stopWake();
             window.voiceEngine.cancel();
             this.phase = 'listening';
             this.transcript = '';
             this.showBanner('Escuchando…', 'listening');
+            const released = this.recognizer.stopWake ? this.recognizer.stopWake() : null;
+            if (released && released.then) await Promise.race([released, new Promise(r => setTimeout(r, 800))]);
+            if (id !== this.session) return;
             const native = this.recognizer.kind === 'native';
             const cueOnReady = native && afterWake;
             if (!cueOnReady) window.voiceEngine.cue('start');
@@ -1143,7 +1224,7 @@ window.VoiceAssistant = (function () {
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch (e) { }
             intents.setWakePhrase(this.settings.wakePhrase);
             if (this.settings.wakeEnabled) {
-                this.activate({ listen: false });
+                this.activate({ listen: false, request: true, notify: true });
                 if (window.ui && window.ui.toast) window.ui.toast('Ajustes guardados', 'success',
                     { description: 'Diga «' + this.settings.wakePhrase + '» y su orden para usar el Copiloto.' });
             } else if (this.recognizer && this.recognizer.kind !== 'web' && this.recognizer.stopWake) {
@@ -1174,7 +1255,7 @@ window.VoiceAssistant = (function () {
                         <input type="text" maxlength="40" value="${esc(s.wakePhrase)}" autocomplete="off" class="field-input" data-wake-phrase>
                         <span class="field-help">Por ejemplo «TruckCar», «Oye camión» o su nombre. Use al menos 3 letras; también responde a «Copiloto».</span>
                     </label>
-                    ${native ? '<p class="sheet-note">En el teléfono, el micrófono queda escuchando mientras la app está abierta: gasta más batería y en algunos modelos suena un pitido corto cada pocos segundos.</p>' : ''}`,
+                    ${native ? '<p class="sheet-note">En el teléfono, el micrófono queda escuchando la frase mientras la app está abierta, sin internet. Gasta algo más de batería.</p>' : ''}`,
                 actions: [{ label: 'Guardar', tone: 'primary', value: 'save' }, { label: 'Cancelar', value: null }],
                 onMount: (sheet) => {
                     const toggle = sheet.querySelector('[data-wake-toggle]');

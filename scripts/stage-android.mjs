@@ -5,6 +5,7 @@
 // Uso: TRUCKCAR_API_BASE_URL=https://<api> node scripts/stage-android.mjs
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { injectApiBaseUrl } from "./inject-config.mjs";
@@ -12,6 +13,11 @@ import { injectApiBaseUrl } from "./inject-config.mjs";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ASSETS = join(ROOT, "android", "app", "src", "main", "assets");
 const PUBLIC = join(ASSETS, "public");
+// Modelo de voz en español de Vosk para oír la frase de activación en el teléfono, sin internet ni pitidos. No va en
+// git (58 MB): se descarga de https://alphacephei.com/vosk/models y se indica con VOSK_MODEL_DIR (por defecto
+// ~/tools/vosk/vosk-model-small-es-0.42). Sin modelo, la APK usa el reconocedor de Android también para la frase.
+const VOSK_MODEL = process.env.VOSK_MODEL_DIR || join(homedir(), "tools", "vosk", "vosk-model-small-es-0.42");
+const MODEL_ASSET = join(ASSETS, "model-es");
 const WEB = ["index.html", "manifest.webmanifest", "sw.js", "assets", "fonts", "css", "js"];
 
 /** Plugins nativos de node_modules/@capacitor-community: paquete y clase Java que extiende Plugin. */
@@ -51,8 +57,16 @@ function main() {
   const plugins = nativePlugins();
   writeFileSync(join(ASSETS, "capacitor.plugins.json"), JSON.stringify(plugins, null, 2));
 
+  rmSync(MODEL_ASSET, { recursive: true, force: true });
+  const model = existsSync(join(VOSK_MODEL, "am")) && existsSync(join(VOSK_MODEL, "conf"));
+  if (model) {
+    cpSync(VOSK_MODEL, MODEL_ASSET, { recursive: true });
+    // StorageService.unpack de Vosk copia el modelo al teléfono solo cuando cambia este identificador.
+    writeFileSync(join(MODEL_ASSET, "uuid"), "vosk-model-small-es-0.42");
+  }
+
   console.log("android/: web copiada, URL del API inyectada, " + plugins.length + " plugin(s) nativo(s): "
-    + plugins.map((p) => p.pkg).join(", "));
+    + plugins.map((p) => p.pkg).join(", ") + (model ? "; modelo de voz Vosk incluido" : "; SIN modelo Vosk (la frase usa el reconocedor de Android)"));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {

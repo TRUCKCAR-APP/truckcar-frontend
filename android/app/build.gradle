@@ -11,6 +11,8 @@ android {
         versionCode 1
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Solo los procesadores de los teléfonos Android: las librerías de Vosk para x86 y mips sumaban ~20 MB.
+        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
         manifestPlaceholders = [
             usesCleartextTraffic: "false"
         ]
@@ -45,6 +47,9 @@ dependencies {
     implementation 'androidx.core:core:1.12.0'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'com.google.android.gms:play-services-location:21.1.0'
+    // Frase de activación del Copiloto en el teléfono, sin internet (plugin WakeWord).
+    implementation 'com.alphacephei:vosk-android:0.3.47@aar'
+    implementation 'net.java.dev.jna:jna:5.13.0@aar'
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
