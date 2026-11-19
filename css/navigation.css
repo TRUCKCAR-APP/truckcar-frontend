@@ -205,3 +205,4 @@
     box-shadow: 0 3px 8px rgb(0 0 0 / 0.6);
 }
 @media (prefers-reduced-motion: reduce) { .truck-arrow svg { transition: none; } }
+.btn-trip.is-wide { flex: 1; justify-content: center; }

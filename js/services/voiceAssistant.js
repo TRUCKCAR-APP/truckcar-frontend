@@ -14,6 +14,22 @@
 window.VoiceAssistant = (function () {
     const intents = window.VoiceIntents;
     const CONFIRM_TIMEOUT_MS = 15000;
+    // Elegir entre varias opciones leídas en voz alta toma más tiempo que un sí o un no.
+    const CHOICE_TIMEOUT_MS = 25000;
+    const SETTINGS_KEY = 'truckcar.copilot';
+    const DEFAULT_WAKE_PHRASE = 'TruckCar';
+
+    /** Ajustes del Copiloto en este teléfono: activar con la voz y la frase de activación. */
+    function loadSettings() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+            const phrase = typeof saved.wakePhrase === 'string' && saved.wakePhrase.trim().length >= 3
+                ? saved.wakePhrase.trim().slice(0, 40) : DEFAULT_WAKE_PHRASE;
+            return { wakeEnabled: saved.wakeEnabled === true, wakePhrase: phrase };
+        } catch (e) {
+            return { wakeEnabled: false, wakePhrase: DEFAULT_WAKE_PHRASE };
+        }
+    }
 
     // ── Formato para leer en voz alta ───────────────────────────────────────────────────────────────────────────
 
@@ -60,7 +76,7 @@ window.VoiceAssistant = (function () {
 
     // Intenciones que puede devolver el intérprete con IA (Voice-AI-Assistant) y que este controlador ejecuta.
     const ASSISTANT_INTENTS = ['REPORT', 'SOS', 'NEARBY_ALERTS', 'ACCEPT_LOAD', 'REJECT_LOAD', 'START_TRIP',
-        'CONFIRM_DELIVERY', 'REROUTE', 'REPEAT', 'HOURS', 'LOAD_INFO', 'HELP', 'CHAT'];
+        'CONFIRM_DELIVERY', 'REROUTE', 'NAVIGATE', 'REPEAT', 'HOURS', 'LOAD_INFO', 'HELP', 'CHAT'];
     const LOAD_INFO_FIELDS = ['eta', 'destination', 'weight', 'summary'];
 
     /**
@@ -82,6 +98,9 @@ window.VoiceAssistant = (function () {
             return LOAD_INFO_FIELDS.includes(response.field) ? { ...base, field: response.field } : null;
         case 'REROUTE':
             return { ...base, avoidAhead: response.avoidAhead === true };
+        case 'NAVIGATE':
+            return typeof response.place === 'string' && response.place.trim().length >= 2
+                ? { ...base, place: response.place.trim().slice(0, 120) } : null;
         case 'CHAT':
             return typeof response.reply === 'string' && response.reply.trim()
                 ? { ...base, reply: response.reply.trim().slice(0, 300) } : null;
@@ -112,8 +131,25 @@ window.VoiceAssistant = (function () {
             return say(prompt).then(() => { deps.listen(); return { status: 'confirming' }; });
         }
 
+        /** Pregunta cuál de count opciones: «la primera», «la segunda»… o cancelar. */
+        function askChoice(prompt, count, choose) {
+            pending = { choose, count, cancelText: 'Sigo como estaba.', expiresAt: now() + CHOICE_TIMEOUT_MS, retried: false };
+            return say(prompt).then(() => { deps.listen(); return { status: 'choosing' }; });
+        }
+
         async function answer(text) {
             const current = pending;
+            if (current.choose) {
+                const index = intents.parseChoice(text, current.count);
+                if (index != null) {
+                    pending = null;
+                    return current.choose(index);
+                }
+                if (current.count === 1 && intents.parseAnswer(text) === 'yes') {
+                    pending = null;
+                    return current.choose(0);
+                }
+            }
             const reply = intents.parseAnswer(text);
             if (reply === 'yes') {
                 pending = null;
@@ -130,7 +166,7 @@ window.VoiceAssistant = (function () {
                 return { status: 'cancelled' };
             }
             current.retried = true;
-            await say('Diga sí para confirmar, o cancelar.');
+            await say(current.choose ? 'Diga el número de la opción, por ejemplo la primera, o cancelar.' : 'Diga sí para confirmar, o cancelar.');
             deps.listen();
             return { status: 'confirming' };
         }
@@ -338,6 +374,9 @@ window.VoiceAssistant = (function () {
                 await say(intent.reply);
                 return { status: 'done', intent };
 
+            case 'NAVIGATE':
+                return navigateTo(intent);
+
             default:
                 return notUnderstood(intent);
             }
@@ -360,6 +399,50 @@ window.VoiceAssistant = (function () {
             }
             await say(NOT_UNDERSTOOD);
             return { status: 'unknown', intent };
+        }
+
+        /** «Necesito ir a…»: busca el lugar, lee las opciones (y las muestra) y lleva la guía a la elegida. */
+        async function navigateTo(intent) {
+            const a = deps.actions;
+            if (!a.searchPlaces) {
+                await say('La búsqueda de destinos no está disponible.');
+                return { status: 'unavailable', intent };
+            }
+            let places;
+            try {
+                places = await a.searchPlaces(intent.place);
+            } catch (error) {
+                await say('No pude buscar ' + intent.place + ': ' + errorText(error) + '.');
+                return { status: 'error', intent, error };
+            }
+            if (!places || !places.length) {
+                await say('No encontré ' + intent.place + '. Diga el nombre de otra forma, o agregue la ciudad.');
+                return { status: 'unavailable', intent };
+            }
+            const options = places.slice(0, 3);
+            if (a.showPlaces) a.showPlaces(options, intent.place);
+            const go = (index) => run('calcular la ruta', async () => {
+                const place = options[index];
+                const result = await a.navigateTo(place);
+                if (!result || !result.ok) {
+                    await say(result && result.reason === 'no-position'
+                        ? 'No tengo su posición GPS. Encienda la ubicación del teléfono para calcular la ruta.'
+                        : 'No pude calcular la ruta a ' + place.title + '. Intente de nuevo en un momento.');
+                    return { status: 'unavailable', intent };
+                }
+                const time = spokenDuration(result.durationS);
+                await say('Ruta a ' + place.title + ': ' + spokenDistance(result.remainingM) + (time ? ', aproximadamente ' + time : '') + '.'
+                    + (result.provider === 'HERE' ? ' Calculada para su camión.' : '')
+                    + (result.restricted ? ' Atención: tiene restricciones de gálibo o peso para su vehículo.' : ''));
+                return { status: 'done', intent, place };
+            });
+            const describe = (p) => p.title + (Number.isFinite(p.distanceMeters) ? ', a ' + spokenDistance(p.distanceMeters) : '');
+            if (options.length === 1) {
+                return askChoice('Encontré ' + describe(options[0]) + '. ¿Voy para allá? Diga sí o cancelar.', 1, go);
+            }
+            const words = ['Uno', 'Dos', 'Tres'];
+            return askChoice('Encontré ' + options.length + ' lugares. ' + options.map((p, i) => words[i] + ': ' + describe(p) + '.').join(' ')
+                + ' ¿A cuál voy? Diga el número.', options.length, go);
         }
 
         function loadName(load) {
@@ -445,6 +528,9 @@ window.VoiceAssistant = (function () {
             sos: () => window.DriverActions.activate(),
             hasRoute: () => Boolean(window.RouteGuidance && window.RouteGuidance.route),
             planReroute: (options) => window.RouteGuidance.planReroute(options),
+            searchPlaces: (query) => window.app.searchPlaces(query),
+            showPlaces: (places, query) => { if (window.DestinationSearch) window.DestinationSearch.showResults(places, query); },
+            navigateTo: (place) => window.app.goToPlace(place, { silent: true }),
             applyReroute: (plan) => window.RouteGuidance.applyReroute(plan),
             remaining: () => (window.RouteGuidance ? window.RouteGuidance.remaining() : null),
             currentLoad() {
@@ -510,6 +596,7 @@ window.VoiceAssistant = (function () {
     function nativeRecognizer(cap) {
         const call = (method, options = {}) => cap.nativePromise('SpeechRecognition', method, options);
         let stopping = null;
+        let wake = null;
         return {
             kind: 'native',
             continuous: false,
@@ -555,7 +642,41 @@ window.VoiceAssistant = (function () {
                         .catch(() => finish());
                 });
             },
-            abort() { if (stopping) stopping(); }
+            abort() { if (stopping) stopping(); },
+            /**
+             * Escucha continua (opción «Activar con la voz»): el reconocedor de Android se corta con cada silencio, así
+             * que se reinicia en bucle y entrega cada frase oída. Gasta más batería y en algunos teléfonos suena un
+             * pitido en cada reinicio: por eso es opcional.
+             */
+            startWake(onFinal) {
+                if (wake) return;
+                let active = true;
+                let handles = [];
+                let last = '';
+                const clear = () => { handles.forEach(h => h && h.remove && h.remove()); handles = []; };
+                const loop = () => {
+                    if (!active) return;
+                    last = '';
+                    clear();
+                    handles.push(cap.addListener('SpeechRecognition', 'partialResults', (event) => {
+                        const text = event && event.matches && event.matches[0];
+                        if (text) last = text;
+                    }));
+                    handles.push(cap.addListener('SpeechRecognition', 'listeningState', (event) => {
+                        if (!event || event.status !== 'stopped') return;
+                        const heard = last;
+                        clear();
+                        if (heard && active) onFinal(heard);
+                        if (active) setTimeout(loop, 600);
+                    }));
+                    call('start', { language: 'es-CO', maxResults: 3, partialResults: true, popup: false })
+                        .then((result) => { const text = result && result.matches && result.matches[0]; if (text) last = text; })
+                        .catch(() => { clear(); if (active) setTimeout(loop, 1500); });
+                };
+                wake = { stop() { active = false; clear(); call('stop').catch(() => {}); } };
+                loop();
+            },
+            stopWake() { if (wake) { wake.stop(); wake = null; } }
         };
     }
 
@@ -644,6 +765,8 @@ window.VoiceAssistant = (function () {
     }
 
     const copilot = {
+        settings: loadSettings(),
+        autoStarted: false,
         on: false,
         phase: 'idle',
         transcript: '',
@@ -654,6 +777,7 @@ window.VoiceAssistant = (function () {
         bannerTimer: null,
 
         init() {
+            intents.setWakePhrase(this.settings.wakePhrase);
             if (this.controller) return;
             this.recognizer = pickRecognizer();
             const actions = defaultActions(this);
@@ -702,7 +826,7 @@ window.VoiceAssistant = (function () {
             this.on = true;
             this.enableMediaKeys();
             this.render();
-            const wakeWord = this.recognizer.continuous ? ' Diga hola TruckCar seguido de su orden,' : '';
+            const wakeWord = this.wakeAvailable() ? ' Diga ' + this.settings.wakePhrase + ' seguido de su orden,' : '';
             await this.say('Copiloto activado.' + wakeWord + ' Toque el micrófono o el botón multimedia del volante para hablar.');
             this.listenNow();
         },
@@ -748,8 +872,13 @@ window.VoiceAssistant = (function () {
             this.resumeWake();
         },
 
+        /** En el navegador siempre; en la APK solo con «Activar con la voz» (escucha continua). */
+        wakeAvailable() {
+            return Boolean(this.recognizer && this.recognizer.startWake && (this.recognizer.kind === 'web' || this.settings.wakeEnabled));
+        },
+
         resumeWake() {
-            if (!this.on || !this.recognizer.startWake) return;
+            if (!this.on || !this.wakeAvailable()) return;
             this.recognizer.startWake((heard) => {
                 if (this.phase !== 'idle') return;
                 const { woke, rest } = intents.stripWakeWord(heard);
@@ -848,9 +977,67 @@ window.VoiceAssistant = (function () {
         },
 
         /** Muestra el botón solo en la app del conductor; lo apaga al cerrar sesión o cambiar de vista. */
+        /** Guarda los ajustes en este teléfono y los aplica de inmediato. */
+        saveSettings(next) {
+            const phrase = String(next.wakePhrase || '').trim().slice(0, 40);
+            this.settings = { wakeEnabled: next.wakeEnabled === true, wakePhrase: phrase.length >= 3 ? phrase : DEFAULT_WAKE_PHRASE };
+            try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch (e) { }
+            intents.setWakePhrase(this.settings.wakePhrase);
+            if (this.settings.wakeEnabled) {
+                if (this.on) this.resumeWake(); else this.activate();
+            } else if (this.recognizer && this.recognizer.kind !== 'web' && this.recognizer.stopWake) {
+                this.recognizer.stopWake();
+            }
+            return this.settings;
+        },
+
+        /** Hoja «Ajustes del copiloto»: activar con la voz y la frase de activación. */
+        openSettings() {
+            const esc = window.ui.escape;
+            const s = this.settings;
+            const native = this.recognizer ? this.recognizer.kind !== 'web' : Boolean(nativeBridge());
+            return window.Sheet.open({
+                title: 'Ajustes del copiloto',
+                subtitle: 'Se guardan en este teléfono.',
+                body: `
+                    <div class="availability">
+                        <div class="availability-text">
+                            <b>Activar con la voz</b>
+                            <span>Diga la frase y luego su orden, sin tocar la pantalla.</span>
+                        </div>
+                        <button type="button" role="switch" aria-checked="${s.wakeEnabled ? 'true' : 'false'}" aria-label="Activar con la voz"
+                                class="switch" data-wake-toggle></button>
+                    </div>
+                    <label class="field">
+                        <span class="field-label">Frase de activación</span>
+                        <input type="text" maxlength="40" value="${esc(s.wakePhrase)}" autocomplete="off" class="field-input" data-wake-phrase>
+                        <span class="field-help">Por ejemplo «TruckCar», «Oye camión» o su nombre. Use al menos 3 letras; también responde a «Copiloto».</span>
+                    </label>
+                    ${native ? '<p class="sheet-note">En el teléfono, el micrófono queda escuchando mientras la app está abierta: gasta más batería y en algunos modelos suena un pitido corto cada pocos segundos.</p>' : ''}`,
+                actions: [{ label: 'Guardar', tone: 'primary', value: 'save' }, { label: 'Cancelar', value: null }],
+                onMount: (sheet) => {
+                    const toggle = sheet.querySelector('[data-wake-toggle]');
+                    toggle.addEventListener('click', () => toggle.setAttribute('aria-checked', String(toggle.getAttribute('aria-checked') !== 'true')));
+                    sheet.addEventListener('click', (event) => {
+                        const save = event.target.closest('[data-sheet-action="0"]');
+                        if (!save) return;
+                        this.saveSettings({ wakeEnabled: toggle.getAttribute('aria-checked') === 'true',
+                            wakePhrase: sheet.querySelector('[data-wake-phrase]').value });
+                        window.store.setState({});
+                    }, true);
+                }
+            });
+        },
+
         sync(state) {
             const visible = state.isAuthenticated && state.activeRole === 'driver';
+            if (visible && this.settings.wakeEnabled && !this.on && !this.autoStarted) {
+                // El conductor lo eligió en los ajustes: el Copiloto queda escuchando al entrar, una vez por sesión.
+                this.autoStarted = true;
+                setTimeout(() => this.activate(), 800);
+            }
             if (!visible) {
+                this.autoStarted = false;
                 if (this.on) this.deactivate();
                 if (this.ui) { this.ui.button.hidden = true; this.ui.banner.hidden = true; }
                 return;
@@ -865,5 +1052,6 @@ window.VoiceAssistant = (function () {
     };
 
     return { createController, fromAssistant, remoteInterpret, copilot, spokenDistance, spokenDuration, errorText,
-        press: () => copilot.press(), sync: (state) => copilot.sync(state) };
+        press: () => copilot.press(), sync: (state) => copilot.sync(state),
+        get settings() { return copilot.settings; }, openSettings: () => copilot.openSettings() };
 })();

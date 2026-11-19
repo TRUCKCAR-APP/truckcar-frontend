@@ -6,6 +6,11 @@ que leer texto pequeño conduciendo.
 
 ## Cómo se activa
 
+**Activar con la voz (opcional):** en **Vehículo → Ajustes del copiloto** el conductor enciende «Activar con la voz» y elige su frase (por defecto «TruckCar»; también responde a «Copiloto»).
+- En el navegador usa la escucha continua de la Web Speech API.
+- En la APK reinicia el reconocedor de Android en bucle mientras la app está abierta: gasta más batería y en algunos teléfonos suena un pitido corto en cada reinicio. Por eso viene apagado.
+- Con la opción encendida, el Copiloto queda escuchando al entrar a la app.
+
 | Forma | Dónde funciona |
 |---|---|
 | Botón flotante **Copiloto** (abajo a la derecha, sobre la barra de pestañas) | Navegador y APK. El primer toque enciende el copiloto y escucha; los siguientes escuchan una orden; mantenerlo presionado lo apaga |
@@ -29,6 +34,7 @@ usan el botón y las teclas multimedia.
 | Jornada | "cuántas horas llevo manejando", "cuánto me falta para descansar" | `drivingHoursToday` y `remainingDrivingHours` de fleets-drivers (calculadas con la telemetría), o el descanso obligatorio |
 | Propuesta | "aceptar carga", "rechazar la carga" | Pide confirmación y ejecuta lo mismo que los botones |
 | Viaje | "iniciar viaje", "confirmar entrega" | Iniciar pide confirmación (la carga pasa a tránsito). Entregar pide confirmación y abre el registro de entrega: la firma y el nombre de quien recibe se completan con el vehículo detenido |
+| Ir a un lugar | "necesito ir a la Escuela Colombiana de Ingeniería", "llévame a Tunja", "cómo llego al peaje de Andes" | Busca el lugar con HERE (cerca de su posición, en Colombia), muestra las opciones en pantalla y las lee: «Uno: …, a 14 kilómetros. Dos: …». El conductor dice «la primera», «opción dos» o «la última» (con una sola opción, «sí»), y la guía calcula la ruta para camión desde donde está. Con «cancelar» no cambia nada |
 | Guía | "repite la instrucción", "qué sigue" | Lee la próxima maniobra |
 | Alertas cercanas | "alertas cercanas", "qué hay adelante" | Lee las 3 alertas o bloqueos más cercanos, hasta 50 km |
 | Ayuda / apagar | "ayuda", "apagar copiloto" | — |

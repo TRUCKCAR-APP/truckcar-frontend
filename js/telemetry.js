@@ -494,6 +494,9 @@
     if (window.DeviceLocation && window.DeviceLocation.onFix) window.DeviceLocation.onFix((fix) => {
         renderDriverBadge();
         if (!driver.timer && window.mapCtrl && window.mapCtrl.showDevicePosition) window.mapCtrl.showDevicePosition(fix.coords);
+        if (!driver.timer && window.RouteGuidance && window.RouteGuidance.freeDestination) {
+            window.RouteGuidance.update({ coords: fix.coords, speed: fix.speedKmH, heading: fix.heading, accuracy: fix.accuracy, source: 'gps' });
+        }
     });
 
     let fleetUnsubscribe = null;
