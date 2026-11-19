@@ -66,6 +66,7 @@ class MapController {
             this.map = null;
             this.baseTileLayer = null;
             this.truckMarker = null;
+            this.deviceFramed = false;
             this.optimalRouteLayer = null;
             this.shipmentLayer = null;
         }
@@ -174,6 +175,7 @@ class MapController {
             this.frameNextLeg(position);
         } else {
             this.truckMarker = null;
+            this.deviceFramed = false;
             this.fitAllRoute();
         }
     }
@@ -204,6 +206,17 @@ class MapController {
         });
         if (!near) this.map.setZoom(Math.min(this.map.getZoom(), 14), { animate: false });
         this.navFramed = true;
+    }
+
+    /** Marcador del camión con la ubicación del teléfono cuando no hay viaje; la primera vez centra el mapa ahí. */
+    showDevicePosition(position) {
+        if (!this.map || !position || !document.getElementById('live-nav-map-container')) return;
+        if (this.truckMarker) this.truckMarker.setLatLng(position);
+        else this.createTruckMarker(position);
+        if (!this.deviceFramed) {
+            this.deviceFramed = true;
+            this.map.setView(position, Math.max(this.map.getZoom(), 15), { animate: false });
+        }
     }
 
     centerOnPosition() {

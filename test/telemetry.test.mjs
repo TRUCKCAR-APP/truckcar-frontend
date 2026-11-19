@@ -234,3 +234,40 @@ test("bloqueos de la IA: una sola suscripción a /topic/road-blockages que se ca
   assert.deepEqual(received, ["torre:21"]);
   assert.equal(cancelled, 1);
 });
+
+test("sin viaje en curso el indicador muestra el GPS del teléfono, no «Sin posición»", async () => {
+  const { w, queued, emit } = browser();
+  const badge = () => w.document.getElementById("driver-telemetry-badge");
+  w.DeviceLocation.watch();
+  w.DriverTelemetry.renderBadge();
+  assert.match(badge().textContent, /Buscando GPS/);
+  assert.match(badge().textContent, /ubicación del teléfono esté encendida/);
+
+  emit(4.6012, -74.0001);
+  assert.equal(badge().dataset.state, "ok", "la posición nueva actualiza el indicador sola");
+  assert.match(badge().textContent, /GPS activo/);
+  assert.match(badge().textContent, /precisión ±6 m/);
+  assert.match(badge().textContent, /sin viaje en curso: no se envía a la torre/);
+  assert.equal(queued.length, 0, "sin viaje no se transmite nada");
+});
+
+test("sin viaje la posición del teléfono mueve el marcador del mapa; con viaje lo hace la telemetría", async () => {
+  const { w, emit } = browser();
+  const shown = [];
+  w.mapCtrl = { showDevicePosition: (coords) => shown.push(coords) };
+  w.DeviceLocation.watch();
+  emit(4.6012, -74.0001);
+  assert.deepEqual(JSON.parse(JSON.stringify(shown)), [[4.6012, -74.0001]]);
+
+  await w.DriverTelemetry.start(LOAD, "driver-ana");
+  emit(4.6015, -74.0002);
+  assert.equal(shown.length, 1, "con viaje en curso no se duplica el marcador");
+  w.DriverTelemetry.stop();
+});
+
+test("con la ubicación del teléfono apagada el mensaje dice qué hacer", async () => {
+  const { w } = browser();
+  await w.DeviceLocation.fix({ timeoutMs: 50 });
+  w.DriverTelemetry.renderBadge();
+  assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /encienda la ubicación del teléfono/);
+});
