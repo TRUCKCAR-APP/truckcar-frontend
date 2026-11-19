@@ -1606,10 +1606,12 @@ select.field-input { appearance: none; -webkit-appearance: none; }
 .dest-title { font-weight: var(--weight-bold); overflow-wrap: anywhere; }
 .dest-sub { font-size: var(--text-footnote); color: var(--color-text-secondary); overflow-wrap: anywhere; }
 
-/* En Navegar, el botón del Copiloto queda redondo (solo el micrófono) sobre la barra del viaje, y la barra le deja
-   espacio a la derecha: así no tapa «Llegué», «Terminar» ni «Buscar destino». */
-#phone-mockup-frame:has(.nav-screen:not(.is-landscape)) .copilot-fab { width: 64px; min-width: 64px; padding: 0; justify-content: center; }
-#phone-mockup-frame:has(.nav-screen:not(.is-landscape)) .copilot-fab .copilot-fab-label { display: none; }
-#phone-mockup-frame:has(.copilot-fab:not([hidden])) .nav-screen:not(.is-landscape) .trip-bar {
-    padding-right: calc(var(--gutter) + var(--safe-right) + 80px);
+/* En Navegar, el botón del Copiloto queda redondo (solo el micrófono) y flota sobre la barra del viaje, a la izquierda
+   de los botones del mapa; con los detalles desplegados se oculta para no taparlos. */
+#phone-mockup-frame:has(.nav-screen:not(.is-landscape)) .copilot-fab {
+    width: 56px; min-width: 56px; height: 56px; padding: 0; justify-content: center;
+    right: auto; left: calc(16px + var(--safe-left));
+    bottom: calc(var(--tabbar-height) + var(--safe-bottom) + 124px);
 }
+#phone-mockup-frame:has(.nav-screen:not(.is-landscape)) .copilot-fab .copilot-fab-label { display: none; }
+#phone-mockup-frame:has(.trip-sheet[data-expanded="true"]) .copilot-fab { visibility: hidden; }

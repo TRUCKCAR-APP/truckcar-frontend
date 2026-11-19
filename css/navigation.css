@@ -206,3 +206,45 @@
 }
 @media (prefers-reduced-motion: reduce) { .truck-arrow svg { transition: none; } }
 .btn-trip.is-wide { flex: 1; justify-content: center; }
+
+/* Vertical: la tarjeta de la maniobra es compacta para dejar ver el mapa (altura y peso pasan a la barra del viaje). */
+.nav-screen:not(.is-landscape) .hud-turn { grid-template-columns: 44px 1fr; gap: var(--space-3); padding: var(--space-3); }
+.nav-screen:not(.is-landscape) .hud-arrow { width: 44px; height: 44px; border-radius: var(--radius-md); }
+.nav-screen:not(.is-landscape) .hud-arrow .ui-icon { width: 28px; height: 28px; }
+.nav-screen:not(.is-landscape) .hud-distance { font-size: var(--text-title); }
+.nav-screen:not(.is-landscape) .hud-instruction {
+    font-size: var(--text-callout, var(--text-body));
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.nav-screen:not(.is-landscape) .hud-street { display: none; }
+.nav-screen:not(.is-landscape) .hud-meta { display: none; }
+.nav-screen:not(.is-landscape) .hud-card { top: var(--space-2); left: calc(var(--space-2) + var(--safe-left)); right: calc(var(--space-2) + var(--safe-right)); }
+.nav-screen:not(.is-landscape) .hud-speed { width: 56px; height: 56px; }
+.nav-screen:not(.is-landscape) .hud-speed b { font-size: var(--text-headline); }
+.nav-screen:not(.is-landscape) .hud-btn { width: 48px; height: 48px; }
+
+/* Barra del viaje: una fila y, al deslizar hacia arriba o tocar ⌃, los detalles. */
+.trip-sheet { flex-direction: column; align-items: stretch; gap: 0; min-height: 0; padding-top: var(--space-2); padding-bottom: var(--space-2); }
+.trip-row { display: flex; align-items: center; gap: var(--space-2); min-height: 52px; }
+.trip-close, .trip-toggle {
+    flex: none; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--color-elevated); color: var(--color-text); touch-action: manipulation;
+}
+.trip-close .ui-icon, .trip-toggle .ui-icon { width: 22px; height: 22px; }
+.trip-toggle .ui-icon { transition: transform 200ms var(--ease-out); }
+.trip-sheet[data-expanded="true"] .trip-toggle .ui-icon { transform: rotate(180deg); }
+.trip-close:active, .trip-toggle:active, .trip-summary:active { transform: scale(var(--press-scale)); }
+.trip-summary {
+    flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+    color: var(--color-text); touch-action: manipulation; padding: 0 var(--space-1);
+}
+.trip-summary b { font-size: var(--text-headline); font-weight: var(--weight-bold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.trip-summary span[data-nav-arrival] { font-size: var(--text-footnote); color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.trip-summary span[data-nav-arrival]:empty { display: none; }
+.trip-details { display: none; padding: var(--space-2) 0 var(--space-1); border-top: var(--border-subtle); margin-top: var(--space-2); }
+.trip-sheet[data-expanded="true"] .trip-details { display: grid; gap: var(--space-2); }
+.trip-destination { margin: 0; font-weight: var(--weight-bold); overflow-wrap: anywhere; }
+.trip-eta { margin: 0; font-size: var(--text-footnote); color: var(--color-text-secondary); }
+.trip-vehicle { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: var(--text-footnote); color: var(--color-text-secondary); }
+.trip-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.trip-actions .btn-trip { justify-content: center; padding: 0 var(--space-2); }

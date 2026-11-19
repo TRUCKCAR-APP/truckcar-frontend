@@ -886,6 +886,7 @@ window.app = {
                 return false;
             }
         }
+        this.tripSheetExpanded = false;
         window.store.setState({ busyAction: null, driverScreen: 'navigation' });
         window.DeviceLocation.watch();
         window.RouteGuidance.prepare(window.TruckCarData.activeLoadOrder);
@@ -906,6 +907,7 @@ window.app = {
 
     /** Lleva la guía al lugar elegido (desde la búsqueda o por voz) y abre la pantalla Navegar. */
     async goToPlace(place, { silent = false } = {}) {
+        this.tripSheetExpanded = false;
         window.store.setState({ driverScreen: 'navigation' });
         const result = await window.RouteGuidance.navigateTo(place);
         if (!result.ok && !silent) {
@@ -919,6 +921,26 @@ window.app = {
         }
         window.store.setState({});
         return result;
+    },
+
+    /** Despliega u oculta los detalles de la barra del viaje (también deslizando la barra hacia arriba o abajo). */
+    toggleTripSheet(force) {
+        this.tripSheetExpanded = typeof force === 'boolean' ? force : !this.tripSheetExpanded;
+        const sheet = document.querySelector('[data-trip-sheet]');
+        if (!sheet) return;
+        sheet.dataset.expanded = String(this.tripSheetExpanded);
+        sheet.querySelectorAll('[aria-expanded]').forEach(b => b.setAttribute('aria-expanded', String(this.tripSheetExpanded)));
+        const toggle = sheet.querySelector('.trip-toggle');
+        if (toggle) toggle.setAttribute('aria-label', this.tripSheetExpanded ? 'Ocultar los detalles del viaje' : 'Ver los detalles del viaje');
+    },
+
+    /** La X pregunta antes: un toque accidental no debe cortar la guía mientras se maneja. */
+    async confirmEndFreeNavigation() {
+        const free = window.RouteGuidance.freeDestination;
+        if (!free) return;
+        const ok = await window.Sheet.confirm({ title: '¿Terminar la navegación?', message: 'Dejará de guiarlo hacia ' + free.title + '.',
+            confirmLabel: 'Terminar', cancelLabel: 'Seguir' });
+        if (ok) this.endFreeNavigation();
     },
 
     endFreeNavigation() {

@@ -203,33 +203,95 @@ test("la búsqueda llama a /routes/places con la posición y la hoja muestra las
   assert.match(w.DestinationSearch.resultsHtml([]), /No se encontraron lugares/);
 });
 
-test("en la APK la escucha continua reinicia el reconocedor y entrega cada frase; se detiene al apagarla", async () => {
+function nativeWindow() {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only", url: "http://localhost:5500/" }).window;
   const calls = [];
   const listeners = {};
   w.Capacitor = {
     isNativePlatform: () => true,
-    nativePromise: async (plugin, method) => { calls.push(method); return method === "available" ? { available: true } : {}; },
+    nativePromise: async (plugin, method) => { calls.push(method); return method === "available" ? { available: true } : /Permissions$/.test(method) ? { speechRecognition: "granted" } : {}; },
     addListener: (plugin, event, cb) => { listeners[event] = cb; return { remove() { if (listeners[event] === cb) delete listeners[event]; } }; }
   };
   for (const file of ["js/services/voiceIntents.js", "js/services/voiceAssistant.js"]) w.eval(readFileSync(file, "utf8"));
+  const starts = () => calls.filter((m) => m === "start").length;
+  return { w, calls, listeners, starts };
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test("en la APK la escucha continua reinicia el reconocedor y entrega cada frase; se detiene al apagarla", async () => {
+  const { w, calls, listeners, starts } = nativeWindow();
   const copilot = w.VoiceAssistant.copilot;
   copilot.init();
   assert.equal(copilot.recognizer.kind, "native");
   assert.equal(copilot.wakeAvailable(), false, "en la APK es opcional: apagado por defecto");
 
   const heard = [];
-  copilot.recognizer.startWake((text) => heard.push(text));
-  assert.equal(calls.filter((m) => m === "start").length, 1);
-  listeners.partialResults({ matches: ["truckcar qué llevo"] });
-  listeners.listeningState({ status: "stopped" });
-  assert.deepEqual(heard, ["truckcar qué llevo"]);
-  await new Promise((r) => setTimeout(r, 700));
-  assert.equal(calls.filter((m) => m === "start").length, 2, "se reinicia sola tras el silencio");
-  copilot.recognizer.stopWake();
+  try {
+    copilot.recognizer.startWake((text) => heard.push(text));
+    assert.equal(starts(), 1);
+    listeners.partialResults({ matches: ["qué llevo"] });
+    listeners.listeningState({ status: "stopped" });
+    await wait(300);
+    assert.deepEqual(heard, ["qué llevo"]);
+    await wait(600);
+    assert.equal(starts(), 2, "se reinicia sola tras el silencio");
+  } finally {
+    copilot.recognizer.stopWake();
+  }
   assert.ok(calls.includes("stop"));
-  await new Promise((r) => setTimeout(r, 700));
-  assert.equal(calls.filter((m) => m === "start").length, 2, "apagada ya no se reinicia");
+  await wait(900);
+  assert.equal(starts(), 2, "apagada ya no se reinicia");
+});
+
+test("en cuanto oye la frase entrega la orden sin esperar a que Android cierre la sesión", async () => {
+  const { w, listeners } = nativeWindow();
+  const copilot = w.VoiceAssistant.copilot;
+  copilot.init();
+  w.VoiceIntents.setWakePhrase("ey amigo");
+  const heard = [];
+  try {
+    copilot.recognizer.startWake((text) => heard.push(text), (text) => w.VoiceIntents.stripWakeWord(text).woke);
+    listeners.partialResults({ matches: ["Hey amigo"] });
+    listeners.partialResults({ matches: ["Hey amigo llévame a Tunja"] });
+    await wait(2200);
+    assert.deepEqual(heard, ["Hey amigo llévame a Tunja"], "sin evento de fin, igual se entrega");
+  } finally {
+    copilot.recognizer.stopWake();
+  }
+});
+
+test("la frase propia tolera cómo la escribe el reconocedor (hey/ey, comas, plural) sin activarse con cualquier cosa", () => {
+  const vi = intents();
+  vi.setWakePhrase("ey amigo");
+  for (const text of ["Hey amigo", "Ey, amigo", "hei amigos", "oye amigo"]) assert.equal(vi.stripWakeWord(text).woke, true, text);
+  assert.equal(vi.stripWakeWord("Hey amigo, llévame a Tunja").rest, "llevame a tunja");
+  for (const text of ["el amigo de mi primo", "amigo", "ey", "hola"]) assert.equal(vi.stripWakeWord(text).woke, false, text);
+});
+
+test("guardar «Activar con la voz» deja el Copiloto esperando la frase, sin abrir el micrófono para una orden", async () => {
+  const { w, starts, listeners } = nativeWindow();
+  const copilot = w.VoiceAssistant.copilot;
+  const said = [];
+  w.voiceEngine = { say: async (t) => { said.push(t); }, resumeAudio() {}, cancel() {}, cue() {} };
+  copilot.build = () => ({ button: w.document.createElement("button"), banner: w.document.createElement("div") });
+  copilot.render = () => {};
+  copilot.showBanner = () => {};
+  copilot.hideBanner = () => {};
+  copilot.enableMediaKeys = () => {};
+  let listened = 0;
+  copilot.init();
+  copilot.recognizer.listenOnce = async () => { listened++; return ""; };
+  try {
+    copilot.saveSettings({ wakeEnabled: true, wakePhrase: "ey amigo" });
+    await wait(50);
+    assert.equal(copilot.on, true);
+    assert.equal(listened, 0, "no abre una sesión para una orden");
+    assert.match(said.at(-1), /Diga ey amigo para hablarme/);
+    assert.equal(starts(), 1, "queda la escucha de la frase");
+    assert.ok(listeners.partialResults, "escuchando la frase");
+  } finally {
+    copilot.recognizer.stopWake();
+  }
 });
 
 test("los ajustes del copiloto se guardan en el teléfono y aplican la frase de activación", () => {

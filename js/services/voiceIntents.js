@@ -18,23 +18,62 @@ window.VoiceIntents = (function () {
     const WAKE_ANYWHERE = new RegExp('(?:^|\\s)(?:(?:hola|oye|ok|okey|hey|ey)\\s+)?(?:' + TRUCKCAR + '|copiloto)(?:\\s|$)');
     const FILLER = /^(?:por favor|porfa|eh|este|pues|bueno|oiga|necesito|quiero|puedes|podrias|me puedes|me podrias)\s+/;
 
-    // Frase de activación propia del conductor (además de «TruckCar» y «Copiloto»), ya normalizada.
+    // Frase de activación propia del conductor (además de «TruckCar» y «Copiloto»), ya normalizada y en palabras.
     let customWake = null;
+    let customTokens = [];
+
+    // El reconocedor escribe «hey», «ey» o «ei» indistintamente: las interjecciones se comparan como una sola.
+    const GREETINGS = new Set(['ey', 'ei', 'ay', 'oye', 'oe', 'ok', 'okey', 'ola']);
+    const wakeToken = (word) => word.replace(/^h(?=[aeiou])/, '');
+
+    function editDistance(a, b) {
+        const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+        for (let i = 1; i <= a.length; i++) {
+            let previous = row[0];
+            row[0] = i;
+            for (let j = 1; j <= b.length; j++) {
+                const current = row[j];
+                row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+                previous = current;
+            }
+        }
+        return row[b.length];
+    }
+
+    /** Dos palabras se parecen: iguales, ambas saludos, o con una letra de diferencia (desde 4 letras), o plural. */
+    function sameWord(heard, expected) {
+        if (heard === expected) return true;
+        if (GREETINGS.has(heard) && GREETINGS.has(expected)) return true;
+        if (Math.min(heard.length, expected.length) < 4) return false;
+        return editDistance(heard, expected) <= 1 || (heard.startsWith(expected) && heard.length - expected.length <= 2);
+    }
+
+    /** Lo que sigue a la frase propia en lo oído, o null si no está. */
+    function findCustomWake(plain) {
+        if (!customTokens.length) return null;
+        const words = plain.split(' ');
+        const keys = words.map(wakeToken);
+        for (let i = 0; i + customTokens.length <= keys.length; i++) {
+            if (customTokens.every((t, k) => sameWord(keys[i + k], t))) {
+                return words.slice(i + customTokens.length).join(' ').trim();
+            }
+        }
+        return null;
+    }
 
     /** Configura la frase de activación del conductor; vacía la quita. */
     function setWakePhrase(phrase) {
         const plain = normalize(phrase || '');
         customWake = plain.length >= 3 ? plain : null;
+        customTokens = customWake ? customWake.split(' ').map(wakeToken) : [];
         return customWake;
     }
 
     /** Quita la palabra de activación del inicio: { woke, rest }. */
     function stripWakeWord(text) {
         const plain = normalize(text);
-        if (customWake) {
-            const index = (' ' + plain + ' ').indexOf(' ' + customWake + ' ');
-            if (index !== -1) return { woke: true, rest: plain.slice(index + customWake.length).replace(/^[\s,]+/, '').trim() };
-        }
+        const custom = findCustomWake(plain);
+        if (custom !== null) return { woke: true, rest: custom };
         const at = plain.search(WAKE_ANYWHERE);
         if (at === -1) return { woke: false, rest: plain };
         const fromWake = plain.slice(at).trim();

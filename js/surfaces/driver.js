@@ -10,6 +10,19 @@
 
     app.onMount(() => window.DriverTelemetry.renderBadge());
 
+    let swipe = null;
+    document.addEventListener('pointerdown', (event) => {
+        const sheet = event.target.closest && event.target.closest('[data-trip-sheet]');
+        swipe = sheet ? { y: event.clientY } : null;
+    }, { passive: true });
+    document.addEventListener('pointerup', (event) => {
+        if (!swipe) return;
+        const dy = event.clientY - swipe.y;
+        swipe = null;
+        if (Math.abs(dy) < 30) return;
+        app.toggleTripSheet(dy < 0);
+    }, { passive: true });
+
     app.onRender((state) => {
         window.DriverActions.syncSos(state);
         window.VoiceAssistant.sync(state);

@@ -900,11 +900,33 @@ window.RouteGuidance = (function () {
         return hours == null ? null : window.TruckCarService.formatHours(hours);
     }
 
+    function formatMinutes(minutes) {
+        return minutes >= 60 ? Math.floor(minutes / 60) + ' h ' + String(minutes % 60).padStart(2, '0') + ' min' : minutes + ' min';
+    }
+
+    function minutesLeft() {
+        const left = route ? remaining() : null;
+        return left && Number.isFinite(left.durationS) ? Math.max(1, Math.round(left.durationS / 60)) : null;
+    }
+
+    /** «22 min» para la barra del viaje. */
+    function minutesText() {
+        const minutes = minutesLeft();
+        return minutes == null ? '—' : formatMinutes(minutes);
+    }
+
+    /** «Llegada 10:51 p. m.» */
+    function arrivalText() {
+        const minutes = minutesLeft();
+        if (minutes == null) return '';
+        return 'Llegada ' + new Date(Date.now() + minutes * 60000).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+    }
+
     function durationText(s) {
         if (freeDestination && route) {
             const left = remaining();
             const minutes = left && Number.isFinite(left.durationS) ? Math.max(1, Math.round(left.durationS / 60)) : null;
-            if (minutes != null) return "Llegada en unos " + (minutes >= 60 ? Math.floor(minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min") + (route.provider === "HERE" ? " · HERE" : "");
+            if (minutes != null) return 'Tiempo estimado: ' + formatMinutes(minutes) + (route.provider === 'HERE' ? ', con el tráfico actual' : '');
         }
         return s.plannedDuration ? 'Viaje completo: ' + s.plannedDuration + ' · Route-AI' : 'Duración: ' + window.ui.NOT_AVAILABLE;
     }
@@ -951,6 +973,8 @@ window.RouteGuidance = (function () {
         set('[data-nav-speed]', s.speed == null ? '—' : String(s.speed));
         set('[data-nav-remaining]', s.remaining);
         set('[data-nav-eta]', durationText(s));
+        set('[data-nav-minutes]', minutesText());
+        set('[data-nav-arrival]', arrivalText());
         set('[data-nav-step]', s.stepCount ? 'Paso ' + s.stepNumber + ' de ' + s.stepCount : 'Ruta real');
         document.querySelectorAll('[data-nav-icon]').forEach(el => { el.className = 'fas ' + s.icon; });
         document.querySelectorAll('[data-nav-glyph]').forEach(el => { el.setAttribute('href', 'assets/icons.svg#' + s.glyph); });
@@ -1128,7 +1152,7 @@ window.RouteGuidance = (function () {
 
     return {
         prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, durationText, handleBlockage, layoutAlerts, toggleAlerts,
-        recalculate, planReroute, applyReroute, remaining, navigateTo, endFreeNavigation,
+        recalculate, planReroute, applyReroute, remaining, navigateTo, endFreeNavigation, minutesText, arrivalText,
         get freeDestination() { return freeDestination; },
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },
