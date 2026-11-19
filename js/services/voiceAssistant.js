@@ -648,32 +648,54 @@ window.VoiceAssistant = (function () {
              * que se reinicia en bucle y entrega cada frase oída. Gasta más batería y en algunos teléfonos suena un
              * pitido en cada reinicio: por eso es opcional.
              */
-            startWake(onFinal) {
+            startWake(onFinal, isWake) {
                 if (wake) return;
                 let active = true;
                 let handles = [];
                 let last = '';
-                const clear = () => { handles.forEach(h => h && h.remove && h.remove()); handles = []; };
+                let session = 0;
+                let watchdog = null;
+                let settle = null;
+                const clear = () => {
+                    handles.forEach(h => h && h.remove && h.remove());
+                    handles = [];
+                    clearTimeout(watchdog);
+                    clearTimeout(settle);
+                };
+                const finish = (id) => {
+                    if (id !== session) return;
+                    session++;
+                    const heard = last;
+                    clear();
+                    if (heard && active) onFinal(heard);
+                    if (active && wake) setTimeout(loop, 500);
+                };
                 const loop = () => {
                     if (!active) return;
+                    const id = ++session;
                     last = '';
                     clear();
                     handles.push(cap.addListener('SpeechRecognition', 'partialResults', (event) => {
-                        const text = event && event.matches && event.matches[0];
-                        if (text) last = text;
+                        const text = event && event.matches && event.matches.find(Boolean);
+                        if (!text) return;
+                        last = text;
+                        // En cuanto se oye la frase, se espera un momento a que termine la orden y se entrega, sin
+                        // depender de que Android avise el fin de la sesión.
+                        if (isWake && isWake(text)) {
+                            clearTimeout(settle);
+                            settle = setTimeout(() => call('stop').catch(() => {}).then(() => finish(id)), 1800);
+                        }
                     }));
                     handles.push(cap.addListener('SpeechRecognition', 'listeningState', (event) => {
-                        if (!event || event.status !== 'stopped') return;
-                        const heard = last;
-                        clear();
-                        if (heard && active) onFinal(heard);
-                        if (active) setTimeout(loop, 600);
+                        if (event && event.status === 'stopped') setTimeout(() => finish(id), 200);
                     }));
+                    // Algunos teléfonos no avisan el fin: cada sesión dura como máximo 10 s.
+                    watchdog = setTimeout(() => call('stop').catch(() => {}).then(() => finish(id)), 10000);
                     call('start', { language: 'es-CO', maxResults: 3, partialResults: true, popup: false })
                         .then((result) => { const text = result && result.matches && result.matches[0]; if (text) last = text; })
-                        .catch(() => { clear(); if (active) setTimeout(loop, 1500); });
+                        .catch(() => { if (id === session) { session++; clear(); if (active) setTimeout(loop, 1500); } });
                 };
-                wake = { stop() { active = false; clear(); call('stop').catch(() => {}); } };
+                wake = { stop() { active = false; session++; clear(); call('stop').catch(() => {}); } };
                 loop();
             },
             stopWake() { if (wake) { wake.stop(); wake = null; } }
@@ -815,7 +837,11 @@ window.VoiceAssistant = (function () {
             this.listenNow();
         },
 
-        async activate() {
+        /**
+         * Enciende el Copiloto. listen=false (al guardar «Activar con la voz» o al entrar con esa opción): queda esperando
+         * la frase, sin abrir el micrófono para una orden.
+         */
+        async activate({ listen = true } = {}) {
             this.init();
             if (this.on || !this.recognizer) return;
             const ok = await this.recognizer.available() && await this.recognizer.ensurePermission();
@@ -826,6 +852,12 @@ window.VoiceAssistant = (function () {
             this.on = true;
             this.enableMediaKeys();
             this.render();
+            if (!listen) {
+                await this.say('Copiloto listo. Diga ' + this.settings.wakePhrase + ' para hablarme.');
+                this.hideBanner(1500);
+                this.resumeWake();
+                return;
+            }
             const wakeWord = this.wakeAvailable() ? ' Diga ' + this.settings.wakePhrase + ' seguido de su orden,' : '';
             await this.say('Copiloto activado.' + wakeWord + ' Toque el micrófono o el botón multimedia del volante para hablar.');
             this.listenNow();
@@ -890,7 +922,7 @@ window.VoiceAssistant = (function () {
                 } else {
                     this.listenNow();
                 }
-            });
+            }, (text) => intents.stripWakeWord(text).woke);
         },
 
         enableMediaKeys() {
@@ -984,7 +1016,7 @@ window.VoiceAssistant = (function () {
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch (e) { }
             intents.setWakePhrase(this.settings.wakePhrase);
             if (this.settings.wakeEnabled) {
-                if (this.on) this.resumeWake(); else this.activate();
+                if (this.on) this.resumeWake(); else this.activate({ listen: false });
             } else if (this.recognizer && this.recognizer.kind !== 'web' && this.recognizer.stopWake) {
                 this.recognizer.stopWake();
             }
@@ -1034,7 +1066,7 @@ window.VoiceAssistant = (function () {
             if (visible && this.settings.wakeEnabled && !this.on && !this.autoStarted) {
                 // El conductor lo eligió en los ajustes: el Copiloto queda escuchando al entrar, una vez por sesión.
                 this.autoStarted = true;
-                setTimeout(() => this.activate(), 800);
+                setTimeout(() => this.activate({ listen: false }), 800);
             }
             if (!visible) {
                 this.autoStarted = false;

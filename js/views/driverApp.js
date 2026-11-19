@@ -605,18 +605,34 @@ window.DriverApp = {
                     </div>
                 </div>
 
+                ${!free && !load ? `
                 <div class="trip-bar">
-                    ${!free && !load ? '' : `<div class="trip-remaining">
-                        <b>Faltan <span data-nav-remaining>${esc(s.remaining)}</span></b>
-                        <span data-nav-eta>${esc(window.RouteGuidance.durationText(s))}</span>
-                        <span>${esc(routeLine)}</span>
-                    </div>`}
-                    ${free
-                        ? `<button type="button" onclick="window.app.endFreeNavigation()" class="btn-trip" data-dest-end>${this.icon('x')}Terminar</button>`
-                        : load
-                            ? `<button type="button" onclick="window.app.finishTrip()" class="btn-trip">${this.icon('flag-checkered')}Llegué</button>`
-                            : `<button type="button" onclick="window.app.openDestinationSearch()" class="btn-trip is-wide" data-dest-start>${this.icon('magnifying-glass')}Buscar destino</button>`}
-                </div>
+                    <button type="button" onclick="window.app.openDestinationSearch()" class="btn-trip is-wide" data-dest-start>${this.icon('magnifying-glass')}Buscar destino</button>
+                </div>` : `
+                <div class="trip-bar trip-sheet" data-trip-sheet data-expanded="${window.app.tripSheetExpanded ? 'true' : 'false'}">
+                    <div class="trip-row">
+                        ${free ? `<button type="button" class="trip-close" onclick="window.app.confirmEndFreeNavigation()" aria-label="Terminar la navegación" data-dest-end>${this.icon('x')}</button>` : ''}
+                        <button type="button" class="trip-summary" onclick="window.app.toggleTripSheet()" aria-expanded="${window.app.tripSheetExpanded ? 'true' : 'false'}" aria-controls="trip-details">
+                            <b><span data-nav-remaining>${esc(s.remaining)}</span> · <span data-nav-minutes>${esc(window.RouteGuidance.minutesText())}</span></b>
+                            <span data-nav-arrival>${esc(window.RouteGuidance.arrivalText())}</span>
+                        </button>
+                        <button type="button" class="trip-toggle" onclick="window.app.toggleTripSheet()" aria-label="${window.app.tripSheetExpanded ? 'Ocultar los detalles del viaje' : 'Ver los detalles del viaje'}">${this.icon('caret-up')}</button>
+                    </div>
+                    <div class="trip-details" id="trip-details">
+                        <p class="trip-destination">${esc(routeLine)}</p>
+                        <p class="trip-eta" data-nav-eta>${esc(window.RouteGuidance.durationText(s))}</p>
+                        <div class="trip-vehicle">
+                            <span>Altura ${esc(vehicle ? this.number(vehicle.height, 2, 'm') : 'sin dato')}</span>
+                            <span>Peso bruto ${esc(vehicle ? this.number(vehicle.grossWeight, 1, 't') : 'sin dato')}</span>
+                        </div>
+                        <div class="trip-actions">
+                            ${free
+                                ? `<button type="button" onclick="window.app.confirmEndFreeNavigation()" class="btn-trip">${this.icon('x')}Terminar navegación</button>`
+                                : `<button type="button" onclick="window.app.finishTrip()" class="btn-trip">${this.icon('flag-checkered')}Llegué</button>`}
+                            <button type="button" onclick="window.app.openDestinationSearch()" class="btn-trip">${this.icon('magnifying-glass')}Otro destino</button>
+                        </div>
+                    </div>
+                </div>`}
             </div>
         `;
     },

@@ -496,6 +496,10 @@
         if (!driver.timer && window.mapCtrl && window.mapCtrl.showDevicePosition) window.mapCtrl.showDevicePosition(fix.coords);
         if (!driver.timer && window.RouteGuidance && window.RouteGuidance.freeDestination) {
             window.RouteGuidance.update({ coords: fix.coords, speed: fix.speedKmH, heading: fix.heading, accuracy: fix.accuracy, source: 'gps' });
+            // Igual que en un viaje: el mapa sigue al camión para que el conductor vea por dónde va.
+            if (window.mapCtrl && window.mapCtrl.map && window.store && window.store.state.driverScreen === 'navigation') {
+                window.mapCtrl.updateTruckPosition(fix.coords);
+            }
         }
     });
 
