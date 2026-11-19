@@ -268,7 +268,7 @@ test("la frase propia tolera cómo la escribe el reconocedor (hey/ey, comas, plu
   for (const text of ["el amigo de mi primo", "amigo", "ey", "hola"]) assert.equal(vi.stripWakeWord(text).woke, false, text);
 });
 
-test("guardar «Activar con la voz» deja el Copiloto esperando la frase, sin abrir el micrófono para una orden", async () => {
+test("guardar «Activar con la voz» deja el Copiloto esperando la frase, sin hablar ni abrir una sesión", async () => {
   const { w, starts, listeners } = nativeWindow();
   const copilot = w.VoiceAssistant.copilot;
   const said = [];
@@ -286,7 +286,7 @@ test("guardar «Activar con la voz» deja el Copiloto esperando la frase, sin ab
     await wait(50);
     assert.equal(copilot.on, true);
     assert.equal(listened, 0, "no abre una sesión para una orden");
-    assert.match(said.at(-1), /Diga ey amigo para hablarme/);
+    assert.deepEqual(said, [], "no habla ni pregunta qué quiere: solo el botón o la frase abren una sesión");
     assert.equal(starts(), 1, "queda la escucha de la frase");
     assert.ok(listeners.partialResults, "escuchando la frase");
   } finally {
