@@ -90,7 +90,7 @@ test("el indicador de red distingue sin señal, sincronizando, reconectando y en
   assert.deepEqual(pick(browser({ online: false, pending: 3 })), ["offline", "Sin señal · 3 guardados"]);
   assert.deepEqual(pick(browser({ isOffline: true })), ["offline", "Sin señal"]);
   assert.deepEqual(pick(browser({ pending: 1 })), ["syncing", "Sincronizando 1 pendiente…"]);
-  assert.deepEqual(pick(browser({ telemetry: "reconnecting" })), ["reconnecting", "Reconectando telemática…"]);
+  assert.deepEqual(pick(browser({ telemetry: "reconnecting" })), ["reconnecting", "Reconectando la posición en vivo"]);
   assert.deepEqual(pick(browser({ telemetry: "online" })), ["online", "En línea"]);
 
   const w = browser({ pending: 2 });
@@ -103,6 +103,19 @@ test("el indicador de red distingue sin señal, sincronizando, reconectando y en
   off.Native.NetworkStatus.render();
   assert.ok(off.document.querySelector(".net-status svg use").getAttribute("href").endsWith("#warning-fill"));
   assert.match(off.document.querySelector(".net-status").textContent, /Sin señal/);
+
+  // En el encabezado va la etiqueta corta (no se corta junto al botón SOS); tocarla explica el estado completo.
+  const recon = browser({ telemetry: "reconnecting" });
+  recon.document.body.innerHTML = "<span data-network-status></span>";
+  const toasts = [];
+  recon.ui.toast = (title, type, options) => toasts.push([title, options && options.description]);
+  recon.Native.NetworkStatus.render();
+  const badge = recon.document.querySelector(".net-status");
+  assert.equal(badge.tagName, "BUTTON");
+  assert.equal(badge.textContent.trim(), "Reconectando");
+  assert.match(badge.getAttribute("aria-label"), /Reconectando la posición en vivo. La posición en vivo se reanuda sola/);
+  badge.click();
+  assert.deepEqual(toasts, [["Reconectando la posición en vivo", "La posición en vivo se reanuda sola; las demás funciones siguen disponibles."]]);
 
   function pick(win) {
     const s = win.Native.NetworkStatus.snapshot();
