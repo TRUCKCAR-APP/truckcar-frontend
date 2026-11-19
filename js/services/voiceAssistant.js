@@ -621,11 +621,19 @@ window.VoiceAssistant = (function () {
              * Una orden. El plugin de Android no responde a stop() y, si hay silencio, termina la sesión con un error que no
              * llega a la app: por eso el fin se decide aquí (silencio tras hablar, nada en 6 s o 12 s como máximo) y stop()
              * se llama sin esperarlo.
+             *
+             * Justo después de la frase de activación, la sesión que la oyó todavía manda su aviso de fin y su último
+             * resultado: llegan cuando esta orden ya empezó. Por eso el aviso de fin solo cuenta si en esta sesión ya se
+             * oyó voz, accept() descarta lo que no es la orden (la frase sola) y delay deja que Android cierre la sesión
+             * anterior antes de abrir esta. Si el reconocedor muere sin avisar (isListening falso sin haber oído nada),
+             * se abre otra sesión dentro de los mismos 6 s.
              */
-            listenOnce({ onPartial }) {
+            listenOnce({ onPartial, onReady, accept, delay = 0 } = {}) {
                 return new Promise((resolve) => {
                     let last = '';
                     let done = false;
+                    let spoke = false;
+                    let restarts = 0;
                     const handles = [];
                     const timers = [];
                     const finish = () => {
@@ -639,21 +647,42 @@ window.VoiceAssistant = (function () {
                     };
                     let quiet = null;
                     const settle = (ms) => { clearTimeout(quiet); quiet = setTimeout(finish, ms); timers.push(quiet); };
+                    const begin = () => {
+                        if (done) return;
+                        call('start', { language: 'es-CO', maxResults: 3, partialResults: true, popup: false })
+                            .then(() => { if (!done && onReady && restarts === 0) onReady(); })
+                            .catch(() => finish());
+                    };
                     handles.push(cap.addListener('SpeechRecognition', 'partialResults', (event) => {
+                        if (done) return;
                         const text = event && event.matches && event.matches.find(Boolean);
-                        if (!text) return;
+                        if (!text || (accept && !accept(text))) return;
+                        spoke = true;
                         last = text;
                         if (onPartial) onPartial(text);
                         settle(2200);
                     }));
                     handles.push(cap.addListener('SpeechRecognition', 'listeningState', (event) => {
-                        if (event && event.status === 'stopped') settle(400);
+                        if (done || !event) return;
+                        if (event.status === 'started') spoke = true;
+                        // El fin de una sesión en la que no se habló es el de la anterior (la de la frase): no cuenta.
+                        if (event.status === 'stopped' && last) settle(400);
                     }));
-                    timers.push(setTimeout(() => { if (!last) finish(); }, 6000));
-                    timers.push(setTimeout(finish, 12000));
+                    // Reconocedor muerto sin aviso (error de Android tras la sesión anterior): otra sesión, hasta 3 veces.
+                    const watch = () => {
+                        if (done) return;
+                        call('isListening').then((state) => {
+                            if (done || spoke || !state || state.listening !== false || restarts >= 3) return;
+                            restarts++;
+                            begin();
+                        }).catch(() => {});
+                        timers.push(setTimeout(watch, 1000));
+                    };
+                    timers.push(setTimeout(() => { if (!last) finish(); }, 6000 + delay));
+                    timers.push(setTimeout(finish, 12000 + delay));
                     stopping = finish;
-                    call('start', { language: 'es-CO', maxResults: 3, partialResults: true, popup: false })
-                        .catch(() => finish());
+                    if (delay) timers.push(setTimeout(begin, delay)); else begin();
+                    timers.push(setTimeout(watch, 1200 + delay));
                 });
             },
             abort() { if (stopping) stopping(); },
@@ -946,7 +975,11 @@ window.VoiceAssistant = (function () {
             this.render();
         },
 
-        async listenNow() {
+        /**
+         * Escucha una orden. afterWake: viene de la frase de activación; en el teléfono se espera a que Android cierre la
+         * sesión que la oyó, el tono suena cuando el micrófono ya escucha y la frase sola no cuenta como orden.
+         */
+        async listenNow({ afterWake = false } = {}) {
             if (!this.on || this.phase === 'listening' || this.phase === 'processing') return;
             const id = ++this.session;
             clearTimeout(this.wakeTimer);
@@ -955,10 +988,21 @@ window.VoiceAssistant = (function () {
             this.phase = 'listening';
             this.transcript = '';
             this.showBanner('Escuchando…', 'listening');
-            window.voiceEngine.cue('start');
-            const text = await this.recognizer.listenOnce({ onPartial: (partial) => { if (id === this.session) this.showBanner(partial, 'listening'); } });
+            const native = this.recognizer.kind === 'native';
+            const cueOnReady = native && afterWake;
+            if (!cueOnReady) window.voiceEngine.cue('start');
+            const onlyWake = (text) => { const w = intents.stripWakeWord(text); return w.woke && !w.rest; };
+            let text = await this.recognizer.listenOnce({
+                onPartial: (partial) => { if (id === this.session) this.showBanner(partial, 'listening'); },
+                onReady: cueOnReady ? () => { if (id === this.session) window.voiceEngine.cue('start'); } : undefined,
+                accept: afterWake ? (partial) => !onlyWake(partial) : undefined,
+                delay: cueOnReady ? 600 : 0
+            });
             if (id !== this.session) return;
             window.voiceEngine.cue('end');
+            // «Hey amigo, llévame a…» repetido dentro de la orden: se quita la frase.
+            const woke = text ? intents.stripWakeWord(text) : null;
+            if (woke && woke.woke) text = woke.rest;
             await this.process(text, id);
         },
 
@@ -1015,7 +1059,7 @@ window.VoiceAssistant = (function () {
                     window.voiceEngine.cue('start');
                     this.process(rest);
                 } else {
-                    this.listenNow();
+                    this.listenNow({ afterWake: true });
                 }
             }, (text) => !this.isEcho(text) && intents.stripWakeWord(text).woke);
         },
