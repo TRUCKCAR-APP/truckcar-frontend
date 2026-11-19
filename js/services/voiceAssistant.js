@@ -612,88 +612,106 @@ window.VoiceAssistant = (function () {
                     return false;
                 }
             },
+            /**
+             * Una orden. El plugin de Android no responde a stop() y, si hay silencio, termina la sesión con un error que no
+             * llega a la app: por eso el fin se decide aquí (silencio tras hablar, nada en 7 s o 12 s como máximo) y stop()
+             * se llama sin esperarlo.
+             */
             listenOnce({ onPartial }) {
                 return new Promise((resolve) => {
                     let last = '';
                     let done = false;
                     const handles = [];
+                    const timers = [];
                     const finish = () => {
                         if (done) return;
                         done = true;
-                        clearTimeout(timer);
+                        timers.forEach(clearTimeout);
                         handles.forEach(h => h && h.remove && h.remove());
                         stopping = null;
+                        call('stop').catch(() => {});
                         resolve(last);
                     };
+                    let quiet = null;
+                    const settle = (ms) => { clearTimeout(quiet); quiet = setTimeout(finish, ms); timers.push(quiet); };
                     handles.push(cap.addListener('SpeechRecognition', 'partialResults', (event) => {
-                        const text = event && event.matches && event.matches[0];
-                        if (text) { last = text; if (onPartial) onPartial(text); }
+                        const text = event && event.matches && event.matches.find(Boolean);
+                        if (!text) return;
+                        last = text;
+                        if (onPartial) onPartial(text);
+                        settle(2200);
                     }));
                     handles.push(cap.addListener('SpeechRecognition', 'listeningState', (event) => {
-                        if (event && event.status === 'stopped') setTimeout(finish, 250);
+                        if (event && event.status === 'stopped') settle(400);
                     }));
-                    const timer = setTimeout(() => { call('stop').catch(() => {}).then(finish); }, 9000);
-                    stopping = () => call('stop').catch(() => {}).then(finish);
+                    timers.push(setTimeout(() => { if (!last) finish(); }, 7000));
+                    timers.push(setTimeout(finish, 12000));
+                    stopping = finish;
                     call('start', { language: 'es-CO', maxResults: 3, partialResults: true, popup: false })
-                        .then((result) => {
-                            const text = result && result.matches && result.matches[0];
-                            if (text) { last = text; finish(); }
-                        })
                         .catch(() => finish());
                 });
             },
             abort() { if (stopping) stopping(); },
             /**
-             * Escucha continua (opción «Activar con la voz»): el reconocedor de Android se corta con cada silencio, así
-             * que se reinicia en bucle y entrega cada frase oída. Gasta más batería y en algunos teléfonos suena un
-             * pitido en cada reinicio: por eso es opcional.
+             * Escucha continua («Activar con la voz»): sesiones cortas seguidas. Cada sesión termina por silencio sin avisar,
+             * así que se reinicia sola cada pocos segundos (start() del plugin descarta la anterior); al oír la frase se
+             * espera a que termine la orden y se entrega.
              */
             startWake(onFinal, isWake) {
                 if (wake) return;
                 let active = true;
                 let handles = [];
-                let last = '';
+                let timers = [];
                 let session = 0;
-                let watchdog = null;
-                let settle = null;
+                let last = '';
+                let heardWake = false;
                 const clear = () => {
                     handles.forEach(h => h && h.remove && h.remove());
                     handles = [];
-                    clearTimeout(watchdog);
-                    clearTimeout(settle);
+                    timers.forEach(clearTimeout);
+                    timers = [];
                 };
-                const finish = (id) => {
-                    if (id !== session) return;
-                    session++;
+                const next = (delay) => { if (active) timers.push(setTimeout(loop, delay)); };
+                const deliver = (id) => {
+                    if (id !== session || !active) return;
                     const heard = last;
+                    session++;
                     clear();
-                    if (heard && active) onFinal(heard);
-                    if (active && wake) setTimeout(loop, 500);
+                    call('stop').catch(() => {});
+                    if (heard) onFinal(heard);
+                    // Si onFinal apagó la escucha (oyó la frase), no se reinicia.
+                    if (active) next(400);
                 };
                 const loop = () => {
                     if (!active) return;
                     const id = ++session;
                     last = '';
+                    heardWake = false;
                     clear();
+                    let quiet = null;
                     handles.push(cap.addListener('SpeechRecognition', 'partialResults', (event) => {
+                        if (id !== session) return;
                         const text = event && event.matches && event.matches.find(Boolean);
                         if (!text) return;
                         last = text;
-                        // En cuanto se oye la frase, se espera un momento a que termine la orden y se entrega, sin
-                        // depender de que Android avise el fin de la sesión.
-                        if (isWake && isWake(text)) {
-                            clearTimeout(settle);
-                            settle = setTimeout(() => call('stop').catch(() => {}).then(() => finish(id)), 1800);
-                        }
+                        if (!heardWake && isWake && isWake(text)) heardWake = true;
+                        // Tras la frase, 1,6 s de silencio entregan la orden; sin frase, 1,2 s reinician la escucha.
+                        clearTimeout(quiet);
+                        quiet = setTimeout(() => deliver(id), heardWake ? 1600 : 1200);
+                        timers.push(quiet);
                     }));
                     handles.push(cap.addListener('SpeechRecognition', 'listeningState', (event) => {
-                        if (event && event.status === 'stopped') setTimeout(() => finish(id), 200);
+                        if (id === session && event && event.status === 'stopped') {
+                            clearTimeout(quiet);
+                            quiet = setTimeout(() => deliver(id), 300);
+                            timers.push(quiet);
+                        }
                     }));
-                    // Algunos teléfonos no avisan el fin: cada sesión dura como máximo 10 s.
-                    watchdog = setTimeout(() => call('stop').catch(() => {}).then(() => finish(id)), 10000);
+                    // Sin voz en 6 s (la sesión ya terminó por silencio aunque no avise) o 12 s como máximo: otra sesión.
+                    timers.push(setTimeout(() => { if (id === session && !last) { session++; clear(); next(0); } }, 6000));
+                    timers.push(setTimeout(() => deliver(id), 12000));
                     call('start', { language: 'es-CO', maxResults: 3, partialResults: true, popup: false })
-                        .then((result) => { const text = result && result.matches && result.matches[0]; if (text) last = text; })
-                        .catch(() => { if (id === session) { session++; clear(); if (active) setTimeout(loop, 1500); } });
+                        .catch(() => { if (id === session) { session++; clear(); next(1500); } });
                 };
                 wake = { stop() { active = false; session++; clear(); call('stop').catch(() => {}); } };
                 loop();
@@ -817,9 +835,11 @@ window.VoiceAssistant = (function () {
         },
 
         async say(text) {
+            // La escucha de la frase se pausa mientras el Copiloto habla, para que no se oiga a sí mismo.
+            if (this.recognizer && this.recognizer.stopWake) this.recognizer.stopWake();
             this.phase = 'speaking';
             this.showBanner(text, 'speaking');
-            await window.voiceEngine.say(text);
+            try { await window.voiceEngine.say(text); } finally { if (this.phase === 'speaking') this.phase = 'idle'; }
         },
 
         /** Botón: si está apagado lo enciende y escucha; si está encendido, escucha una orden. */
@@ -893,9 +913,12 @@ window.VoiceAssistant = (function () {
             this.phase = 'processing';
             this.wantsAnswer = false;
             if (text) this.showBanner('«' + text + '»', 'processing');
-            await this.controller.handle(text || '');
-            this.phase = 'idle';
-            if (!this.on) return;
+            try {
+                await this.controller.handle(text || '');
+            } finally {
+                this.phase = 'idle';
+            }
+            if (!this.on) { this.hideBanner(2500); return; }
             if (this.wantsAnswer && this.controller.awaitingAnswer) {
                 this.listenNow();
                 return;
@@ -1005,7 +1028,7 @@ window.VoiceAssistant = (function () {
         hideBanner(delay = 0) {
             if (!this.ui) return;
             clearTimeout(this.bannerTimer);
-            this.bannerTimer = setTimeout(() => { if (this.ui && this.phase === 'idle') this.ui.banner.hidden = true; this.render(); }, delay);
+            this.bannerTimer = setTimeout(() => { if (this.ui && this.phase !== 'listening') this.ui.banner.hidden = true; this.render(); }, delay);
         },
 
         /** Muestra el botón solo en la app del conductor; lo apaga al cerrar sesión o cambiar de vista. */

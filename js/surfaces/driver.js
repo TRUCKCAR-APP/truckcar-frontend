@@ -5,7 +5,10 @@
     app.registerView('driver', {
         render: (state) => window.DriverApp.render(state),
         mountMap: (state) => app.handleDriverMapMount(state),
-        screen: (state) => state.driverScreen
+        screen: (state) => state.driverScreen,
+        // El mapa de Navegar no se recrea en cada actualización: conserva el zoom, el seguimiento y lo que el conductor
+        // movió con el dedo.
+        keepAliveMaps: ['live-nav-map-container']
     });
 
     app.onMount(() => window.DriverTelemetry.renderBadge());

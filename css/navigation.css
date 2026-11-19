@@ -207,6 +207,19 @@
 @media (prefers-reduced-motion: reduce) { .truck-arrow svg { transition: none; } }
 .btn-trip.is-wide { flex: 1; justify-content: center; }
 
+/* «Recentrar»: aparece cuando el conductor movió el mapa; vuelve a seguir al camión. */
+.recenter-pill {
+    position: absolute; z-index: 610; left: 50%; bottom: calc(var(--map-attribution-space) + var(--space-3));
+    transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    min-height: 48px; padding: 0 var(--space-5, 20px);
+    border-radius: 999px; background: var(--color-text); color: var(--color-bg);
+    font-weight: var(--weight-bold); box-shadow: var(--elev-3); touch-action: manipulation;
+}
+.recenter-pill[hidden] { display: none; }
+.recenter-pill .ui-icon { width: 20px; height: 20px; }
+.recenter-pill:active { transform: translateX(-50%) scale(var(--press-scale)); }
+
 /* Vertical: la tarjeta de la maniobra es compacta para dejar ver el mapa (altura y peso pasan a la barra del viaje). */
 .nav-screen:not(.is-landscape) .hud-turn { grid-template-columns: 44px 1fr; gap: var(--space-3); padding: var(--space-3); }
 .nav-screen:not(.is-landscape) .hud-arrow { width: 44px; height: 44px; border-radius: var(--radius-md); }
