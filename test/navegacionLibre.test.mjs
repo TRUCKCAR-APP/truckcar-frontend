@@ -91,7 +91,7 @@ test("con varias opciones las lee, las muestra en pantalla y va a la que el cond
   assert.deepEqual(searched, ["escuela colombiana de ingenieria"]);
   assert.deepEqual(shown, [[3, "escuela colombiana de ingenieria"]]);
   assert.equal(said.at(-1), "Encontré 3 lugares. Uno: Escuela Colombiana de Ingeniería Julio Garavito, a 14 kilómetros. "
-    + "Dos: Escuela Colombiana de Carreras Industriales, a 2,1 kilómetros. Tres: Escuela Colombiana de Rehabilitación, a 5 kilómetros. ¿A cuál voy? Diga el número.");
+    + "Dos: Escuela Colombiana de Carreras Industriales, a 2,1 kilómetros. Tres: Escuela Colombiana de Rehabilitación, a 5 kilómetros. ¿A cuál lo llevo? Diga el número.");
   assert.deepEqual(went, [], "nada cambia antes de elegir");
 
   const done = await ctrl.handle("la primera");

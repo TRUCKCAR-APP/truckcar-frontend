@@ -71,13 +71,36 @@ window.VoiceAssistant = (function () {
 
     const REPORTABLE = 'derrumbe, accidente, vía cerrada, obra, retén, báscula, gálibo bajo, parador seguro o tráfico pesado';
     const HELP = 'Puede reportar ' + REPORTABLE + '. También puede decir: enviar SOS, recalcular ruta, qué llevo, '
-        + 'cuánto falta, cuántas horas llevo, alertas cercanas, aceptar carga, iniciar viaje o confirmar entrega.';
+        + 'cuánto falta, cuántas horas llevo, alertas cercanas, aceptar carga, iniciar viaje o confirmar entrega. '
+        + 'Y buscar cerca un hotel, una estación de servicio, comida, un parqueadero para la mula o un taller, o '
+        + 'preguntar cuánto falta para el próximo peaje.';
     const NOT_UNDERSTOOD = 'No entendí. Puede decir, por ejemplo: reportar accidente, recalcular ruta, qué llevo, o ayuda.';
 
     // Intenciones que puede devolver el intérprete con IA (Voice-AI-Assistant) y que este controlador ejecuta.
     const ASSISTANT_INTENTS = ['REPORT', 'SOS', 'NEARBY_ALERTS', 'ACCEPT_LOAD', 'REJECT_LOAD', 'START_TRIP',
-        'CONFIRM_DELIVERY', 'REROUTE', 'NAVIGATE', 'REPEAT', 'HOURS', 'LOAD_INFO', 'HELP', 'CHAT'];
+        'CONFIRM_DELIVERY', 'REROUTE', 'NAVIGATE', 'FIND_PLACES', 'TOLLS', 'REPEAT', 'HOURS', 'LOAD_INFO', 'HELP', 'CHAT'];
     const LOAD_INFO_FIELDS = ['eta', 'destination', 'weight', 'summary'];
+
+    // Categorías de FIND_PLACES: lo que se busca en HERE, cómo se nombra en voz alta y qué preguntar para pagar menos
+    // (los precios no se tienen confirmados al día de hoy: nunca se inventan).
+    const PLACE_KINDS = {
+        hotel: { query: 'hotel', many: 'hoteles', saving: 'pregunte la tarifa por noche y si tiene parqueadero vigilado para el camión' },
+        fuel: { query: 'estación de servicio', many: 'estaciones de servicio', saving: 'compare el precio del galón de ACPM en el surtidor antes de tanquear' },
+        restaurant: { query: 'restaurante', many: 'restaurantes', saving: 'pregunte por el menú del día o el corrientazo' },
+        store: { query: 'tienda', many: 'tiendas', saving: 'compare precios antes de pagar' },
+        truck_parking: { query: 'parqueadero para camiones', many: 'parqueaderos', saving: 'pregunte la tarifa por noche o por hora y si es vigilado y apto para tractomula' },
+        workshop: { query: 'taller mecánico de camiones', many: 'talleres', saving: 'pida el precio del arreglo antes de que empiecen' }
+    };
+
+    /** Termina la frase con punto sin duplicarlo («3:10 p. m.»). */
+    function endSentence(text) {
+        return /.$/.test(text) ? text : text + '.';
+    }
+
+    function pesos(value, currency) {
+        const amount = Math.round(value).toLocaleString('es-CO');
+        return !currency || currency === 'COP' ? amount + ' pesos' : amount + ' ' + currency;
+    }
 
     /**
      * Respuesta del intérprete con IA → intención con la misma forma que VoiceIntents.parse, o null si no sirve.
@@ -101,6 +124,10 @@ window.VoiceAssistant = (function () {
         case 'NAVIGATE':
             return typeof response.place === 'string' && response.place.trim().length >= 2
                 ? { ...base, place: response.place.trim().slice(0, 120) } : null;
+        case 'FIND_PLACES':
+            return PLACE_KINDS[response.category] ? { ...base, category: response.category, cheap: response.cheap === true } : null;
+        case 'NEARBY_ALERTS':
+            return { ...base, scope: response.scope === 'route' ? 'route' : 'around' };
         case 'CHAT':
             return typeof response.reply === 'string' && response.reply.trim()
                 ? { ...base, reply: response.reply.trim().slice(0, 300) } : null;
@@ -353,19 +380,29 @@ window.VoiceAssistant = (function () {
             }
 
             case 'NEARBY_ALERTS': {
-                const list = a.nearbyAlerts();
+                const onRoute = intent.scope === 'route' && a.routeAlerts;
+                const list = onRoute ? a.routeAlerts() : a.nearbyAlerts();
                 if (list === null) {
-                    await say('No tengo su posición GPS para buscar alertas cercanas.');
+                    await say(onRoute ? 'No tiene una ruta activa. Le digo lo que hay cerca.' : 'No tengo su posición GPS para buscar alertas cercanas.');
+                    if (onRoute) return dispatch({ ...intent, scope: 'around' });
                     return { status: 'unavailable', intent };
                 }
+                const where = onRoute ? 'en lo que falta de la ruta' : 'cerca de su posición';
                 if (!list.length) {
-                    await say('No hay alertas reportadas cerca de su posición.');
+                    await say('No hay accidentes, cierres ni alertas reportados ' + where + '.');
                     return { status: 'done', intent };
                 }
-                const items = list.slice(0, 3).map(item => item.label + ' a ' + spokenDistance(item.distanceM));
-                await say((list.length === 1 ? 'Hay una alerta cerca: ' : 'Hay ' + list.length + ' alertas cerca: ') + items.join(', ') + '.');
+                const items = list.slice(0, 3).map(item => item.label + ' a ' + spokenDistance(item.distanceM)
+                    + (item.timeAgo ? ', reportado ' + item.timeAgo.toLowerCase() : ''));
+                await say((list.length === 1 ? 'Hay una alerta ' : 'Hay ' + list.length + ' alertas ') + where + ': ' + items.join('; ') + '.');
                 return { status: 'done', intent };
             }
+
+            case 'FIND_PLACES':
+                return findPlaces(intent);
+
+            case 'TOLLS':
+                return tolls(intent);
 
             case 'HELP':
                 await say(HELP);
@@ -441,13 +478,91 @@ window.VoiceAssistant = (function () {
                     + (result.restricted ? ' Atención: tiene restricciones de gálibo o peso para su vehículo.' : ''));
                 return { status: 'done', intent, place };
             });
+            return offerPlaces(options, go, { many: 'lugares' });
+        }
+
+        /** Lee hasta 3 opciones con su distancia y pregunta a cuál ir (por número). note va antes de la pregunta. */
+        function offerPlaces(options, go, { many, note = '' }) {
             const describe = (p) => p.title + (Number.isFinite(p.distanceMeters) ? ', a ' + spokenDistance(p.distanceMeters) : '');
+            const extra = note ? ' ' + note : '';
             if (options.length === 1) {
-                return askChoice('Encontré ' + describe(options[0]) + '. ¿Voy para allá? Diga sí o cancelar.', 1, go);
+                return askChoice('Encontré ' + describe(options[0]) + '.' + extra + ' ¿Voy para allá? Diga sí o cancelar.', 1, go);
             }
             const words = ['Uno', 'Dos', 'Tres'];
-            return askChoice('Encontré ' + options.length + ' lugares. ' + options.map((p, i) => words[i] + ': ' + describe(p) + '.').join(' ')
-                + ' ¿A cuál voy? Diga el número.', options.length, go);
+            return askChoice('Encontré ' + options.length + ' ' + many + '. ' + options.map((p, i) => words[i] + ': ' + describe(p) + '.').join(' ')
+                + extra + ' ¿A cuál lo llevo? Diga el número.', options.length, go);
+        }
+
+        /** «Dónde tanqueo barato»: lugares de la categoría cerca del camión, los más cercanos primero. */
+        async function findPlaces(intent) {
+            const a = deps.actions;
+            const kind = PLACE_KINDS[intent.category];
+            if (!kind || !a.searchPlaces) {
+                await say('La búsqueda de lugares no está disponible.');
+                return { status: 'unavailable', intent };
+            }
+            let places;
+            try {
+                places = await a.searchPlaces(kind.query);
+            } catch (error) {
+                await say('No pude buscar ' + kind.many + ': ' + errorText(error) + '.');
+                return { status: 'error', intent, error };
+            }
+            const options = (places || []).slice()
+                .sort((x, y) => (Number.isFinite(x.distanceMeters) ? x.distanceMeters : Infinity) - (Number.isFinite(y.distanceMeters) ? y.distanceMeters : Infinity))
+                .slice(0, 3);
+            if (!options.length) {
+                await say('No encontré ' + kind.many + ' cerca de su posición.');
+                return { status: 'unavailable', intent };
+            }
+            if (a.showPlaces) a.showPlaces(options, kind.query);
+            // Sin precios confirmados al día de hoy: se dice con claridad y qué revisar para gastar menos.
+            const note = intent.cheap ? 'No tengo precios confirmados al día de hoy; ' + kind.saving + '.' : '';
+            const go = (index) => run('calcular la ruta', async () => {
+                const place = options[index];
+                const result = await a.navigateTo(place);
+                if (!result || !result.ok) {
+                    await say(result && result.reason === 'no-position'
+                        ? 'No tengo su posición GPS. Encienda la ubicación del teléfono para calcular la ruta.'
+                        : 'No pude calcular la ruta a ' + place.title + '. Intente de nuevo en un momento.');
+                    return { status: 'unavailable', intent };
+                }
+                const time = spokenDuration(result.durationS);
+                await say('Ruta a ' + place.title + ': ' + spokenDistance(result.remainingM) + (time ? ', aproximadamente ' + time : '') + '.');
+                return { status: 'done', intent, place };
+            });
+            return offerPlaces(options, go, { many: kind.many + ' cerca', note });
+        }
+
+        /** Próximo peaje de la ruta: distancia y tarifa de HERE para el camión, con la hora en que se consultó. */
+        async function tolls(intent) {
+            const a = deps.actions;
+            const info = a.tollsAhead ? a.tollsAhead() : { status: 'no-route' };
+            if (info.status === 'no-route') {
+                await say('No tiene una ruta activa. Inicie la navegación y le digo los peajes del camino.');
+                return { status: 'unavailable', intent };
+            }
+            if (info.status === 'no-data') {
+                await say('Esta ruta no trae los peajes. Recalcule la ruta para consultarlos con su camión.');
+                return { status: 'unavailable', intent };
+            }
+            if (!info.tolls.length) {
+                await say('No hay peajes en lo que falta de la ruta.');
+                return { status: 'done', intent };
+            }
+            const next = info.tolls[0];
+            const at = info.computedAt ? spokenClock(new Date(info.computedAt)) : null;
+            const fare = Number.isFinite(next.cost)
+                ? ' ' + endSentence('Para su camión cuesta ' + pesos(next.cost, next.currency) + (at ? ', según la tarifa de HERE consultada a las ' + at : ''))
+                : ' No tengo confirmada la tarifa de ese peaje al día de hoy; verifíquela en la taquilla.';
+            const priced = info.tolls.filter(t => Number.isFinite(t.cost));
+            const total = info.tolls.length > 1
+                ? ' Quedan ' + info.tolls.length + ' peajes' + (priced.length === info.tolls.length
+                    ? ' por ' + pesos(priced.reduce((sum, t) => sum + t.cost, 0), next.currency) + ' en total' : '') + '.'
+                : '';
+            await say('El próximo peaje es ' + next.name + ', a ' + spokenDistance(Math.max(0, next.aheadM)) + '.' + fare + total
+                + (Number.isFinite(next.cost) ? ' Confirme el valor en la taquilla.' : ''));
+            return { status: 'done', intent, tolls: info.tolls };
         }
 
         function loadName(load) {
@@ -558,11 +673,34 @@ window.VoiceAssistant = (function () {
                 const hud = guidance.hudText(s);
                 return (s.hasPosition && s.status === 'ready' ? 'En ' + hud.distance + ', ' : '') + hud.instruction;
             },
+            tollsAhead() {
+                return window.RouteGuidance && window.RouteGuidance.tollsAhead
+                    ? window.RouteGuidance.tollsAhead(window.app.currentPosition(5 * 60 * 1000)) : { status: 'no-route' };
+            },
+            /** Alertas y bloqueos a menos de 500 m de lo que falta de la ruta, en orden de paso; null sin ruta. */
+            routeAlerts() {
+                const guidance = window.RouteGuidance;
+                const route = guidance && guidance.route;
+                if (!route || !guidance.project) return null;
+                const here = window.app.currentPosition(5 * 60 * 1000);
+                const done = here ? guidance.project(route.geometry, route.cumulative, here).alongM : 0;
+                const items = [
+                    ...(data().communityAlerts || []).filter(alert => alert.coords).map(alert => ({ coords: alert.coords,
+                        label: (alert.badge || alert.title || 'Alerta').toLowerCase(), timeAgo: alert.timeAgo })),
+                    ...(data().roadBlockages || []).filter(b => Number.isFinite(b.latitude) && Number.isFinite(b.longitude))
+                        .map(b => ({ coords: [b.latitude, b.longitude], label: 'bloqueo: ' + (b.description || b.title || 'vía bloqueada').toLowerCase() }))
+                ];
+                return items.map((item) => {
+                    const at = guidance.project(route.geometry, route.cumulative, item.coords);
+                    return at.offM > 500 || at.alongM < done - 100 ? null
+                        : { label: item.label, timeAgo: item.timeAgo, distanceM: Math.max(0, at.alongM - done) };
+                }).filter(Boolean).sort((x, y) => x.distanceM - y.distanceM);
+            },
             nearbyAlerts() {
                 const here = window.app.currentPosition(5 * 60 * 1000);
                 if (!here) return null;
                 const alerts = (data().communityAlerts || []).filter(alert => alert.coords)
-                    .map(alert => ({ label: (alert.badge || alert.title || 'Alerta').toLowerCase(), distanceM: distanceM(here, alert.coords) }));
+                    .map(alert => ({ label: (alert.badge || alert.title || 'Alerta').toLowerCase(), distanceM: distanceM(here, alert.coords), timeAgo: alert.timeAgo }));
                 const blockages = (data().roadBlockages || []).filter(b => Number.isFinite(b.latitude) && Number.isFinite(b.longitude))
                     .map(b => ({ label: 'bloqueo: ' + (b.description || b.title || 'vía bloqueada').toLowerCase(), distanceM: distanceM(here, [b.latitude, b.longitude]) }));
                 return [...blockages, ...alerts].filter(item => item.distanceM <= 50000).sort((x, y) => x.distanceM - y.distanceM);

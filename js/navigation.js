@@ -175,7 +175,12 @@ window.RouteGuidance = (function () {
         }));
         return { geometry: { coordinates: option.geometry.map(p => [p[1], p[0]]) }, legs: [{ steps }],
             duration: option.durationSeconds, distance: option.distanceMeters, provider: 'HERE',
-            violations: Array.isArray(option.violations) ? option.violations : [] };
+            violations: Array.isArray(option.violations) ? option.violations : [],
+            // Peajes con la tarifa de HERE para este camión (el Copiloto dice cuánto falta y cuánto cuesta).
+            tolls: (Array.isArray(option.tolls) ? option.tolls : [])
+                .filter(t => t && Number.isFinite(t.latitude) && Number.isFinite(t.longitude))
+                .map(t => ({ name: String(t.name || 'Peaje').slice(0, 80), latitude: t.latitude, longitude: t.longitude,
+                    cost: Number.isFinite(t.cost) ? t.cost : null, currency: typeof t.currency === 'string' ? t.currency : null })) };
     }
 
     /**
@@ -232,7 +237,7 @@ window.RouteGuidance = (function () {
             return step;
         });
         return { key, source, geometry, cumulative, steps, totalM: cumulative[cumulative.length - 1], durationS: osrm.duration,
-            provider: osrm.provider || 'OSRM', violations: osrm.violations || [] };
+            provider: osrm.provider || 'OSRM', violations: osrm.violations || [], tolls: osrm.tolls || [], computedAt: Date.now() };
     }
 
     function notify() {
@@ -642,7 +647,8 @@ window.RouteGuidance = (function () {
             return acc;
         }, []);
         route = { key: saved.key, source: 'guardada', geometry, cumulative, steps: saved.steps || [], totalM: saved.totalM,
-            durationS: saved.durationS, choice: saved.choice, clearance: saved.clearance, restored: true, loadId: id };
+            durationS: saved.durationS, choice: saved.choice, clearance: saved.clearance, restored: true, loadId: id,
+            provider: saved.provider || null, tolls: saved.tolls || [], computedAt: saved.computedAt || null };
         clearance = saved.clearance;
         nearby = saved.nearby || [];
         avoidPoints = saved.avoidPoints || [];
@@ -1150,7 +1156,26 @@ window.RouteGuidance = (function () {
         return Promise.resolve();
     }
 
+    /**
+     * Peajes que faltan en la ruta, en orden: nombre, tarifa de HERE para el camión y metros hasta cada uno.
+     * { status: 'no-route' } sin ruta; { status: 'no-data' } si la ruta no es de HERE (sin tarifas);
+     * { status: 'ok', tolls, computedAt } con la hora en que HERE calculó la ruta (la tarifa es de ese momento).
+     */
+    function tollsAhead(position) {
+        if (!route) return { status: 'no-route' };
+        if (route.provider !== 'HERE') return { status: 'no-data' };
+        const here = position || (progress && progress.position && progress.position.coords) || null;
+        const done = progress && progress.alongM != null ? progress.alongM
+            : here ? project(route.geometry, route.cumulative, here).alongM : 0;
+        const tolls = (route.tolls || []).map((t) => {
+            const at = project(route.geometry, route.cumulative, [t.latitude, t.longitude]);
+            return at.offM > 300 ? null : { name: t.name, cost: t.cost, currency: t.currency, aheadM: at.alongM - done };
+        }).filter(t => t && t.aheadM > -50).sort((a, b) => a.aheadM - b.aheadM);
+        return { status: 'ok', tolls, computedAt: route.computedAt || null };
+    }
+
     return {
+        tollsAhead,
         prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, durationText, handleBlockage, layoutAlerts, toggleAlerts,
         recalculate, planReroute, applyReroute, remaining, navigateTo, endFreeNavigation, minutesText, arrivalText,
         get freeDestination() { return freeDestination; },
