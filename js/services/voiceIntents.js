@@ -181,7 +181,7 @@ window.VoiceIntents = (function () {
         { type: 'SOS', re: /\b(sos|s o s|auxilio|socorro|emergencia|boton de panico|alerta de panico|necesito ayuda urgente|(me|nos) (estan|quieren|van a) (robar|robando|atracar|atracando|asaltar|asaltando|secuestrar|secuestrando)|(me|nos) (roban|atracan|asaltan|robaron|atracaron|asaltaron)|robo|atraco|asalto|secuestro|extorsion|disparos|nos disparan|me disparan|piratas? (de la )?(via|carretera))\b/ },
         { type: 'COPILOT_OFF', re: /\b((apaga|apagar|desactiva|desactivar|cierra|cerrar|salir del?) (el )?(copiloto|asistente)|deja de escuchar|no escuches mas)\b/ },
         { type: 'HELP', re: /^(ayuda|ayudame|que puedo decir|que (sabes|puedes) hacer|comandos|opciones|que comandos hay)\b/ },
-        { type: 'NEARBY_ALERTS', re: /\b((alertas|reportes|novedades|peligros) (cerca|cercanas|cercanos|adelante|en la ruta|en la via|en mi ruta)|que hay (adelante|en la via|en la ruta))\b/ },
+        { type: 'NEARBY_ALERTS', re: /\b((alertas|reportes|novedades|peligros) (cerca|cercanas|cercanos|adelante|en la ruta|en la via|en mi ruta)|que hay (adelante|en la via|en la ruta)|(alertas|reportes|novedades|peligros) hay|(hay|habra) (algun |algunos |alguna |algunas )?(accidentes|cierres|bloqueos|novedades|alertas|restricciones)|como (esta|va) (la via|la carretera|la ruta|el camino)|estado de la (via|carretera|ruta))\b/ },
         // Rechazar va antes que aceptar: "no acepto la carga" contiene "acepto la carga".
         { type: 'REJECT_LOAD', re: /\b((rechaza|rechazar|rechazo|declinar|declino) (la |el |esa |esta )?(carga|viaje|propuesta|oferta)|no (la |lo )?(acepto|puedo tomar)( la carga| el viaje)?)\b/ },
         { type: 'ACCEPT_LOAD', re: /\b((acepta|aceptar|acepto|tomar|tomo|recibo|recibir) (la |el |esa |esta )?(carga|viaje|propuesta|oferta)|^acepto$)\b/ },
@@ -192,22 +192,60 @@ window.VoiceIntents = (function () {
         { type: 'REROUTE', re: /\b((cambia|cambiar|cambiame|otra|nueva|busca|buscar|buscame) (de |la |una )?ruta|recalcula|recalcular|recalculo|ruta (alterna|alternativa)|desvio|desviame|evita|evitar)\b/ }
     ];
 
+    // Lugares cerca del camión por categoría (FIND_PLACES). El orden importa: «parqueadero» antes que «hotel» en
+    // «hotel con parqueadero para la mula» no; se toma la primera categoría que aparece en la lista.
+    const PLACE_CATEGORIES = [
+        { category: 'truck_parking', re: /\b(parqueaderos?|parquear|parqueo|parqueo la mula|estacionar|garajes?)\b/ },
+        { category: 'fuel', re: /\b(gasolineras?|bombas?( de gasolina)?|estacion(es)? de servicio|tanquear|tanqueo|tanqueamos|echar (gasolina|acpm|diesel|combustible)|acpm|diesel|combustible)\b/ },
+        { category: 'hotel', re: /\b(hotel|hoteles|hospedaje|residencias?|donde (dormir|duermo|dormimos|pasar la noche|quedarme))\b/ },
+        { category: 'restaurant', re: /\b(restaurantes?|donde (comer|como|comemos|almorzar|almuerzo|desayunar|desayuno|cenar|ceno)|comida|corrientazo|almuerzo|desayuno)\b/ },
+        { category: 'workshop', re: /\b(taller(es)?|mecanicos?|montallantas|despinche|llanteria|serviteca)\b/ },
+        { category: 'store', re: /\b(tiendas?|supermercados?|minimercado|autoservicio)\b/ }
+    ];
+    const CHEAP = /\b(barat[oa]s?|economic[oa]s?|ahorrar|ahorro|lo mas barato|menos plata|que no sea caro|precio bajo|buen precio)\b/;
+    const REPORTING = /\b(reporta|reportar|reporto|reporte|registra|registrar|avisa|avisar)\b/;
+    // Palabras que acompañan a la categoría sin nombrar un lugar concreto («un hotel barato cerca»).
+    const GENERIC = /\b(un|una|unos|unas|el|la|los|las|algun|alguna|mas|muy|cercan[oa]s?|cerca|por aqui|aqui|barat[oa]s?|economic[oa]s?|buen[oa]?|para|la|mula|tractomula|camion(es)?|carro|de|con|que|sea|no|caro|precio|bajo)\b/g;
+
+    /** «Dónde tanqueo barato», «un hotel cerca»: categoría sin nombre propio. Con nombre («hotel Tequendama») es NAVIGATE. */
+    function placeSearch(plain, place) {
+        if (REPORTING.test(plain)) return null;
+        const found = PLACE_CATEGORIES.find(c => c.re.test(plain));
+        if (!found) return null;
+        if (place) {
+            const rest = place.replace(found.re, ' ').replace(GENERIC, ' ').replace(/\s+/g, ' ').trim();
+            if (rest) return null;
+        }
+        return { type: 'FIND_PLACES', category: found.category, cheap: CHEAP.test(plain), text: plain };
+    }
+
+    // Peajes: cuánto falta, cuánto cuesta o cuántos hay.
+    const TOLLS = /\b((cuanto|cuantos|cuando|donde|proximo|siguiente|precio|valor|vale|cuesta|cobran|tarifa|hay|quedan|faltan)\b.*\bpeajes?|peajes? (hay|quedan|faltan|me quedan|tengo)|peajes?$)\b/;
+    // Alcance del estado de la vía: en la ruta o alrededor de la posición.
+    const ROUTE_SCOPE = /\b(ruta|camino|trayecto|recorrido|toda la via|hasta el destino)\b/;
+
     const AVOID = /\b(evita|evitar|ruta (alterna|alternativa)|desvio|desviame|otra ruta|cambia de ruta|cambiar de ruta|este tramo|esta via)\b/;
     const REPORT_VERB = /\b(reporta|reportar|reporto|reporte|alerta|avisa|avisar|aviso|hay|hubo|veo|adelante|registra|registrar)\b/;
 
     /**
      * Intención de una orden. Tipos: SOS, COPILOT_OFF, HELP, NEARBY_ALERTS, ACCEPT_LOAD, REJECT_LOAD, CONFIRM_DELIVERY,
      * START_TRIP, HOURS, REPEAT, REROUTE { avoidAhead }, REPORT { alertType, label, closure, description },
-     * LOAD_INFO { field }, NAVIGATE { place }, UNKNOWN.
+     * LOAD_INFO { field }, NAVIGATE { place }, FIND_PLACES { category, cheap }, TOLLS, NEARBY_ALERTS { scope }, UNKNOWN.
      */
     function parse(text) {
         const plain = clean(text);
         if (!plain) return { type: 'EMPTY', text: plain };
         for (const rule of RULES.slice(0, 4)) {
-            if (rule.re.test(plain)) return { type: rule.type, text: plain };
+            if (!rule.re.test(plain)) continue;
+            return rule.type === 'NEARBY_ALERTS'
+                ? { type: rule.type, scope: ROUTE_SCOPE.test(plain) ? 'route' : 'around', text: plain }
+                : { type: rule.type, text: plain };
         }
         const place = navigateTarget(plain);
+        const search = placeSearch(plain, place);
+        if (search) return search;
         if (place) return { type: 'NAVIGATE', place, text: plain };
+        if (TOLLS.test(plain)) return { type: 'TOLLS', text: plain };
         // Un peligro en la vía va antes que las órdenes de carga o ruta ("hay un derrumbe, evita este tramo" es reporte).
         const report = REPORT_TYPES.find(r => r.re.test(plain));
         if (report && report.type === 'traffic' && (ESCAPE.test(plain) || RULES.find(r => r.type === 'REROUTE').re.test(plain))) {

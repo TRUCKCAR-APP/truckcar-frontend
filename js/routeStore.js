@@ -52,6 +52,9 @@
                     durationS: route.durationS,
                     choice: plain(route.choice),
                     clearance: plain(route.clearance),
+                    provider: route.provider || null,
+                    tolls: plain(route.tolls || []),
+                    computedAt: route.computedAt || null,
                     nearby: plain(extra.nearby || []),
                     avoidPoints: plain(extra.avoidPoints || []),
                     savedAt: Date.now()

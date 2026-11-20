@@ -287,7 +287,7 @@ test("sin carga o sin propuesta no se inventa nada; lo no reconocido responde co
   await ctrl.handle("necesito un café");
   assert.match(said.at(-1), /^No entendí\. Puede decir, por ejemplo:/);
   await ctrl.handle("alertas cercanas");
-  assert.equal(said.at(-1), "Hay 2 alertas cerca: derrumbe a 4,2 kilómetros, puesto de control a 12 kilómetros.");
+  assert.equal(said.at(-1), "Hay 2 alertas cerca de su posición: derrumbe a 4,2 kilómetros; puesto de control a 12 kilómetros.");
   await ctrl.handle("tráfico pesado");
   assert.equal(said.at(-1), "Reporte de tráfico pesado registrado en su ubicación.");
   await ctrl.handle("ayuda");
