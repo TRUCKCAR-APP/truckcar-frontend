@@ -116,8 +116,7 @@ window.PublicTracking = (function () {
         map = window.L.map(el, { zoomControl: false, attributionControl: false }).setView([4.6, -74.08], 6);
         window.L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
         const theme = window.TruckCarTheme ? window.TruckCarTheme.getTheme() : 'dark';
-        tileLayer = window.L.tileLayer(theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl,
-            { maxZoom: tiles.maxZoom, attribution: tiles.attribution, crossOrigin: true }).addTo(map);
+        tileLayer = tiles.layer(theme).addTo(map);
         if (typeof ResizeObserver === 'function') {
             let frame = null;
             new ResizeObserver(() => {
@@ -198,8 +197,7 @@ window.PublicTracking = (function () {
     }
 
     window.addEventListener('truckcar:themechange', (event) => {
-        if (tileLayer) tileLayer.setUrl(event.detail.theme === 'light'
-            ? window.TruckCarConfig.map.lightTileUrl : window.TruckCarConfig.map.tileUrl);
+        if (tileLayer) tileLayer.setTheme(event.detail.theme);
     });
 
     return { maybeStart, tokenFromUrl, refresh, stopPolling };

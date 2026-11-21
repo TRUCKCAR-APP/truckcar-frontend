@@ -191,7 +191,7 @@ window.TowerAdmin = (function () {
                 const tiles = window.TruckCarConfig.map;
                 map = window.L.map(body.querySelector('#restriction-map'), { center: [4.6097, -74.0817], zoom: 11, attributionControl: false });
                 window.L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
-                window.L.tileLayer(tiles.tileUrl, { maxZoom: tiles.maxZoom, attribution: tiles.attribution, crossOrigin: true }).addTo(map);
+                tiles.layer('dark').addTo(map);
                 let marker = null;
                 map.on('click', (event) => {
                     const { lat, lng } = event.latlng;
