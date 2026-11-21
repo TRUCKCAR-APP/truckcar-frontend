@@ -18,6 +18,16 @@ const ROUTE_PINS = {
     })
 };
 
+/**
+ * Capa del mapa para el tema: la de TruckCarConfig.map.layer (base y nombres de calles) o, si la configuración no la trae,
+ * una sola capa con tileUrl / lightTileUrl.
+ */
+function tileLayerFor(tiles, theme) {
+    if (typeof tiles.layer === 'function') return tiles.layer(theme);
+    return L.tileLayer(theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl,
+        { maxZoom: tiles.maxZoom, attribution: tiles.attribution, crossOrigin: true });
+}
+
 class MapController {
     constructor() {
         this.map = null;
@@ -96,11 +106,7 @@ class MapController {
 
         const tiles = window.TruckCarConfig.map;
         const theme = window.TruckCarTheme ? window.TruckCarTheme.getTheme() : 'dark';
-        this.baseTileLayer = L.tileLayer(theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl, {
-            maxZoom: tiles.maxZoom,
-            attribution: tiles.attribution,
-            crossOrigin: true
-        }).addTo(this.map);
+        this.baseTileLayer = tileLayerFor(tiles, theme).addTo(this.map);
 
         this.alertMarkersLayer = L.layerGroup().addTo(this.map);
         this.fleetMarkersLayer = L.layerGroup().addTo(this.map);
@@ -878,8 +884,8 @@ class MapController {
 
 window.mapCtrl = new MapController();
 window.addEventListener('truckcar:themechange', (event) => {
-    const tiles = window.TruckCarConfig.map;
-    if (window.mapCtrl.baseTileLayer) {
-        window.mapCtrl.baseTileLayer.setUrl(event.detail.theme === 'light' ? tiles.lightTileUrl : tiles.tileUrl);
-    }
+    const layer = window.mapCtrl.baseTileLayer;
+    if (!layer) return;
+    if (layer.setTheme) layer.setTheme(event.detail.theme);
+    else layer.setUrl(event.detail.theme === 'light' ? window.TruckCarConfig.map.lightTileUrl : window.TruckCarConfig.map.tileUrl);
 });

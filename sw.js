@@ -1,6 +1,6 @@
 ﻿importScripts('js/tileStore.js');
 
-const VERSION = 'v46';
+const VERSION = 'v47';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v2';
@@ -71,7 +71,7 @@ const SHELL = [
 ];
 
 const CDN_HOSTS = ['cdnjs.cloudflare.com', 'unpkg.com'];
-const TILE_HOSTS = /^(tiles\.stadiamaps\.com|([a-d]\.)?basemaps\.cartocdn\.com)$/;
+const TILE_HOSTS = /^(tiles\.stadiamaps\.com|([a-d]\.)?basemaps\.cartocdn\.com|server\.arcgisonline\.com)$/;
 const SCOPE_PATH = new URL('./', self.location).pathname;
 const NETWORK_ONLY_PAGES = ['panel.html', 'seguimiento.html'];
 const STATIC_PREFIXES = ['assets/', 'css/', 'js/', 'fonts/'];
