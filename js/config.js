@@ -22,7 +22,12 @@
     }
     gatewayUrl = gatewayUrl.replace(/\/+$/, '').replace(/\/api\/v1$/, '');
 
-    const MAP_PROVIDER = 'stadia';
+    const mapKeyTag = document.querySelector('meta[name="truckcar-map-api-key"]');
+    const mapApiKey = window.TRUCKCAR_MAP_API_KEY || (mapKeyTag && mapKeyTag.content) || '';
+    // Stadia sin clave solo sirve teselas a localhost (en otro dominio responde 401 y el mapa sale con avisos de error):
+    // fuera de localhost, y sin clave configurada, se usa CARTO, que no la pide. Con TRUCKCAR_MAP_API_KEY se usa Stadia.
+    const onLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const MAP_PROVIDER = mapApiKey || onLocalhost ? 'stadia' : 'carto';
     const MAP_PROVIDERS = {
         stadia: {
             url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
@@ -42,8 +47,6 @@
                 + '&copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
         }
     };
-    const mapKeyTag = document.querySelector('meta[name="truckcar-map-api-key"]');
-    const mapApiKey = window.TRUCKCAR_MAP_API_KEY || (mapKeyTag && mapKeyTag.content) || '';
     const provider = MAP_PROVIDERS[MAP_PROVIDER];
     const withKey = (url) => mapApiKey ? url + '?' + provider.keyParam + '=' + encodeURIComponent(mapApiKey) : url;
     const tileUrl = withKey(provider.url);
