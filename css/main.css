@@ -1076,6 +1076,8 @@ body[data-view="driver"].sos-open .copilot-fab { visibility: hidden; }
     overflow-wrap: anywhere;
 }
 .copilot-banner[data-phase="listening"] { border-left: 4px solid var(--color-accent); }
+/* En Navegar: debajo de la tarjeta de la maniobra, con su ancho (js: copilot.placeBanner). */
+.copilot-banner.is-docked { right: auto; bottom: auto; max-width: none; box-sizing: border-box; }
 
 /* Verificación en dos pasos (js/views/securitySettings.js y el paso 2 de loginView). */
 .two-factor-input {

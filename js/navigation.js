@@ -1283,6 +1283,9 @@ window.RouteGuidance = (function () {
         if (typeof document === 'undefined') return;
         const card = document.querySelector('.nav-screen .hud-card');
         if (!card) return;
+        // El texto del Copiloto va debajo de la tarjeta: se mueve con ella cuando cambia de alto.
+        const copilot = window.VoiceAssistant && window.VoiceAssistant.copilot;
+        if (copilot && copilot.ui && !copilot.ui.banner.hidden) requestAnimationFrame(() => copilot.placeBanner());
         const screen = card.closest('.nav-screen');
         const more = card.querySelector('[data-hud-more]');
         const meta = card.querySelector('.hud-meta');

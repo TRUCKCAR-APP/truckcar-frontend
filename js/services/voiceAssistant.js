@@ -1553,7 +1553,30 @@ window.VoiceAssistant = (function () {
             banner.textContent = text;
             banner.dataset.phase = phase;
             banner.hidden = false;
+            this.placeBanner();
             this.render();
+        },
+
+        /**
+         * En Navegar, el texto va pegado debajo de la tarjeta de la maniobra y con su mismo ancho: abajo lo taparían el
+         * micrófono, «Recentrar» y los botones del mapa. En las demás pantallas queda en su sitio (sobre el botón).
+         */
+        placeBanner() {
+            if (!this.ui) return;
+            const { banner } = this.ui;
+            const card = document.querySelector('.nav-screen .hud-card');
+            const host = banner.offsetParent || banner.parentElement;
+            const visible = card && card.offsetParent !== null && host;
+            banner.classList.toggle('is-docked', Boolean(visible));
+            if (!visible) {
+                banner.style.top = banner.style.left = banner.style.width = '';
+                return;
+            }
+            const box = card.getBoundingClientRect();
+            const frame = host.getBoundingClientRect();
+            banner.style.top = Math.round(box.bottom - frame.top + 8) + 'px';
+            banner.style.left = Math.round(box.left - frame.left) + 'px';
+            banner.style.width = Math.round(box.width) + 'px';
         },
 
         hideBanner(delay = 0) {
