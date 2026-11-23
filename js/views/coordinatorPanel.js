@@ -669,7 +669,7 @@ window.coordinatorCtrl = {
             } catch (error) {
                 busy = false;
                 if (error && error.status === 409) {
-                    showError(error.message || 'La carga no admite esta asignación.');
+                    showError(window.ui.errorMessage(error));
                     await service.loadCoordinatorLoad().catch(() => {});
                     window.store.setState({});
                     const current = (window.TruckCarData.availableLoads || []).find(l => l.backendId === target.backendId);
@@ -704,7 +704,7 @@ window.coordinatorCtrl = {
             window.ui.toast('Conductor notificado', 'success', { description: 'Ya puede aceptar o rechazar la carga #' + loadId + '.' });
         } catch (error) {
             if (error && error.status === 409) {
-                window.ui.toast('No se pudo notificar al conductor', 'warning', { description: error.message });
+                window.ui.toast('No se pudo notificar al conductor', 'warning', { description: window.ui.errorMessage(error) });
                 await window.TruckCarService.loadCoordinatorLoad().catch(() => {});
             } else {
                 window.ui.failure('No se pudo notificar al conductor', error, 'notificar al conductor');

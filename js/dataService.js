@@ -254,7 +254,7 @@
     function recordError(section, error) {
         if (error && (error.status === 403 || error.status === 401)) return;
         console.error('[TruckCar] Error cargando ' + section, error);
-        const errors = { ...window.store.state.dataStatus.errors, [section]: error.message || String(error) };
+        const errors = { ...window.store.state.dataStatus.errors, [section]: window.ui ? window.ui.errorMessage(error) : (error.message || String(error)) };
         setStatus({ errors });
     }
 

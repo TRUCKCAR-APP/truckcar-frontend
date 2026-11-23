@@ -72,10 +72,11 @@ window.VoiceAssistant = (function () {
         return date.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
     }
 
-    /** Mensaje del error para leer: el detail del RFC 7807 que trae ApiError, sin el código de traza. */
+    /** Mensaje del error para decir en voz alta: el mismo texto claro de la pantalla (ui.errorMessage), sin punto final. */
     function errorText(error) {
-        const message = error && (error.detail || error.message) ? String(error.detail || error.message) : 'error desconocido';
-        return message.replace(/\s*\[trace [^\]]*\]\s*$/, '').replace(/[.\s]+$/, '');
+        const message = window.ui && typeof window.ui.friendlyError === 'function' ? window.ui.errorMessage(error)
+            : String((error && (error.detail || error.message)) || 'algo salió mal');
+        return message.replace(/\s*\[trace [^\]]*\]\s*/, '').replace(/[.\s]+$/, '');
     }
 
     const REPORTABLE = 'derrumbe, accidente, vía cerrada, obra, retén, báscula, gálibo bajo, parador seguro o tráfico pesado';

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
 const SESSION_KEY = "truckcar.test.session";
-const RATE_LIMITED = "Demasiados intentos, espere unos segundos";
+const RATE_LIMITED = "Hizo demasiados intentos seguidos. Espere unos segundos e intente de nuevo.";
 
 function reply(status, body = "", headers = {}) {
   const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));

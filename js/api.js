@@ -1,7 +1,7 @@
 (function () {
     const config = window.TruckCarConfig;
 
-    const RATE_LIMITED_MESSAGE = 'Demasiados intentos, espere unos segundos';
+    const RATE_LIMITED_MESSAGE = 'Hizo demasiados intentos seguidos. Espere unos segundos e intente de nuevo.';
 
     class ApiError extends Error {
         constructor(message, { status = 0, details = null, correlationId = null, path = '', retryAfterSeconds = null } = {}) {
@@ -136,7 +136,10 @@
     }
 
     function extractErrorMessage(body, status) {
+        if (typeof body === 'string' && /^\s*\{/.test(body)) body = safeJson(body) || body;
         if (body && typeof body === 'object') {
+            // RFC 7807: detail es el texto para la persona; title es genérico («Unauthorized») y no se usa.
+            if (typeof body.detail === 'string' && body.detail.trim()) return body.detail.trim();
             if (body.message) return body.message;
             const details = validationDetails(body);
             if (details.length) return details.join('. ');
@@ -201,9 +204,10 @@
                 credentials: 'omit'
             });
         } catch (error) {
+            // Técnico a propósito (va a la consola); ui.errorMessage lo convierte en un texto claro para el usuario.
             const message = error.name === 'AbortError'
                 ? 'Tiempo de espera agotado consultando ' + path
-                : 'No hay conexión con el API Gateway (' + config.gatewayUrl + ')';
+                : 'Sin conexión con el servidor de TruckCar';
             throw new ApiError(message, { status: 0, correlationId, path });
         } finally {
             clearTimeout(timer);
@@ -215,7 +219,8 @@
         if (response.status !== 204) {
             const text = await response.text();
             if (text) {
-                payload = contentType.includes('application/json') ? safeJson(text) : text;
+                // application/json y application/problem+json (RFC 7807, el formato de error del gateway y los servicios).
+                payload = /[/+]json\b/i.test(contentType) ? safeJson(text) : text;
             }
         }
 

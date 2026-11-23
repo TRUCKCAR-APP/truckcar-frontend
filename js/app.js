@@ -263,10 +263,10 @@ window.app = {
         } catch (error) {
             const expired = error && error.details && /invalid-2fa-token$/.test(String(error.details.type || ''));
             if (expired) {
-                this.cancelTwoFactor(window.ui.errorMessage(error));
+                this.cancelTwoFactor(window.ui.errorMessage(error, '2fa'));
                 return;
             }
-            window.store.setState({ busyAction: null, authError: window.ui.errorMessage(error) });
+            window.store.setState({ busyAction: null, authError: window.ui.errorMessage(error, '2fa') });
         }
     },
 
@@ -313,7 +313,7 @@ window.app = {
                 if (reset && reset.step === 'code') window.store.setState({ passwordReset: { ...reset } });
             }, wait + 50);
         } catch (error) {
-            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error, 'reset') });
         }
     },
 
@@ -338,7 +338,7 @@ window.app = {
             const response = await window.TruckCarApi.auth.password.verify(reset.email, code);
             window.store.setState({ busyAction: null, passwordReset: { ...reset, step: 'password', resetToken: response.resetToken } });
         } catch (error) {
-            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error, 'reset') });
         }
     },
 
@@ -364,9 +364,9 @@ window.app = {
         } catch (error) {
             const expired = error && error.details && /invalid-reset-token$/.test(String(error.details.type || ''));
             window.store.setState(expired
-                ? { busyAction: null, authError: window.ui.errorMessage(error),
+                ? { busyAction: null, authError: window.ui.errorMessage(error, 'reset'),
                     passwordReset: { step: 'email', email: reset.email, resetToken: null, resendAt: 0 } }
-                : { busyAction: null, authError: this.authErrorMessage(error) });
+                : { busyAction: null, authError: this.authErrorMessage(error, 'reset') });
         }
     },
 
@@ -377,11 +377,8 @@ window.app = {
             loginEmail: reset && reset.email ? reset.email : window.store.state.loginEmail });
     },
 
-    authErrorMessage(error) {
-        if (error && error.isRateLimited) {
-            return window.TruckCarApi.RATE_LIMITED_MESSAGE;
-        }
-        return window.ui.errorMessage(error);
+    authErrorMessage(error, context = 'login') {
+        return window.ui.errorMessage(error, context);
     },
 
     async submitRegister(event) {
@@ -393,7 +390,7 @@ window.app = {
             const session = await window.TruckCarApi.auth.register(window.LoginView.registrationPayload(form));
             await this.startSession(session);
         } catch (error) {
-            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error) });
+            window.store.setState({ busyAction: null, authError: this.authErrorMessage(error, 'register') });
         }
     },
 

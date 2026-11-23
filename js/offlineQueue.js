@@ -142,7 +142,7 @@
                             await uploadDeliveryEvidence(event);
                         } catch (error) {
                             if (!isPermanent(error)) throw error;
-                            dropped.push({ clientEventId: event.clientEventId, reason: error.message });
+                            dropped.push({ clientEventId: event.clientEventId, reason: (window.ui && window.ui.errorMessage ? window.ui.errorMessage(error) : error.message) });
                         }
                     }
                     if (dropped.length) {
@@ -163,7 +163,7 @@
                         });
                     } catch (error) {
                         if (error.status !== 400) throw error;
-                        response = { rejected: batch.map(e => ({ clientEventId: e.clientEventId, reason: error.message })) };
+                        response = { rejected: batch.map(e => ({ clientEventId: e.clientEventId, reason: (window.ui && window.ui.errorMessage ? window.ui.errorMessage(error) : error.message) })) };
                     }
                     await settle(batch, response || {});
                 }
@@ -173,7 +173,7 @@
             status.lastError = null;
         } catch (error) {
             attempt += 1;
-            status.lastError = (error && error.message) || String(error);
+            status.lastError = error ? (window.ui && window.ui.errorMessage ? window.ui.errorMessage(error) : error.message) : 'Algo salió mal.';
             scheduleFlush(backoffDelay(attempt));
         } finally {
             await refreshStatus();
