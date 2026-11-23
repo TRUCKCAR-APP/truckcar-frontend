@@ -1491,6 +1491,58 @@ body[data-view="driver"].sos-open .copilot-fab { visibility: hidden; }
     padding: calc(var(--space-10) + var(--safe-top)) calc(var(--gutter) + var(--safe-right)) calc(var(--space-6) + var(--safe-bottom)) calc(var(--gutter) + var(--safe-left));
 }
 .login-form { width: 100%; max-width: 432px; margin: auto; }
+.login-aside { display: none; }
+
+/* Inicio de sesión fuera del celular: sin el marco de teléfono (480 px) de la app del conductor. */
+body[data-view="login"] .phone-frame { max-width: none !important; max-height: none !important; border: 0 !important; border-radius: 0 !important; }
+
+/* Tableta vertical (y celular acostado): el formulario en una tarjeta centrada sobre el fondo. */
+@media (min-width: 641px) and (max-width: 959px) {
+    .login-screen { background: var(--color-surface); padding: var(--space-10) var(--space-6); }
+    .login-form {
+        max-width: 520px; padding: var(--space-10) var(--space-8, 40px);
+        background: var(--color-bg); border: var(--border-subtle); border-radius: var(--radius-xl); box-shadow: var(--elev-2);
+    }
+}
+
+/* Computador y tableta horizontal: marca a la izquierda, formulario a la derecha. */
+@media (min-width: 960px) {
+    .login-screen { display: grid; grid-template-columns: minmax(380px, 42%) 1fr; padding: 0; }
+    .login-aside {
+        position: sticky; top: 0; align-self: start; height: 100vh; height: 100dvh;
+        display: flex; flex-direction: column; justify-content: center; gap: var(--space-8, 40px);
+        padding: var(--space-10) clamp(var(--space-8, 40px), 5vw, 80px);
+        /* Siempre grafito oscuro con el logo blanco, en tema claro y oscuro (el tema claro invierte la escala grafito). */
+        --aside-ink: 236 238 241; --aside-ink-soft: 197 202 209;
+        background: rgb(20 23 28); color: rgb(var(--aside-ink));
+        border-right: 1px solid rgb(255 255 255 / 0.08); overflow: hidden;
+    }
+    .login-aside-logo { width: 132px; height: auto; }
+    .login-aside-title {
+        margin: 0; max-width: 18ch;
+        font-size: clamp(1.75rem, 2.4vw, 2.5rem); font-weight: var(--weight-bold);
+        letter-spacing: var(--tracking-display); line-height: var(--leading-tight);
+    }
+    .login-aside-points { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-5, 20px); max-width: 420px; }
+    .login-aside-points li { display: flex; gap: var(--space-3); align-items: flex-start; color: rgb(var(--aside-ink-soft)); line-height: 1.45; }
+    .login-aside-points .ui-icon { width: 24px; height: 24px; margin-top: 1px; color: var(--color-accent); }
+    .login-aside-points strong { display: block; color: rgb(var(--aside-ink)); font-weight: var(--weight-bold); }
+    .login-form { align-self: center; justify-self: center; max-width: 440px; padding: var(--space-10) var(--space-8, 40px); }
+    /* El logo ya está en el panel. */
+    .login-form .login-mark { display: none; }
+    .login-form h1 { margin-top: 0; }
+}
+/* Pantallas anchas de poca altura (portátiles, tableta horizontal): el panel se compacta para que quepa entero. */
+@media (min-width: 960px) and (max-height: 820px) {
+    .login-aside { gap: var(--space-6); }
+    .login-aside-logo { width: 104px; }
+    .login-aside-title { font-size: clamp(1.5rem, 2vw, 2rem); }
+    .login-aside-points { gap: var(--space-3); }
+}
+/* Pantallas anchas pero muy bajas (celular acostado grande): solo logo y frase, sin la lista. */
+@media (min-width: 960px) and (max-height: 600px) {
+    .login-aside-points { display: none; }
+}
 .login-mark { width: 112px; height: auto; }
 .login-form h1 {
     margin: var(--space-6) 0 var(--space-2);
