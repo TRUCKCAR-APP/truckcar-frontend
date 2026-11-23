@@ -51,3 +51,13 @@ test("en localhost sigue Stadia (una sola capa); con clave configurada, Stadia e
 test("la caché sin conexión guarda también las teselas de Esri", () => {
   assert.match(readFileSync("sw.js", "utf8"), /server\\\.arcgisonline\\\.com/);
 });
+
+test("la compilación inyecta la clave de Stadia desde TRUCKCAR_MAP_API_KEY y rechaza valores raros", async () => {
+  const { injectMapApiKey } = await import("../scripts/inject-config.mjs");
+  const html = readFileSync("index.html", "utf8");
+  assert.match(injectMapApiKey(html, "a1b2c3d4-e5f6-7890-abcd-ef0123456789"), /name="truckcar-map-api-key" content="a1b2c3d4-e5f6-7890-abcd-ef0123456789"/);
+  assert.match(injectMapApiKey(html, ""), /name="truckcar-map-api-key" content=""/);
+  assert.throws(() => injectMapApiKey(html, '"><script>'), /formato/);
+  assert.match(readFileSync("Dockerfile", "utf8"), /ARG TRUCKCAR_MAP_API_KEY/);
+  assert.match(readFileSync("scripts/stage-android.mjs", "utf8"), /injectMapApiKey\(/);
+});

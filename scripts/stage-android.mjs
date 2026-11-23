@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { injectApiBaseUrl } from "./inject-config.mjs";
+import { injectApiBaseUrl, injectMapApiKey } from "./inject-config.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ASSETS = join(ROOT, "android", "app", "src", "main", "assets");
@@ -50,7 +50,8 @@ function main() {
   for (const entry of WEB) cpSync(join(ROOT, entry), join(PUBLIC, entry), { recursive: true });
 
   const index = join(PUBLIC, "index.html");
-  writeFileSync(index, injectApiBaseUrl(readFileSync(index, "utf8"), apiBaseUrl, { requireUrl: true, requireHttps: true }));
+  writeFileSync(index, injectMapApiKey(injectApiBaseUrl(readFileSync(index, "utf8"), apiBaseUrl, { requireUrl: true, requireHttps: true }),
+    process.env.TRUCKCAR_MAP_API_KEY));
 
   const config = createRequire(import.meta.url)(join(ROOT, "capacitor.config.js"));
   writeFileSync(join(ASSETS, "capacitor.config.json"), JSON.stringify({ ...config, webDir: "public" }, null, 2));
@@ -66,7 +67,7 @@ function main() {
   }
 
   console.log("android/: web copiada, URL del API inyectada, " + plugins.length + " plugin(s) nativo(s): "
-    + plugins.map((p) => p.pkg).join(", ") + (model ? "; modelo de voz Vosk incluido" : "; SIN modelo Vosk (la frase usa el reconocedor de Android)"));
+    + plugins.map((p) => p.pkg).join(", ") + (process.env.TRUCKCAR_MAP_API_KEY ? "; mapa Stadia con clave" : "; mapa sin clave (Esri)") + (model ? "; modelo de voz Vosk incluido" : "; SIN modelo Vosk (la frase usa el reconocedor de Android)"));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {

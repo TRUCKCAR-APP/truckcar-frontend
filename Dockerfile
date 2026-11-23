@@ -7,7 +7,8 @@ COPY css ./css
 COPY js ./js
 COPY scripts ./scripts
 ARG TRUCKCAR_API_BASE_URL=""
-RUN npm run build:css && TRUCKCAR_API_BASE_URL="$TRUCKCAR_API_BASE_URL" node scripts/inject-config.mjs index.html
+ARG TRUCKCAR_MAP_API_KEY=""
+RUN npm run build:css && TRUCKCAR_API_BASE_URL="$TRUCKCAR_API_BASE_URL" TRUCKCAR_MAP_API_KEY="$TRUCKCAR_MAP_API_KEY" node scripts/inject-config.mjs index.html
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY manifest.webmanifest sw.js /usr/share/nginx/html/

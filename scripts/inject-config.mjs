@@ -2,6 +2,19 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const META = /(<meta name="truckcar-api-base-url" content=")[^"]*(">)/;
+const MAP_KEY_META = /(<meta name="truckcar-map-api-key" content=")[^"]*(">)/;
+
+/**
+ * Clave de Stadia Maps (TRUCKCAR_MAP_API_KEY). Sin clave, Stadia solo sirve a localhost y config.js usa Esri; con
+ * ella, Stadia funciona en cualquier dominio y en la APK. Es una clave de cliente (viaja en cada tesela), no un secreto
+ * del servidor: limítela en el panel de Stadia y no la ponga en el repositorio.
+ */
+export function injectMapApiKey(html, mapApiKey) {
+  const value = String(mapApiKey || "").trim();
+  if (!MAP_KEY_META.test(html)) throw new Error("index.html no tiene la etiqueta meta truckcar-map-api-key");
+  if (value && !/^[A-Za-z0-9_-]{8,128}$/.test(value)) throw new Error("TRUCKCAR_MAP_API_KEY no tiene el formato de una clave de Stadia");
+  return html.replace(MAP_KEY_META, (match, open, close) => open + value + close);
+}
 
 export function injectApiBaseUrl(html, apiBaseUrl, { requireUrl = false, requireHttps = false } = {}) {
   const value = String(apiBaseUrl || "").trim();
@@ -30,12 +43,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
     process.exit(1);
   }
   try {
-    const html = injectApiBaseUrl(readFileSync(target, "utf8"), process.env.TRUCKCAR_API_BASE_URL, {
+    const html = injectMapApiKey(injectApiBaseUrl(readFileSync(target, "utf8"), process.env.TRUCKCAR_API_BASE_URL, {
       requireUrl: args.includes("--require-url"),
       requireHttps: args.includes("--require-https")
-    });
+    }), process.env.TRUCKCAR_MAP_API_KEY);
     writeFileSync(target, html);
-    console.log(target + ": URL del API " + (process.env.TRUCKCAR_API_BASE_URL ? "inyectada" : "vacía (mismo origen)"));
+    console.log(target + ": URL del API " + (process.env.TRUCKCAR_API_BASE_URL ? "inyectada" : "vacía (mismo origen)")
+      + "; mapa " + (process.env.TRUCKCAR_MAP_API_KEY ? "Stadia con clave" : "sin clave (Esri fuera de localhost)"));
   } catch (error) {
     console.error(error.message);
     process.exit(1);
