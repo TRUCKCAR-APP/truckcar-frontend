@@ -123,5 +123,5 @@ test("los números dichos en palabras pasan a cifras para buscar el lugar", () =
   assert.equal(place("quiero ir al portal de la ochenta"), "portal de la 80");
   assert.equal(place("llévame a la calle setenta y dos con carrera quince"), "calle 72 con carrera 15");
   assert.equal(place("voy a la avenida ciento cuarenta"), "avenida 140");
-  assert.equal(place("llévame a un hospital"), "hospital", "«un» no es un número");
+  assert.equal(place("llévame a un colegio"), "colegio", "«un» no es un número");
 });

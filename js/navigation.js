@@ -16,6 +16,13 @@ window.RouteGuidance = (function () {
     const DETOUR_OFFSET_DEG = 0.03;
     const RETRY_ONLINE_MS = 60000;
     const AI_ALERT_OK_MS = 20000;
+    // Parada elegida por el conductor (restaurante, estación, hotel…) dentro de la ruta guiada.
+    const STOP_ARRIVED_M = 80;
+    const STOP_PASSED_M = 250;
+    const STOP_LEFT_M = 400;
+    const STOP_GRACE_MS = 15000;
+    const STOP_AHEAD_M = 60000;
+    const STOP_MAX_DETOUR_M = 5000;
 
     let route = null;
     let status = 'idle';
@@ -34,6 +41,11 @@ window.RouteGuidance = (function () {
     const handledBlockages = new Set();
     let lastNetworkTry = 0;
     let aiAlertTimer = null;
+    /**
+     * Parada intermedia: { title, address, phone, coords, destination, alongM, addedAt, reached, skipped, arrivedAt }.
+     * La ruta guiada pasa por ella y sigue al destino (destination); al llegar se anuncia y al arrancar se sigue sola.
+     */
+    let stop = null;
     const MAX_HUD_ALERTS = 2;
     const EXPANDED_ALERTS_MS = 15000;
     let alertsExpanded = false;
@@ -187,7 +199,7 @@ window.RouteGuidance = (function () {
      * Rutas de HERE para el camión (altura, peso, ejes y tráfico) desde la posición actual, evitando las zonas dadas.
      * null si no hay vehículo, si el servicio no responde o si no devuelve rutas: quien llama usa el respaldo OSRM.
      */
-    async function hereRoutes(position, destination, avoid) {
+    async function hereRoutes(position, destination, avoid, via = []) {
         const api = window.TruckCarApi && window.TruckCarApi.routes;
         const vehicle = currentVehicle();
         if (!api || !api.reroute || !vehicle || !position || !destination) return null;
@@ -197,7 +209,8 @@ window.RouteGuidance = (function () {
                 destinationLatitude: destination[0], destinationLongitude: destination[1],
                 heightMeters: vehicle.height, grossWeightTons: vehicle.grossWeight,
                 ...(TRUCK_CODE.test(vehicle.category || '') ? { truckType: vehicle.category } : {}),
-                avoid: avoid.slice(-10).map(p => ({ latitude: p.lat, longitude: p.lng, radiusMeters: AVOID_RADIUS_M }))
+                avoid: avoid.slice(-10).map(p => ({ latitude: p.lat, longitude: p.lng, radiusMeters: AVOID_RADIUS_M })),
+                ...(via.length ? { via: via.map(p => ({ latitude: p[0], longitude: p[1] })) } : {})
             });
             const routes = (response && Array.isArray(response.routes) ? response.routes : [])
                 .filter(r => Array.isArray(r.geometry) && r.geometry.length >= 2).slice(0, MAX_ALTERNATIVES);
@@ -250,6 +263,7 @@ window.RouteGuidance = (function () {
         // Un destino elegido por el conductor manda hasta que termine esa navegación.
         if (freeDestination) return;
         if (loadId !== load.backendId) {
+            clearStop();
             avoidPoints = [];
             aiAlert = null;
             handledBlockages.clear();
@@ -312,10 +326,11 @@ window.RouteGuidance = (function () {
     async function reroute(position) {
         if (!route || Date.now() - lastReroute < REROUTE_COOLDOWN_MS) return;
         lastReroute = Date.now();
-        const destination = route.geometry[route.geometry.length - 1];
+        const destination = finalDestination();
         const key = route.key;
         try {
-            const candidates = avoiding((await requestRoutes([position, destination])).map(osrm => buildRoute(osrm, key, 'recalculada')));
+            const candidates = avoiding((await requestRoutes([position, ...pendingVia(position), destination]))
+                .map(osrm => buildRoute(osrm, key, 'recalculada')));
             if (!route || route.key !== key) return;
             const chosen = await chooseRoute(candidates);
             if (!route || route.key !== key) return;
@@ -425,6 +440,7 @@ window.RouteGuidance = (function () {
         const destination = [place.latitude, place.longitude];
         const key = 'DESTINO-' + Date.now();
         freeDestination = { key, title: place.title, address: place.address || null, coords: destination };
+        clearStop();
         loadId = null;
         currentLoad = null;
         avoidPoints = [];
@@ -502,7 +518,13 @@ window.RouteGuidance = (function () {
             position: point
         };
         progress.alongM = alongM;
-        announce(next, progress);
+        // Un aviso de la parada (llegó, la pasó, seguimos) no lo corta la maniobra de ese momento, que va con prioridad.
+        if (trackStop(point.coords, alongM, offM)) {
+            announced.add(progress.nextIndex + ':near');
+            announced.add(progress.nextIndex + ':far');
+        } else {
+            announce(next, progress);
+        }
         const restriction = nextClearance(alongM);
         if (restriction && window.voiceEngine && restriction.alongM - alongM <= CLEARANCE_ANNOUNCE_M
             && !announced.has('clearance:' + restriction.id)) {
@@ -622,6 +644,8 @@ window.RouteGuidance = (function () {
     function useRoute(chosen, candidates) {
         route = chosen;
         clearance = chosen.clearance;
+        if (stop && !stop.reached) stop.alongM = project(route.geometry, route.cumulative, stop.coords).alongM;
+        showStopMarker();
         if (window.mapCtrl && window.mapCtrl.drawGuidanceLine) {
             window.mapCtrl.drawGuidanceLine(route.geometry, candidates.filter(c => c !== chosen).map(c => c.geometry));
         }
@@ -729,13 +753,14 @@ window.RouteGuidance = (function () {
     }
 
     async function detourCandidates(position, point, avoidList = avoidPoints) {
-        const destination = route.geometry[route.geometry.length - 1];
+        const destination = finalDestination();
+        const stopVia = pendingVia(position);
         const key = route.key;
-        const direct = (await requestRoutes([position, destination])).map(osrm => buildRoute(osrm, key, 'desvío'));
+        const direct = (await requestRoutes([position, ...stopVia, destination])).map(osrm => buildRoute(osrm, key, 'desvío'));
         let clean = direct.filter(c => !passesNear(c, avoidList));
         if (clean.length) return clean;
         const viaRoutes = await Promise.all(detourVias(point).map(via =>
-            requestRoutes([position, via, destination]).then(rs => rs.map(osrm => buildRoute(osrm, key, 'desvío')), () => [])));
+            requestRoutes([position, via, ...stopVia, destination]).then(rs => rs.map(osrm => buildRoute(osrm, key, 'desvío')), () => [])));
         clean = viaRoutes.flat().filter(c => !passesNear(c, avoidList));
         return clean;
     }
@@ -745,17 +770,253 @@ window.RouteGuidance = (function () {
      * por puntos laterales cuando hay un tramo que evitar).
      */
     async function rerouteCandidates(position, avoidList, avoidPoint) {
-        const destination = route.geometry[route.geometry.length - 1];
+        const destination = finalDestination();
+        const stopVia = pendingVia(position);
         const key = route.key;
-        const here = await hereRoutes(position, destination, avoidList);
+        const here = await hereRoutes(position, destination, avoidList, stopVia);
         if (here) {
             return here.map(option => buildRoute(option, key, avoidPoint ? 'desvío' : 'recalculada'))
                 .filter(c => !passesNear(c, avoidList));
         }
         if (avoidPoint) return detourCandidates(position, avoidPoint, avoidList);
-        const found = (await requestRoutes([position, destination])).map(osrm => buildRoute(osrm, key, 'recalculada'));
+        const found = (await requestRoutes([position, ...stopVia, destination])).map(osrm => buildRoute(osrm, key, 'recalculada'));
         const clean = found.filter(c => !passesNear(c, avoidList));
         return clean.length ? clean : found;
+    }
+
+    // ── Parada elegida por el conductor ─────────────────────────────────────────────────────────────────────────
+
+    /** Destino final de la ruta guiada (con parada, la ruta termina en el destino guardado en la parada). */
+    function finalDestination() {
+        return stop ? stop.destination : route.geometry[route.geometry.length - 1];
+    }
+
+    /** [coords] de la parada si todavía está adelante; si el camión ya la pasó, la marca como pasada y no la incluye. */
+    function pendingVia(position) {
+        if (!stop || stop.reached) return [];
+        if (position && route && stop.alongM != null) {
+            const at = project(route.geometry, route.cumulative, position);
+            if (at.offM <= OFF_ROUTE_M && at.alongM > stop.alongM + STOP_PASSED_M) {
+                stop.reached = true;
+                stop.skipped = true;
+                showStopMarker();
+                return [];
+            }
+        }
+        return [stop.coords];
+    }
+
+    function speak(text) {
+        if (window.voiceEngine) window.voiceEngine.speak(text, true);
+    }
+
+    function clearStop() {
+        stop = null;
+        showStopMarker();
+    }
+
+    function showStopMarker() {
+        if (window.mapCtrl && window.mapCtrl.showStopMarker) {
+            window.mapCtrl.showStopMarker(stop && !stop.reached ? { coords: stop.coords, title: stop.title } : null);
+        }
+    }
+
+    /**
+     * Llegada a la parada, paso de largo sin parar y salida después de parar (la guía sigue sola al destino).
+     * true si dijo algo.
+     */
+    function trackStop(position, alongM, offM) {
+        if (!stop) return false;
+        const away = distanceM(position, stop.coords);
+        if (!stop.reached) {
+            if (away <= STOP_ARRIVED_M && Date.now() - stop.addedAt > STOP_GRACE_MS) {
+                stop.reached = true;
+                stop.arrivedAt = Date.now();
+                showStopMarker();
+                speak('Llegó a su parada: ' + stop.title + '. Cuando quiera seguir, diga «seguimos» o arranque; la ruta continúa al destino.');
+                return true;
+            }
+            if (stop.alongM != null && offM <= OFF_ROUTE_M && alongM > stop.alongM + STOP_PASSED_M) {
+                const title = stop.title;
+                clearStop();
+                speak('Dejó atrás la parada ' + title + '. Sigo hacia el destino.');
+                return true;
+            }
+            return false;
+        }
+        if (!stop.skipped && away > STOP_LEFT_M) {
+            clearStop();
+            speak('Seguimos hacia el destino.');
+            return true;
+        }
+        return false;
+    }
+
+    /** Metros y segundos desde la posición actual hasta la parada, por la ruta. */
+    function toStop() {
+        if (!stop || stop.reached || !route || stop.alongM == null) return null;
+        const done = progress && progress.alongM != null ? progress.alongM : 0;
+        const meters = Math.max(0, stop.alongM - done);
+        const seconds = Number.isFinite(route.durationS) && route.totalM > 0 ? route.durationS * meters / route.totalM : null;
+        return { meters, seconds };
+    }
+
+    /**
+     * Paradas del tipo pedido en lo que falta de la ruta (Route-AI: HERE + OpenStreetMap, con el desvío real para el
+     * camión). { status: 'no-route' } sin ruta; { status: 'ok', stops } (puede venir vacía); lanza si no hay servicio.
+     */
+    async function searchStops(category, { maxDetourMeters = STOP_MAX_DETOUR_M, aheadMeters = STOP_AHEAD_M } = {}) {
+        const api = window.TruckCarApi && window.TruckCarApi.routes;
+        if (!route || !api || !api.stops) return { status: 'no-route' };
+        const vehicle = currentVehicle();
+        const position = currentPosition();
+        if (!vehicle) return { status: 'no-vehicle' };
+        const done = project(route.geometry, route.cumulative, position).alongM;
+        const ahead = [];
+        // Lo que falta de la ruta, hasta aheadMeters (un punto cada ~150 m como mínimo para no enviar miles).
+        let last = null;
+        for (let i = 0; i < route.geometry.length; i++) {
+            const along = route.cumulative[i];
+            if (along < done) continue;
+            if (along - done > aheadMeters) { ahead.push(route.geometry[i]); break; }
+            if (!last || distanceM(last, route.geometry[i]) >= 150 || i === route.geometry.length - 1) {
+                ahead.push(route.geometry[i]);
+                last = route.geometry[i];
+            }
+        }
+        if (ahead.length < 2) ahead.push(finalDestination());
+        const destination = finalDestination();
+        const response = await api.stops({
+            latitude: position[0], longitude: position[1],
+            destinationLatitude: destination[0], destinationLongitude: destination[1],
+            ahead: ahead.slice(0, 5000),
+            category,
+            heightMeters: vehicle.height, grossWeightTons: vehicle.grossWeight,
+            ...(TRUCK_CODE.test(vehicle.category || '') ? { truckType: vehicle.category } : {}),
+            maxDetourMeters, aheadMeters, limit: 3
+        });
+        const stops = (response && Array.isArray(response.stops) ? response.stops : [])
+            .filter(s => s && Number.isFinite(s.latitude) && Number.isFinite(s.longitude) && s.title);
+        return { status: 'ok', stops, sources: response && response.sources ? response.sources : [] };
+    }
+
+    /**
+     * Agrega (o cambia) la parada: recalcula «aquí → parada → destino» para el camión (HERE; respaldo OSRM) sin perder
+     * la carga ni el destino. Devuelve { ok, title, toStopM, toStopS, extraM, extraS, replaced, restricted } o
+     * { ok: false, reason } ('no-route', 'no-place', 'offline', 'changed').
+     */
+    async function addStop(place) {
+        if (!route) return { ok: false, reason: 'no-route' };
+        if (!place || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) return { ok: false, reason: 'no-place' };
+        const key = route.key;
+        const position = currentPosition();
+        const destination = finalDestination();
+        const coords = [place.latitude, place.longitude];
+        const replaced = stop && !stop.reached ? stop.title : null;
+        // El «antes» es la ruta directa (sin la parada anterior), para decir cuánto suma esta.
+        const left = remaining();
+        let candidates;
+        try {
+            const viaHere = await hereRoutes(position, destination, avoidPoints, [coords]);
+            candidates = viaHere
+                ? viaHere.map(option => buildRoute(option, key, 'parada'))
+                : (await requestRoutes([position, coords, destination])).map(osrm => buildRoute(osrm, key, 'parada'));
+        } catch (e) {
+            return { ok: false, reason: 'offline' };
+        }
+        if (!route || route.key !== key) return { ok: false, reason: 'changed' };
+        if (!candidates.length) return { ok: false, reason: 'offline' };
+        const chosen = await chooseRoute(candidates);
+        if (!route || route.key !== key) return { ok: false, reason: 'changed' };
+        stop = { title: String(place.title).slice(0, 80), address: place.address || null, phone: place.phone || null,
+            coords, destination, alongM: null, addedAt: Date.now(), reached: false, skipped: false, arrivedAt: null };
+        announced.clear();
+        useRoute(chosen, candidates);
+        lastReroute = Date.now();
+        persist();
+        refreshNearby(chosen);
+        update({ coords: position });
+        const ahead = toStop();
+        const baseline = Number.isFinite(place.detourMeters) ? null : left;
+        return { ok: true, title: stop.title, replaced,
+            toStopM: ahead ? ahead.meters : null, toStopS: ahead ? ahead.seconds : null,
+            extraM: Number.isFinite(place.detourMeters) ? place.detourMeters
+                : baseline && Number.isFinite(baseline.remainingM) ? Math.max(0, chosen.totalM - baseline.remainingM) : null,
+            extraS: Number.isFinite(place.detourSeconds) ? place.detourSeconds
+                : baseline && Number.isFinite(baseline.durationS) && Number.isFinite(chosen.durationS) ? Math.max(0, chosen.durationS - baseline.durationS) : null,
+            remainingM: chosen.totalM, durationS: chosen.durationS,
+            restricted: Boolean(chosen.choice && chosen.choice.restricted), provider: chosen.provider };
+    }
+
+    /**
+     * Quita la parada: si aún no llegó, recalcula directo al destino. { ok, title, rerouted } o
+     * { ok: false, reason } ('no-stop', 'offline', 'changed').
+     */
+    async function removeStop() {
+        if (!stop) return { ok: false, reason: 'no-stop' };
+        const title = stop.title;
+        if (stop.reached || !route) {
+            clearStop();
+            notify();
+            return { ok: true, title, rerouted: false };
+        }
+        const key = route.key;
+        const position = currentPosition();
+        const saved = stop;
+        stop = null;
+        let candidates;
+        try {
+            candidates = await rerouteCandidates(position, avoidPoints, null);
+        } catch (e) {
+            candidates = [];
+        }
+        if (!route || route.key !== key) return { ok: false, reason: 'changed' };
+        if (!candidates.length) {
+            stop = saved;
+            return { ok: false, reason: 'offline' };
+        }
+        const chosen = await chooseRoute(candidates);
+        if (!route || route.key !== key) return { ok: false, reason: 'changed' };
+        announced.clear();
+        useRoute(chosen, candidates);
+        lastReroute = Date.now();
+        persist();
+        update({ coords: position });
+        return { ok: true, title, rerouted: true, remainingM: chosen.totalM, durationS: chosen.durationS };
+    }
+
+    /** «Ya llegué» en la parada: la da por alcanzada (para que «seguimos» o arrancar continúe al destino). */
+    function markStopReached() {
+        if (!stop) return { ok: false, reason: 'no-stop' };
+        if (!stop.reached) {
+            stop.reached = true;
+            stop.arrivedAt = Date.now();
+            showStopMarker();
+            notify();
+        }
+        return { ok: true, title: stop.title };
+    }
+
+    /** «Seguimos» después de parar: termina la parada; la ruta ya continúa al destino. */
+    function resumeAfterStop() {
+        if (!stop) return { ok: false, reason: 'no-stop' };
+        if (!stop.reached) {
+            const ahead = toStop();
+            return { ok: false, reason: 'not-there', title: stop.title, toStopM: ahead ? ahead.meters : null };
+        }
+        const title = stop.title;
+        clearStop();
+        notify();
+        const left = remaining();
+        return { ok: true, title, remainingM: left ? left.remainingM : null, durationS: left ? left.durationS : null };
+    }
+
+    /** La parada actual para el Copiloto: título, si ya llegó, cuánto falta y teléfono. null sin parada. */
+    function stopInfo() {
+        if (!stop) return null;
+        const ahead = toStop();
+        return { title: stop.title, address: stop.address, phone: stop.phone, reached: stop.reached,
+            toStopM: ahead ? ahead.meters : null, toStopS: ahead ? ahead.seconds : null };
     }
 
     async function handleBlockage(blockage) {
@@ -896,6 +1157,7 @@ window.RouteGuidance = (function () {
             clearance: clearanceHud(p),
             routeNotice: aiAlert ? null : routeNotice(),
             aiAlert,
+            stop: stop && !stop.reached ? { title: stop.title, distance: (() => { const a = toStop(); return a ? formatDistance(a.meters) : ''; })() } : null,
             restored: !!(route && route.restored)
         };
     }
@@ -1000,6 +1262,9 @@ window.RouteGuidance = (function () {
         });
         set('[data-nav-ai-alert-text]', s.aiAlert ? s.aiAlert.text : '');
         set('[data-nav-ai-alert-sub]', s.aiAlert ? '· ' + s.aiAlert.sub : '');
+        document.querySelectorAll('[data-nav-stop]').forEach(el => { el.hidden = !s.stop; });
+        set('[data-nav-stop-text]', s.stop ? 'Parada: ' + s.stop.title : '');
+        set('[data-nav-stop-sub]', s.stop && s.stop.distance ? '· a ' + s.stop.distance : '');
         layoutAlerts();
     }
 
@@ -1103,6 +1368,7 @@ window.RouteGuidance = (function () {
     if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', () => layoutAlerts());
 
     function reset() {
+        clearStop();
         freeDestination = null;
         route = null;
         status = 'idle';
@@ -1178,6 +1444,8 @@ window.RouteGuidance = (function () {
         tollsAhead,
         prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, durationText, handleBlockage, layoutAlerts, toggleAlerts,
         recalculate, planReroute, applyReroute, remaining, navigateTo, endFreeNavigation, minutesText, arrivalText,
+        searchStops, addStop, removeStop, markStopReached, resumeAfterStop, stopInfo,
+        get stop() { return stop; },
         get freeDestination() { return freeDestination; },
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         get route() { return route; },

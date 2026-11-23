@@ -9,6 +9,18 @@ window.DestinationSearch = (function () {
             : (meters / 1000).toLocaleString('es-CO', { maximumFractionDigits: meters < 10000 ? 1 : 0 }) + ' km';
     }
 
+    /** Lo que suma al viaje una parada sobre la ruta (viene de la búsqueda de paradas). */
+    function detourText(p) {
+        if (!Number.isFinite(p.detourSeconds)) return '';
+        return p.detourSeconds < 90 ? 'casi sin desvío' : '+' + Math.round(p.detourSeconds / 60) + ' min al viaje';
+    }
+
+    /** Con una carga en curso, lo que se elija aquí es una parada antes de su destino (la carga no se abandona). */
+    function addsStop() {
+        const guidance = window.RouteGuidance;
+        return Boolean(guidance && guidance.route && !guidance.freeDestination);
+    }
+
     /** Lista de resultados con su número (el mismo que dice el Copiloto: «la segunda»). */
     function resultsHtml(places) {
         const esc = window.ui.escape;
@@ -19,7 +31,7 @@ window.DestinationSearch = (function () {
                     <span class="dest-number" aria-hidden="true">${i + 1}</span>
                     <span class="dest-text">
                         <span class="dest-title">${esc(p.title)}</span>
-                        <span class="dest-sub">${esc([p.category, p.address, distanceText(p.distanceMeters)].filter(Boolean).join(' · '))}</span>
+                        <span class="dest-sub">${esc([p.category, p.address, distanceText(p.distanceMeters), detourText(p)].filter(Boolean).join(' · '))}</span>
                     </span>
                     ${icon('caret-right')}
                 </button>
@@ -47,9 +59,11 @@ window.DestinationSearch = (function () {
                 </label>
             </form>
             <div data-dest-area aria-live="polite">${places ? resultsHtml(places) : '<p class="sheet-note">La ruta se calcula para su camión desde su posición actual.</p>'}</div>`;
+        const asStop = addsStop();
         const closed = window.Sheet.open({
-            title: '¿A dónde va?',
-            subtitle: 'Busque cualquier destino, aunque no sea el de una carga.',
+            title: asStop ? '¿Dónde paramos?' : '¿A dónde va?',
+            subtitle: asStop ? 'Tiene una carga en curso: el lugar que elija queda como parada antes de su destino.'
+                : 'Busque cualquier destino, aunque no sea el de una carga.',
             body,
             // Con lugares ya buscados (por voz) se enfoca la primera opción, no el campo: así no se abre el teclado.
             ...(places ? { initialFocus: places.length ? '[data-dest-index="0"]' : '.sheet-title' } : {}),

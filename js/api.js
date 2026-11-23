@@ -439,6 +439,8 @@
             reroute: (request) => http.post('/routes/reroute', request, { timeoutMs: 12000 }),
             // Destinos por nombre (HERE) para la navegación libre, cerca de la posición del conductor.
             places: (q, lat, lng) => http.get('/routes/places', { query: { q, lat, lng, limit: 5 }, timeoutMs: 10000 }),
+            // Paradas sobre la ruta (HERE + OpenStreetMap) con el desvío real del camión: «quiero comer», «descansar».
+            stops: (request) => http.post('/routes/stops', request, { timeoutMs: 25000 }),
             historyByPlate: (plate) => http.get('/routes/history/' + enc(plate))
         },
 

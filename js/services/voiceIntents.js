@@ -135,12 +135,40 @@ window.VoiceIntents = (function () {
     const ORDINALS = [/^(?:la |el )?(?:primera|primero|uno|una|1)\b/, /^(?:la |el )?(?:segunda|segundo|dos|2)\b/,
         /^(?:la |el )?(?:tercera|tercero|tres|3)\b/, /^(?:la |el )?(?:cuarta|cuarto|cuatro|4)\b/, /^(?:la |el )?(?:quinta|quinto|cinco|5)\b/];
 
-    /** «la segunda», «opción dos», «la última»: índice (desde 0) entre count opciones, o null. */
-    function parseChoice(text, count) {
+    // Palabras que no sirven para reconocer una opción por su nombre («la de Terpel», «el asadero»).
+    const CHOICE_STOPWORDS = new Set(['la', 'el', 'los', 'las', 'de', 'del', 'que', 'esa', 'ese', 'esta', 'este', 'una',
+        'uno', 'mejor', 'quiero', 'vamos', 'llevame', 'lleveme', 'para', 'por', 'restaurante', 'estacion', 'servicio',
+        'hotel', 'parqueadero', 'tienda', 'taller', 'opcion']);
+
+    /**
+     * «la segunda», «opción dos», «la última», «la más cercana», «la que menos me desvíe» o parte del nombre
+     * («la de Terpel»): índice (desde 0) entre count opciones, o null. options (opcional): [{ title, detourSeconds }].
+     */
+    function parseChoice(text, count, options) {
         const plain = clean(text).replace(/^(?:la opcion|opcion|numero|el numero|la numero)\s+/, '');
         if (/^(?:la |el )?(?:ultima|ultimo)\b/.test(plain)) return count > 0 ? count - 1 : null;
+        if (/\b(mas cerca|mas cercan[oa]|mas proxim[oa]|la de aqui|la primera que (haya|salga|encuentre))\b/.test(plain)) return count > 0 ? 0 : null;
+        if (Array.isArray(options) && /\b(menos (me )?desvi\w*|no me desvie|menos (vuelta|rodeo)|sin desvio|mas rapid[oa]|menos tiempo)\b/.test(plain)) {
+            let best = null;
+            options.slice(0, count).forEach((o, i) => {
+                const d = Number.isFinite(o.detourSeconds) ? o.detourSeconds : Infinity;
+                if (best === null || d < best.d) best = { i, d };
+            });
+            if (best && best.d !== Infinity) return best.i;
+        }
         const index = ORDINALS.findIndex(re => re.test(plain));
-        return index >= 0 && index < count ? index : null;
+        if (index >= 0 && index < count) return index;
+        if (Array.isArray(options)) {
+            const said = plain.split(' ').filter(w => w.length >= 4 && !CHOICE_STOPWORDS.has(w));
+            const hits = options.slice(0, count).map((o) => {
+                const words = normalize(o.title || '').split(' ').filter(w => w.length >= 4 && !CHOICE_STOPWORDS.has(w));
+                // Palabras cortas solo exactas («cosa» no es «Rosa»); desde 5 letras se tolera una letra de diferencia.
+                return said.filter(w => words.some(t => w === t || (Math.min(w.length, t.length) >= 5 && sameWord(w, t)))).length;
+            });
+            const top = Math.max(0, ...hits);
+            if (top > 0 && hits.filter(h => h === top).length === 1) return hits.indexOf(top);
+        }
+        return null;
     }
 
     function clean(text) {
@@ -194,30 +222,49 @@ window.VoiceIntents = (function () {
 
     // Lugares cerca del camión por categoría (FIND_PLACES). El orden importa: «parqueadero» antes que «hotel» en
     // «hotel con parqueadero para la mula» no; se toma la primera categoría que aparece en la lista.
+    // Lo más específico primero: «parar a comer» es restaurante y «un hotel para descansar» es hotel; «descansar» o
+    // «parar» solos (rest) van al final.
     const PLACE_CATEGORIES = [
-        { category: 'truck_parking', re: /\b(parqueaderos?|parquear|parqueo|parqueo la mula|estacionar|garajes?)\b/ },
-        { category: 'fuel', re: /\b(gasolineras?|bombas?( de gasolina)?|estacion(es)? de servicio|tanquear|tanqueo|tanqueamos|echar (gasolina|acpm|diesel|combustible)|acpm|diesel|combustible)\b/ },
-        { category: 'hotel', re: /\b(hotel|hoteles|hospedaje|residencias?|donde (dormir|duermo|dormimos|pasar la noche|quedarme))\b/ },
-        { category: 'restaurant', re: /\b(restaurantes?|donde (comer|como|comemos|almorzar|almuerzo|desayunar|desayuno|cenar|ceno)|comida|corrientazo|almuerzo|desayuno)\b/ },
-        { category: 'workshop', re: /\b(taller(es)?|mecanicos?|montallantas|despinche|llanteria|serviteca)\b/ },
-        { category: 'store', re: /\b(tiendas?|supermercados?|minimercado|autoservicio)\b/ }
+        { category: 'toilet', re: /\b(banos?|sanitarios?|orinar|chichi|popo|hacer (mis |unas )?necesidades|hacer del cuerpo|me (orino|estoy orinando|hago))\b/ },
+        { category: 'hospital', re: /\b(hospital(es)?|clinicas?|urgencias|centro de salud|puesto de salud|medico|doctor)\b/ },
+        { category: 'pharmacy', re: /\b(droguerias?|farmacias?|pastillas?|remedios?|medicamentos?|algo para el dolor)\b/ },
+        { category: 'atm', re: /\b(cajeros?( automaticos?)?|sacar (plata|dinero|efectivo|platica)|bancos?|corresponsal( bancario)?)\b/ },
+        { category: 'workshop', re: /\b(taller(es)?|mecanicos?|montallantas|despinche|despinchar|llanteria|serviteca|pinch(ad[oa]|azo|e|o)|se me pincho|llanta (baja|pinchada|estallada|desinflada|mala)|se me (dano|varo|recalento|recalienta)|varad[oa]|recalentando|frenos)\b/ },
+        { category: 'truck_parking', re: /\b(parqueaderos?|parquear|parqueo|parqueamos|estacionar(me)?|garajes?|donde (dejo|guardo|meto|parqueo) (la mula|el camion|el carro|la tractomula|el vehiculo))\b/ },
+        { category: 'fuel', re: /\b(gasolineras?|bombas?( de gasolina)?|surtidor|estacion(es)? de servicio|tanquear|tanqueo|tanqueamos|tanquee|echar (gasolina|acpm|diesel|combustible|tanque)|llenar (el )?tanque|acpm|diesel|combustible|(estoy|voy) en (la )?reserva|(me estoy|me voy a) quedar sin (gasolina|acpm|combustible|diesel)|se me (acaba|esta acabando) el (acpm|combustible|diesel|gasolina))\b/ },
+        { category: 'hotel', re: /\b(hotel|hoteles|hospedaje|hostal|residencias?|pernoctar|pasar la noche|amanecer|donde (dormir|duermo|dormimos|quedarme|nos quedamos)|dormir(?! (un )?(rato|ratico|ratito|poquito|momento)))\b/ },
+        { category: 'coffee', re: /\b(tintos?|tintico|cafe|cafecito|cafeterias?|aromatica|algo caliente)\b/ },
+        { category: 'restaurant', re: /\b(restaurantes?|comer|como algo|comida|comidita|almorzar|almuerzo|almorcemos|desayunar|desayuno|desayunemos|cenar|cena|comamos|hambre|corrientazo|asadero|fritanga|piqueteadero|algo de comer|un plato)\b/ },
+        { category: 'store', re: /\b(tiendas?|supermercados?|minimercado|autoservicio|mecato|comprar (agua|algo|mecato|hielo|minutos))\b/ },
+        { category: 'rest', re: /\b(descansar|descanso|descansemos|parar|paremos|pausa|una parada|hacer (una )?parada|hagamos (una )?parada|estirar (las )?piernas|orillar(me|nos)?|siesta|pestanita|pestaneada|suenito|dormir (un )?(rato|ratico|ratito|poquito|momento)|sueno|cansad[oa]s?|agotad[oa]|rendid[oa]|mamad[oa]|fundid[oa]|cabeceando|me estoy (durmiendo|quedando dormido)|un respiro|area de descanso|parador)\b/ }
     ];
-    const CHEAP = /\b(barat[oa]s?|economic[oa]s?|ahorrar|ahorro|lo mas barato|menos plata|que no sea caro|precio bajo|buen precio)\b/;
+    // Cansancio al volante: el Copiloto pide parar por seguridad además de ofrecer dónde.
+    const FATIGUE = /\b(sueno|cansad[oa]|agotad[oa]|rendid[oa]|mamad[oa]|fundid[oa]|cabeceando|me estoy (durmiendo|quedando dormido)|se me cierran los ojos)\b/;
+    const CHEAP = /\b(barat[oa]s?|economic[oa]s?|ahorrar|ahorro|lo mas barato|menos plata|que no sea caro|precio bajo|buen precio|corrientazo|bueno bonito y barato)\b/;
     const REPORTING = /\b(reporta|reportar|reporto|reporte|registra|registrar|avisa|avisar)\b/;
     // Palabras que acompañan a la categoría sin nombrar un lugar concreto («un hotel barato cerca»).
-    const GENERIC = /\b(un|una|unos|unas|el|la|los|las|algun|alguna|mas|muy|cercan[oa]s?|cerca|por aqui|aqui|barat[oa]s?|economic[oa]s?|buen[oa]?|para|la|mula|tractomula|camion(es)?|carro|de|con|que|sea|no|caro|precio|bajo)\b/g;
+    const GENERIC = /\b(un|una|unos|unas|el|la|los|las|algun|alguna|algo|mas|muy|cercan[oa]s?|cerca|por aqui|aqui|aca|barat[oa]s?|economic[oa]s?|buen[oa]?|rapido|para|pa|la|mula|tractomula|camion(es)?|carro|de|del|con|que|quede|sea|no|caro|precio|bajo|en|camino|ruta|via|adelante|sobre|por|mi|me|ir|a|al)\b/g;
 
     /** «Dónde tanqueo barato», «un hotel cerca»: categoría sin nombre propio. Con nombre («hotel Tequendama») es NAVIGATE. */
     function placeSearch(plain, place) {
         if (REPORTING.test(plain)) return null;
+        // «Cuándo debo descansar» o «cuánto me falta para descansar» son las horas de conducción, no un lugar.
+        if (RULES.find(r => r.type === 'HOURS').re.test(plain)) return null;
         const found = PLACE_CATEGORIES.find(c => c.re.test(plain));
         if (!found) return null;
         if (place) {
             const rest = place.replace(found.re, ' ').replace(GENERIC, ' ').replace(/\s+/g, ' ').trim();
             if (rest) return null;
         }
-        return { type: 'FIND_PLACES', category: found.category, cheap: CHEAP.test(plain), text: plain };
+        return { type: 'FIND_PLACES', category: found.category, cheap: CHEAP.test(plain), fatigue: FATIGUE.test(plain), text: plain };
     }
+
+    // Parada en la ruta: quitarla, preguntar por ella y seguir después de parar.
+    const STOP_REMOVE = /\b((quita|quitar|quitame|quitale|quitemos|cancela|cancelar|cancelame|cancelemos|borra|borrar|elimina|eliminar|anula|anular|olvida|olvidate de) (la |esa |esta |mi )?parada|ya no (voy a |vamos a |quiero )?(parar|paro|paramos)|no (quiero|voy a|vamos a) parar|mejor no (paro|paremos|paramos|pare|vamos a parar)|sin parada|(sigo|seguimos|siga|sigamos|vamos) derecho)\b/;
+    const STOP_INFO = /\b((cuanto|que tanto) (me )?falta (para|pa) (la |mi )?parada|(donde|a que distancia|que tan lejos|que tan cerca) (queda|esta|es) (la |mi )?parada|cual es (la |mi )?parada|(a )?donde (vamos a parar|paramos|voy a parar))\b/;
+    const RESUME = /^(seguimos|sigamos|continuemos|continuamos|continuar|continua|de nuevo a la ruta|volvamos a la ruta|ya (termine|comi|descanse|tanquee|acabe|estoy listo|nos vamos)|listo (sigamos|seguimos|vamos|vamonos|arranquemos)|arranquemos|arrancamos|en marcha|palante|pa lante|para adelante|dale sigamos|vamos de nuevo|retomemos( la ruta| el viaje)?|retomar( la ruta| el viaje)?)\b/;
+    // «Ya llegué»: con una parada pendiente es llegar a la parada, no entregar la carga (lo decide el Copiloto).
+    const ARRIVED_ONLY = /^(ya )?(llegue|llegamos|estoy aqui|estamos aqui|ya estoy|ya estamos)$/;
 
     // Peajes: cuánto falta, cuánto cuesta o cuántos hay.
     const TOLLS = /\b((cuanto|cuantos|cuando|donde|proximo|siguiente|precio|valor|vale|cuesta|cobran|tarifa|hay|quedan|faltan)\b.*\bpeajes?|peajes? (hay|quedan|faltan|me quedan|tengo)|peajes?$)\b/;
@@ -230,7 +277,8 @@ window.VoiceIntents = (function () {
     /**
      * Intención de una orden. Tipos: SOS, COPILOT_OFF, HELP, NEARBY_ALERTS, ACCEPT_LOAD, REJECT_LOAD, CONFIRM_DELIVERY,
      * START_TRIP, HOURS, REPEAT, REROUTE { avoidAhead }, REPORT { alertType, label, closure, description },
-     * LOAD_INFO { field }, NAVIGATE { place }, FIND_PLACES { category, cheap }, TOLLS, NEARBY_ALERTS { scope }, UNKNOWN.
+     * LOAD_INFO { field }, NAVIGATE { place }, FIND_PLACES { category, cheap, fatigue }, TOLLS, NEARBY_ALERTS { scope },
+     * STOP_REMOVE, STOP_INFO, RESUME_TRIP, UNKNOWN.
      */
     function parse(text) {
         const plain = clean(text);
@@ -241,6 +289,10 @@ window.VoiceIntents = (function () {
                 ? { type: rule.type, scope: ROUTE_SCOPE.test(plain) ? 'route' : 'around', text: plain }
                 : { type: rule.type, text: plain };
         }
+        if (STOP_REMOVE.test(plain)) return { type: 'STOP_REMOVE', text: plain };
+        if (STOP_INFO.test(plain)) return { type: 'STOP_INFO', text: plain };
+        if (RESUME.test(plain)) return { type: 'RESUME_TRIP', text: plain };
+        if (ARRIVED_ONLY.test(plain)) return { type: 'CONFIRM_DELIVERY', arrivedOnly: true, text: plain };
         const place = navigateTarget(plain);
         const search = placeSearch(plain, place);
         if (search) return search;
@@ -272,7 +324,7 @@ window.VoiceIntents = (function () {
     }
 
     const YES = /^(si|sii|si senor|si senora|claro|dale|de una|confirmo|confirmar|confirmado|correcto|afirmativo|hazlo|adelante|ok|okey|listo|de acuerdo|envialo|enviar)\b/;
-    const NO = /^(no|cancela|cancelar|cancelado|negativo|olvidalo|olvida|detente|para|espera|mejor no|todavia no)\b/;
+    const NO = /^(no|ninguna|ninguno|ningun|cancela|cancelar|cancelado|negativo|olvidalo|olvida|detente|para|espera|mejor no|todavia no)\b/;
 
     /** Respuesta a una confirmación: 'yes', 'no' o null si no es ninguna de las dos. */
     function parseAnswer(text) {
@@ -282,5 +334,7 @@ window.VoiceIntents = (function () {
         return null;
     }
 
-    return { normalize, stripWakeWord, setWakePhrase, parse, parseAnswer, parseChoice, REPORT_TYPES };
+    const PLACE_CATEGORY_CODES = PLACE_CATEGORIES.map(c => c.category);
+
+    return { normalize, stripWakeWord, setWakePhrase, parse, parseAnswer, parseChoice, REPORT_TYPES, PLACE_CATEGORY_CODES };
 })();

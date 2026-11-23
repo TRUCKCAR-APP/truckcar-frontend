@@ -72,13 +72,16 @@ window.VoiceAssistant = (function () {
     const REPORTABLE = 'derrumbe, accidente, vía cerrada, obra, retén, báscula, gálibo bajo, parador seguro o tráfico pesado';
     const HELP = 'Puede reportar ' + REPORTABLE + '. También puede decir: enviar SOS, recalcular ruta, qué llevo, '
         + 'cuánto falta, cuántas horas llevo, alertas cercanas, aceptar carga, iniciar viaje o confirmar entrega. '
-        + 'Y buscar cerca un hotel, una estación de servicio, comida, un parqueadero para la mula o un taller, o '
-        + 'preguntar cuánto falta para el próximo peaje.';
+        + 'Si quiere parar, diga por ejemplo: quiero comer, necesito descansar, dónde tanqueo o necesito un baño; le '
+        + 'propongo lugares sobre la ruta, sin devolverse, y el que elija queda como parada antes del destino. '
+        + 'Después puede decir: cuánto falta para la parada, quita la parada o seguimos. '
+        + 'También puede preguntar cuánto falta para el próximo peaje.';
     const NOT_UNDERSTOOD = 'No entendí. Puede decir, por ejemplo: reportar accidente, recalcular ruta, qué llevo, o ayuda.';
 
     // Intenciones que puede devolver el intérprete con IA (Voice-AI-Assistant) y que este controlador ejecuta.
     const ASSISTANT_INTENTS = ['REPORT', 'SOS', 'NEARBY_ALERTS', 'ACCEPT_LOAD', 'REJECT_LOAD', 'START_TRIP',
-        'CONFIRM_DELIVERY', 'REROUTE', 'NAVIGATE', 'FIND_PLACES', 'TOLLS', 'REPEAT', 'HOURS', 'LOAD_INFO', 'HELP', 'CHAT'];
+        'CONFIRM_DELIVERY', 'REROUTE', 'NAVIGATE', 'FIND_PLACES', 'TOLLS', 'REPEAT', 'HOURS', 'LOAD_INFO', 'HELP', 'CHAT',
+        'STOP_REMOVE', 'STOP_INFO', 'RESUME_TRIP'];
     const LOAD_INFO_FIELDS = ['eta', 'destination', 'weight', 'summary'];
 
     // Categorías de FIND_PLACES: lo que se busca en HERE, cómo se nombra en voz alta y qué preguntar para pagar menos
@@ -89,8 +92,17 @@ window.VoiceAssistant = (function () {
         restaurant: { query: 'restaurante', many: 'restaurantes', saving: 'pregunte por el menú del día o el corrientazo' },
         store: { query: 'tienda', many: 'tiendas', saving: 'compare precios antes de pagar' },
         truck_parking: { query: 'parqueadero para camiones', many: 'parqueaderos', saving: 'pregunte la tarifa por noche o por hora y si es vigilado y apto para tractomula' },
-        workshop: { query: 'taller mecánico de camiones', many: 'talleres', saving: 'pida el precio del arreglo antes de que empiecen' }
+        workshop: { query: 'taller mecánico de camiones', many: 'talleres', saving: 'pida el precio del arreglo antes de que empiecen' },
+        rest: { query: 'estación de servicio', many: 'sitios para descansar', saving: 'pregunte si el parqueadero es vigilado y si cobran por la noche',
+            alternative: 'Si está cansado, pare en un sitio seguro apenas pueda.' },
+        coffee: { query: 'cafetería', many: 'cafeterías', saving: 'pregunte el precio antes de pedir' },
+        toilet: { query: 'estación de servicio', many: 'sitios con baño', saving: 'en muchas estaciones el baño es gratis para clientes' },
+        atm: { query: 'cajero automático', many: 'cajeros', saving: 'revise la comisión del cajero antes de retirar' },
+        pharmacy: { query: 'droguería', many: 'droguerías', saving: 'pregunte por el medicamento genérico' },
+        hospital: { query: 'hospital', many: 'hospitales o clínicas', saving: '' }
     };
+    // Tipos de lugar en los que importa poco la hora: se nombran sin «abierto» o «cerrado».
+    const STOP_WORDS = ['Uno', 'Dos', 'Tres'];
 
     /** Termina la frase con punto sin duplicarlo («3:10 p. m.»). */
     function endSentence(text) {
@@ -125,7 +137,8 @@ window.VoiceAssistant = (function () {
             return typeof response.place === 'string' && response.place.trim().length >= 2
                 ? { ...base, place: response.place.trim().slice(0, 120) } : null;
         case 'FIND_PLACES':
-            return PLACE_KINDS[response.category] ? { ...base, category: response.category, cheap: response.cheap === true } : null;
+            return PLACE_KINDS[response.category] ? { ...base, category: response.category, cheap: response.cheap === true,
+                ...(response.fatigue === true ? { fatigue: true } : {}) } : null;
         case 'NEARBY_ALERTS':
             return { ...base, scope: response.scope === 'route' ? 'route' : 'around' };
         case 'CHAT':
@@ -159,15 +172,15 @@ window.VoiceAssistant = (function () {
         }
 
         /** Pregunta cuál de count opciones: «la primera», «la segunda»… o cancelar. */
-        function askChoice(prompt, count, choose) {
-            pending = { choose, count, cancelText: 'Sigo como estaba.', expiresAt: now() + CHOICE_TIMEOUT_MS, retried: false };
+        function askChoice(prompt, count, choose, options) {
+            pending = { choose, count, options, cancelText: 'Sigo como estaba.', expiresAt: now() + CHOICE_TIMEOUT_MS, retried: false };
             return say(prompt).then(() => { deps.listen(); return { status: 'choosing' }; });
         }
 
         async function answer(text) {
             const current = pending;
             if (current.choose) {
-                const index = intents.parseChoice(text, current.count);
+                const index = intents.parseChoice(text, current.count, current.options);
                 if (index != null) {
                     pending = null;
                     return current.choose(index);
@@ -345,6 +358,8 @@ window.VoiceAssistant = (function () {
             }
 
             case 'START_TRIP': {
+                const atStop = a.stopInfo ? a.stopInfo() : null;
+                if (atStop && atStop.reached) return resumeTrip(intent);
                 const load = a.currentLoad();
                 const allowed = load ? a.loadActions(load) : {};
                 if (!allowed.navigate) {
@@ -360,6 +375,12 @@ window.VoiceAssistant = (function () {
             }
 
             case 'CONFIRM_DELIVERY': {
+                const pendingStop = a.stopInfo ? a.stopInfo() : null;
+                if (intent.arrivedOnly && pendingStop && !pendingStop.reached) {
+                    const marked = a.markStopReached();
+                    await say('Listo, está en su parada: ' + marked.title + '. Cuando quiera seguir, diga «seguimos»; la ruta continúa al destino.');
+                    return { status: 'done', intent, stop: marked.title };
+                }
                 const load = a.currentLoad();
                 if (!load || !a.loadActions(load).deliver) {
                     await say('No hay un viaje en tránsito para entregar.');
@@ -400,6 +421,15 @@ window.VoiceAssistant = (function () {
 
             case 'FIND_PLACES':
                 return findPlaces(intent);
+
+            case 'STOP_REMOVE':
+                return removeStop(intent);
+
+            case 'STOP_INFO':
+                return stopInfo(intent);
+
+            case 'RESUME_TRIP':
+                return resumeTrip(intent);
 
             case 'TOLLS':
                 return tolls(intent);
@@ -463,6 +493,11 @@ window.VoiceAssistant = (function () {
             }
             const options = places.slice(0, 3);
             if (a.showPlaces) a.showPlaces(options, intent.place);
+            // Con una carga en curso, ir a otro lugar es parar ahí: la carga y su destino no se abandonan.
+            if (a.routeKind && a.routeKind() === 'load' && a.addStop) {
+                return offerPlaces(options, (index) => addStopFlow(options[index], intent), { many: 'lugares',
+                    question: '¿Cuál agrego como parada antes de su destino? Diga el número.' });
+            }
             const go = (index) => run('calcular la ruta', async () => {
                 const place = options[index];
                 const result = await a.navigateTo(place);
@@ -482,24 +517,154 @@ window.VoiceAssistant = (function () {
         }
 
         /** Lee hasta 3 opciones con su distancia y pregunta a cuál ir (por número). note va antes de la pregunta. */
-        function offerPlaces(options, go, { many, note = '' }) {
+        function offerPlaces(options, go, { many, note = '', question = null }) {
             const describe = (p) => p.title + (Number.isFinite(p.distanceMeters) ? ', a ' + spokenDistance(p.distanceMeters) : '');
             const extra = note ? ' ' + note : '';
             if (options.length === 1) {
-                return askChoice('Encontré ' + describe(options[0]) + '.' + extra + ' ¿Voy para allá? Diga sí o cancelar.', 1, go);
+                return askChoice('Encontré ' + describe(options[0]) + '.' + extra + ' '
+                    + (question ? question.replace(/¿Cuál/, '¿Lo').replace(/ Diga el número\./, '') : '¿Voy para allá?') + ' Diga sí o cancelar.', 1, go, options);
             }
-            const words = ['Uno', 'Dos', 'Tres'];
-            return askChoice('Encontré ' + options.length + ' ' + many + '. ' + options.map((p, i) => words[i] + ': ' + describe(p) + '.').join(' ')
-                + extra + ' ¿A cuál lo llevo? Diga el número.', options.length, go);
+            return askChoice('Encontré ' + options.length + ' ' + many + '. ' + options.map((p, i) => STOP_WORDS[i] + ': ' + describe(p) + '.').join(' ')
+                + extra + ' ' + (question || '¿A cuál lo llevo? Diga el número.'), options.length, go, options);
         }
 
-        /** «Dónde tanqueo barato»: lugares de la categoría cerca del camión, los más cercanos primero. */
+        /**
+         * Opción de parada sobre la ruta, en pocas palabras: nombre, a cuánto está por carretera y cuánto le suma al
+         * viaje. «Aparece cerrado» solo si HERE lo sabe; «recibe camiones» cuando se buscó dónde descansar o parquear.
+         */
+        function describeStop(p, category) {
+            const parts = [p.title];
+            if (Number.isFinite(p.distanceMeters)) {
+                parts.push('a ' + spokenDistance(p.distanceMeters));
+            }
+            if (Number.isFinite(p.detourSeconds)) {
+                parts.push(p.detourSeconds < 90 ? 'casi sin desvío' : 'le suma ' + spokenDuration(p.detourSeconds));
+            }
+            if (p.openNow === false) parts.push('aparece cerrado ahora');
+            if (p.truckFriendly && (category === 'rest' || category === 'truck_parking')) parts.push('recibe camiones');
+            return parts.join(', ');
+        }
+
+        /** Agrega el lugar elegido como parada de la ruta guiada y dice cuánto falta y cuánto suma. */
+        function addStopFlow(place, intent) {
+            const a = deps.actions;
+            return run('agregar la parada', async () => {
+                const result = await a.addStop(place);
+                if (!result || !result.ok) {
+                    await say(result && result.reason === 'no-route'
+                        ? 'No tiene una ruta activa. Le llevo directo a ' + place.title + ' si dice: llévame a ' + place.title + '.'
+                        : 'No pude agregar la parada en ' + place.title + '. Sigo con la ruta como estaba.');
+                    return { status: 'unavailable', intent };
+                }
+                const time = spokenDuration(result.toStopS);
+                let text = (result.replaced ? 'Cambié la parada: ahora es ' : 'Listo, parada en ') + result.title
+                    + (Number.isFinite(result.toStopM) ? ', a ' + spokenDistance(result.toStopM) + (time ? ', unos ' + time : '') : '') + '.';
+                if (Number.isFinite(result.extraS)) {
+                    text += result.extraS < 90 ? ' Casi no le suma tiempo al viaje.' : ' Le suma ' + spokenDuration(result.extraS) + ' al viaje.';
+                }
+                text += ' Después de la parada sigo hacia ' + (a.destinationLabel ? a.destinationLabel() : 'el destino') + '.';
+                if (result.restricted) text += ' Atención: la ruta tiene restricciones de gálibo o peso para su vehículo.';
+                await say(text);
+                return { status: 'done', intent, place };
+            });
+        }
+
+        async function removeStop(intent) {
+            const a = deps.actions;
+            if (!a.removeStop) return notUnderstood({ ...intent, type: 'UNKNOWN' });
+            const result = await a.removeStop();
+            if (result.ok) {
+                await say(result.rerouted ? 'Listo, quité la parada en ' + result.title + '. Sigo directo al destino.'
+                    : 'Listo, sin parada. Sigo hacia el destino.');
+                return { status: 'done', intent };
+            }
+            await say(result.reason === 'no-stop' ? 'No tiene ninguna parada en la ruta.'
+                : 'No pude recalcular sin la parada. Sigo con la ruta actual; intente de nuevo en un momento.');
+            return { status: result.reason === 'no-stop' ? 'unavailable' : 'error', intent };
+        }
+
+        async function stopInfo(intent) {
+            const a = deps.actions;
+            const info = a.stopInfo ? a.stopInfo() : null;
+            if (!info) {
+                await say('No tiene ninguna parada en la ruta. Puede decir, por ejemplo: quiero comer, o necesito descansar.');
+                return { status: 'unavailable', intent };
+            }
+            if (info.reached) {
+                await say('Ya está en su parada: ' + info.title + '. Cuando quiera seguir, diga «seguimos».');
+                return { status: 'done', intent };
+            }
+            const time = spokenDuration(info.toStopS);
+            await say('Su parada es ' + info.title + (Number.isFinite(info.toStopM)
+                ? ': faltan ' + spokenDistance(info.toStopM) + (time ? ', unos ' + time : '') : '') + '.');
+            return { status: 'done', intent };
+        }
+
+        async function resumeTrip(intent) {
+            const a = deps.actions;
+            const result = a.resumeAfterStop ? a.resumeAfterStop() : { ok: false, reason: 'no-stop' };
+            if (result.ok) {
+                const time = spokenDuration(result.durationS);
+                await say('Seguimos hacia ' + (a.destinationLabel ? a.destinationLabel() : 'el destino')
+                    + (Number.isFinite(result.remainingM) ? ': faltan ' + spokenDistance(result.remainingM) + (time ? ', unos ' + time : '') : '') + '.');
+                return { status: 'done', intent };
+            }
+            if (result.reason === 'not-there') {
+                await say('Todavía no llega a la parada ' + result.title
+                    + (Number.isFinite(result.toStopM) ? '; faltan ' + spokenDistance(result.toStopM) : '')
+                    + '. Si ya no quiere parar, diga «quita la parada».');
+                return { status: 'unavailable', intent };
+            }
+            const text = a.hasRoute && a.hasRoute() ? a.instruction() : null;
+            await say(text ? 'Siga la ruta. ' + text : 'No tiene una ruta activa.');
+            return { status: text ? 'done' : 'unavailable', intent };
+        }
+
+        /**
+         * «Quiero comer», «necesito descansar», «dónde tanqueo barato».
+         *  - Con una ruta activa: lugares sobre lo que falta de la ruta, sin devolverse y con un desvío de máximo 5 km
+         *    (Route-AI los valida con el motor de rutas para camión); el elegido queda como parada antes del destino.
+         *  - Sin ruta: lugares cerca del camión, y el elegido es el destino.
+         *  - Cansancio («tengo sueño», «estoy mamado»): primero pide parar por seguridad.
+         */
         async function findPlaces(intent) {
             const a = deps.actions;
             const kind = PLACE_KINDS[intent.category];
             if (!kind || !a.searchPlaces) {
                 await say('La búsqueda de lugares no está disponible.');
                 return { status: 'unavailable', intent };
+            }
+            const safety = intent.fatigue ? 'Por su seguridad, pare apenas pueda en un sitio seguro. ' : '';
+            const note = intent.cheap && kind.saving ? 'No tengo precios confirmados al día de hoy; ' + kind.saving + '.' : '';
+            const onRoute = a.searchStops && a.hasRoute && a.hasRoute();
+            if (onRoute) {
+                let result;
+                try {
+                    result = await a.searchStops(intent.category);
+                } catch (error) {
+                    result = { status: 'error', error };
+                }
+                if (result && result.status === 'ok') {
+                    const options = result.stops.slice(0, 3);
+                    if (!options.length) {
+                        await say(safety + 'No encontré ' + kind.many + ' en los próximos 60 kilómetros de la ruta sin desviarse más de 5 kilómetros.'
+                            + (kind.alternative && !safety ? ' ' + kind.alternative : ''));
+                        return { status: 'unavailable', intent };
+                    }
+                    if (a.showPlaces) a.showPlaces(options, kind.query);
+                    const prompt = safety + (options.length === 1
+                        ? 'Sobre la ruta encontré ' + describeStop(options[0], intent.category) + '.' + (note ? ' ' + note : '')
+                            + ' ¿La agrego como parada? Diga sí o cancelar.'
+                        : 'Sobre la ruta encontré ' + options.length + ' ' + kind.many + '. '
+                            + options.map((p, i) => STOP_WORDS[i] + ': ' + describeStop(p, intent.category) + '.').join(' ')
+                            + (note ? ' ' + note : '') + ' ¿Cuál agrego como parada? Diga el número.');
+                    return askChoice(prompt, options.length, (index) => addStopFlow(options[index], intent), options);
+                }
+                if (result && result.status !== 'no-route') {
+                    await say(safety + 'No pude revisar la ruta en este momento; le digo lo que hay cerca de su posición.');
+                }
+            } else if (safety) {
+                await say(safety.trim());
             }
             let places;
             try {
@@ -516,8 +681,11 @@ window.VoiceAssistant = (function () {
                 return { status: 'unavailable', intent };
             }
             if (a.showPlaces) a.showPlaces(options, kind.query);
-            // Sin precios confirmados al día de hoy: se dice con claridad y qué revisar para gastar menos.
-            const note = intent.cheap ? 'No tengo precios confirmados al día de hoy; ' + kind.saving + '.' : '';
+            // Con ruta (aunque la búsqueda sobre la ruta no respondió), el lugar elegido sigue siendo una parada.
+            if (onRoute && a.addStop) {
+                return offerPlaces(options, (index) => addStopFlow(options[index], intent), { many: kind.many + ' cerca', note,
+                    question: '¿Cuál agrego como parada? Diga el número.' });
+            }
             const go = (index) => run('calcular la ruta', async () => {
                 const place = options[index];
                 const result = await a.navigateTo(place);
@@ -647,6 +815,36 @@ window.VoiceAssistant = (function () {
             },
             sos: () => window.DriverActions.activate(),
             hasRoute: () => Boolean(window.RouteGuidance && window.RouteGuidance.route),
+            /** 'load' si guía hacia el destino de una carga, 'free' si es navegación libre, null sin ruta. */
+            routeKind() {
+                const guidance = window.RouteGuidance;
+                if (!guidance || !guidance.route) return null;
+                return guidance.freeDestination ? 'free' : 'load';
+            },
+            destinationLabel() {
+                const guidance = window.RouteGuidance;
+                if (guidance && guidance.freeDestination) return guidance.freeDestination.title;
+                return window.DriverApp && window.DriverApp.destinationLabel ? window.DriverApp.destinationLabel() : 'el destino';
+            },
+            searchStops: (category) => window.RouteGuidance.searchStops(category),
+            async addStop(place) {
+                const result = await window.RouteGuidance.addStop(place);
+                if (window.DestinationSearch && window.DestinationSearch.close) window.DestinationSearch.close();
+                window.store.setState({});
+                return result;
+            },
+            async removeStop() {
+                const result = await window.RouteGuidance.removeStop();
+                window.store.setState({});
+                return result;
+            },
+            markStopReached: () => window.RouteGuidance.markStopReached(),
+            resumeAfterStop() {
+                const result = window.RouteGuidance.resumeAfterStop();
+                window.store.setState({});
+                return result;
+            },
+            stopInfo: () => (window.RouteGuidance && window.RouteGuidance.stopInfo ? window.RouteGuidance.stopInfo() : null),
             planReroute: (options) => window.RouteGuidance.planReroute(options),
             searchPlaces: (query) => window.app.searchPlaces(query),
             showPlaces: (places, query) => { if (window.DestinationSearch) window.DestinationSearch.showResults(places, query); },

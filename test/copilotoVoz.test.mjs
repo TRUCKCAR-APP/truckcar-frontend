@@ -284,7 +284,7 @@ test("sin carga o sin propuesta no se inventa nada; lo no reconocido responde co
   assert.equal(empty.said.at(-1), "Acepte una carga antes de iniciar el viaje.");
 
   const { ctrl, said } = controller();
-  await ctrl.handle("necesito un café");
+  await ctrl.handle("cuéntame un chiste");
   assert.match(said.at(-1), /^No entendí\. Puede decir, por ejemplo:/);
   await ctrl.handle("alertas cercanas");
   assert.equal(said.at(-1), "Hay 2 alertas cerca de su posición: derrumbe a 4,2 kilómetros; puesto de control a 12 kilómetros.");
