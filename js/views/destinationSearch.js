@@ -44,13 +44,14 @@ window.DestinationSearch = (function () {
      * Abre la hoja «¿A dónde va?». Con places ya buscados (por voz) muestra directamente las opciones.
      * Al elegir una, window.app.goToPlace la lleva a la guía.
      */
-    function open({ query = '', places = null } = {}) {
+    function open({ query = '', places = null, asStop = false } = {}) {
         const esc = window.ui.escape;
         if (current) current.close(null);
+        const stopMode = asStop || addsStop();
         const body = `
             <form class="dest-form" data-dest-form novalidate>
                 <label class="field">
-                    <span class="field-label">Destino</span>
+                    <span class="field-label">${stopMode ? 'Buscar otro lugar' : 'Destino'}</span>
                     <span class="dest-input">
                         <input name="q" type="search" required minlength="2" maxlength="120" value="${esc(query)}" enterkeyhint="search"
                                autocomplete="off" placeholder="Empresa, dirección, ciudad o lugar" class="field-input" data-dest-query>
@@ -59,17 +60,19 @@ window.DestinationSearch = (function () {
                 </label>
             </form>
             <div data-dest-area aria-live="polite">${places ? resultsHtml(places) : '<p class="sheet-note">La ruta se calcula para su camión desde su posición actual.</p>'}</div>`;
-        const asStop = addsStop();
+        // Paradas sobre la ruta (las que lee el Copiloto) o, con una carga en curso, cualquier lugar: se agrega como
+        // parada antes del destino. Si no, el lugar elegido es el nuevo destino.
         const closed = window.Sheet.open({
-            title: asStop ? '¿Dónde paramos?' : '¿A dónde va?',
-            subtitle: asStop ? 'Tiene una carga en curso: el lugar que elija queda como parada antes de su destino.'
-                : 'Busque cualquier destino, aunque no sea el de una carga.',
+            title: stopMode ? '¿Dónde paramos?' : '¿A dónde va?',
+            subtitle: asStop ? 'Lugares sobre su ruta: el que elija queda como parada antes del destino.'
+                : stopMode ? 'Tiene una carga en curso: el lugar que elija queda como parada antes de su destino.'
+                    : 'Busque cualquier destino, aunque no sea el de una carga.',
             body,
             // Con lugares ya buscados (por voz) se enfoca la primera opción, no el campo: así no se abre el teclado.
             ...(places ? { initialFocus: places.length ? '[data-dest-index="0"]' : '.sheet-title' } : {}),
             onMount(sheet, close) {
                 let found = places || [];
-                current = { sheet, close, setPlaces };
+                current = { sheet, close, setPlaces, asStop: stopMode };
                 const area = sheet.querySelector('[data-dest-area]');
                 const input = sheet.querySelector('[data-dest-query]');
                 function setPlaces(list) {
@@ -93,7 +96,10 @@ window.DestinationSearch = (function () {
                     const place = found[Number(button.dataset.destIndex)];
                     if (!place) return;
                     close(null);
-                    window.app.goToPlace(place);
+                    if (window.VoiceAssistant && window.VoiceAssistant.copilot && window.VoiceAssistant.copilot.controller) {
+                        window.VoiceAssistant.copilot.controller.cancelPending();
+                    }
+                    window.app.goToPlace(place, { asStop: stopMode });
                 });
                 if (!places) setTimeout(() => input.focus({ preventScroll: true }), 50);
             }
@@ -103,9 +109,9 @@ window.DestinationSearch = (function () {
     }
 
     /** El Copiloto muestra en pantalla las opciones que está leyendo. */
-    function showResults(places, query) {
-        if (current) current.setPlaces(places);
-        else open({ query, places });
+    function showResults(places, query, { asStop = false } = {}) {
+        if (current && current.asStop === (asStop || addsStop())) current.setPlaces(places);
+        else open({ query, places, asStop });
     }
 
     function close() {
