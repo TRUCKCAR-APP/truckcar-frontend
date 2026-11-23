@@ -54,6 +54,15 @@ window.VoiceAssistant = (function () {
         return [hours, mins].filter(Boolean).join(' y ');
     }
 
+    /** «unos 25 minutos», «aproximadamente una hora y 30 minutos», «a un minuto»: tiempo aproximado bien dicho. */
+    function about(seconds) {
+        const text = spokenDuration(seconds);
+        if (!text) return '';
+        if (text === '1 minuto') return 'a un minuto';
+        if (/^1 /.test(text)) return 'aproximadamente ' + text.replace(/^1 hora/, 'una hora').replace(/^1 minuto/, 'un minuto');
+        return 'unos ' + text;
+    }
+
     function spokenHours(hours) {
         if (!Number.isFinite(hours)) return null;
         return spokenDuration(hours * 3600);
@@ -556,9 +565,9 @@ window.VoiceAssistant = (function () {
                         : 'No pude agregar la parada en ' + place.title + '. Sigo con la ruta como estaba.');
                     return { status: 'unavailable', intent };
                 }
-                const time = spokenDuration(result.toStopS);
+                const time = about(result.toStopS);
                 let text = (result.replaced ? 'Cambié la parada: ahora es ' : 'Listo, parada en ') + result.title
-                    + (Number.isFinite(result.toStopM) ? ', a ' + spokenDistance(result.toStopM) + (time ? ', unos ' + time : '') : '') + '.';
+                    + (Number.isFinite(result.toStopM) ? ', a ' + spokenDistance(result.toStopM) + (time ? ', ' + time : '') : '') + '.';
                 if (Number.isFinite(result.extraS)) {
                     text += result.extraS < 90 ? ' Casi no le suma tiempo al viaje.' : ' Le suma ' + spokenDuration(result.extraS) + ' al viaje.';
                 }
@@ -594,9 +603,9 @@ window.VoiceAssistant = (function () {
                 await say('Ya está en su parada: ' + info.title + '. Cuando quiera seguir, diga «seguimos».');
                 return { status: 'done', intent };
             }
-            const time = spokenDuration(info.toStopS);
+            const time = about(info.toStopS);
             await say('Su parada es ' + info.title + (Number.isFinite(info.toStopM)
-                ? ': faltan ' + spokenDistance(info.toStopM) + (time ? ', unos ' + time : '') : '') + '.');
+                ? ': faltan ' + spokenDistance(info.toStopM) + (time ? ', ' + time : '') : '') + '.');
             return { status: 'done', intent };
         }
 
@@ -604,9 +613,9 @@ window.VoiceAssistant = (function () {
             const a = deps.actions;
             const result = a.resumeAfterStop ? a.resumeAfterStop() : { ok: false, reason: 'no-stop' };
             if (result.ok) {
-                const time = spokenDuration(result.durationS);
+                const time = about(result.durationS);
                 await say('Seguimos hacia ' + (a.destinationLabel ? a.destinationLabel() : 'el destino')
-                    + (Number.isFinite(result.remainingM) ? ': faltan ' + spokenDistance(result.remainingM) + (time ? ', unos ' + time : '') : '') + '.');
+                    + (Number.isFinite(result.remainingM) ? ': faltan ' + spokenDistance(result.remainingM) + (time ? ', ' + time : '') : '') + '.');
                 return { status: 'done', intent };
             }
             if (result.reason === 'not-there') {
@@ -651,7 +660,7 @@ window.VoiceAssistant = (function () {
                             + (kind.alternative && !safety ? ' ' + kind.alternative : ''));
                         return { status: 'unavailable', intent };
                     }
-                    if (a.showPlaces) a.showPlaces(options, kind.query);
+                    if (a.showPlaces) a.showPlaces(options, kind.query, { asStop: true });
                     const prompt = safety + (options.length === 1
                         ? 'Sobre la ruta encontré ' + describeStop(options[0], intent.category) + '.' + (note ? ' ' + note : '')
                             + ' ¿La agrego como parada? Diga sí o cancelar.'
@@ -683,6 +692,7 @@ window.VoiceAssistant = (function () {
             if (a.showPlaces) a.showPlaces(options, kind.query);
             // Con ruta (aunque la búsqueda sobre la ruta no respondió), el lugar elegido sigue siendo una parada.
             if (onRoute && a.addStop) {
+                if (a.showPlaces) a.showPlaces(options, kind.query, { asStop: true });
                 return offerPlaces(options, (index) => addStopFlow(options[index], intent), { many: kind.many + ' cerca', note,
                     question: '¿Cuál agrego como parada? Diga el número.' });
             }
@@ -847,7 +857,7 @@ window.VoiceAssistant = (function () {
             stopInfo: () => (window.RouteGuidance && window.RouteGuidance.stopInfo ? window.RouteGuidance.stopInfo() : null),
             planReroute: (options) => window.RouteGuidance.planReroute(options),
             searchPlaces: (query) => window.app.searchPlaces(query),
-            showPlaces: (places, query) => { if (window.DestinationSearch) window.DestinationSearch.showResults(places, query); },
+            showPlaces: (places, query, options) => { if (window.DestinationSearch) window.DestinationSearch.showResults(places, query, options); },
             navigateTo: (place) => window.app.goToPlace(place, { silent: true }),
             applyReroute: (plan) => window.RouteGuidance.applyReroute(plan),
             remaining: () => (window.RouteGuidance ? window.RouteGuidance.remaining() : null),

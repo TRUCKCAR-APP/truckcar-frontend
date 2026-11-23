@@ -111,7 +111,7 @@ function copilot(actions = {}, { route = true } = {}) {
       instruction: () => "En 300 m, gire a la derecha",
       searchStops: async (category) => { calls.searched.push(category); return { status: "ok", stops: STOPS }; },
       searchPlaces: async (q) => { calls.places.push(q); return [{ title: "Estación Cerca", latitude: 4.6, longitude: -74.0, distanceMeters: 800 }]; },
-      showPlaces: () => {},
+      showPlaces: (p, q, o) => { calls.shown = o || null; },
       addStop: async (place) => {
         calls.added.push(place);
         stop = { title: place.title, reached: false };
@@ -145,6 +145,7 @@ test("«quiero comer» con ruta: 3 lugares sobre la ruta con distancia y desvío
   const { ctrl, said, calls } = copilot();
   await ctrl.handle("quiero comer");
   assert.deepEqual(calls.searched, ["restaurant"]);
+  assert.equal(calls.shown.asStop, true, "en pantalla, tocar una opción también la agrega como parada");
   const offer = said.at(-1);
   assert.match(offer, /^Sobre la ruta encontré 3 restaurantes\. Uno: Asadero La Vía, a 5[.,]6 kilómetros, casi sin desvío\./);
   assert.match(offer, /Dos: Comidas El Peaje, a 22 kilómetros, le suma 4 minutos\./);
@@ -217,7 +218,7 @@ test("«ya llegué» con parada pendiente es llegar a la parada, no entregar la 
   await ctrl.handle("cuánto falta para la parada");
   assert.equal(said.at(-1), "Ya está en su parada: Asadero La Vía. Cuando quiera seguir, diga «seguimos».");
   await ctrl.handle("vámonos");
-  assert.equal(said.at(-1), "Seguimos hacia Medellín: faltan 84 kilómetros, unos 1 hora y 30 minutos.");
+  assert.equal(said.at(-1), "Seguimos hacia Medellín: faltan 84 kilómetros, aproximadamente una hora y 30 minutos.");
   // Sin parada, «ya llegué» vuelve a ser la entrega (con confirmación).
   await ctrl.handle("ya llegué");
   assert.match(said.at(-1), /^¿Confirma que desea registrar la entrega de la carga\?/);

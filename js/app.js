@@ -914,15 +914,16 @@ window.app = {
      * Lleva la guía al lugar elegido (desde la búsqueda o por voz) y abre la pantalla Navegar. Con una carga en curso
      * el lugar queda como parada antes del destino de la carga: nunca se abandona la carga por elegir un lugar.
      */
-    async goToPlace(place, { silent = false } = {}) {
+    async goToPlace(place, { silent = false, asStop = false } = {}) {
         this.tripSheetExpanded = false;
         window.store.setState({ driverScreen: 'navigation' });
         const guidance = window.RouteGuidance;
-        if (guidance.route && !guidance.freeDestination) {
+        if (guidance.route && (asStop || !guidance.freeDestination)) {
             const stop = await guidance.addStop(place);
             if (!silent) {
                 if (stop.ok) {
-                    window.voiceEngine.speak('Parada en ' + stop.title + ' agregada. Después sigo hacia ' + window.DriverApp.destinationLabel() + '.', true);
+                    const destination = guidance.freeDestination ? guidance.freeDestination.title : window.DriverApp.destinationLabel();
+                    window.voiceEngine.speak('Parada en ' + stop.title + ' agregada. Después sigo hacia ' + destination + '.', true);
                 } else {
                     window.ui.toast('No se pudo agregar la parada', 'warning', { description: 'Sin conexión con el servicio de rutas. Intente de nuevo.' });
                 }
