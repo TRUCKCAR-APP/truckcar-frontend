@@ -308,6 +308,7 @@ body[data-view="login"] #app-main { padding: 0 !important; }
     -webkit-user-select: none;
 }
 .driver-tab svg { width: 24px; height: 24px; fill: currentColor; flex: none; }
+.driver-tab { padding: 0 2px; min-width: 0; }
 .driver-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .driver-tab.is-active { color: var(--color-accent); }
 .driver-tab.is-active::before {
@@ -537,6 +538,8 @@ button.net-status { background: none; border: 0; padding: 0; min-height: 32px; c
     position: absolute;
     top: calc(var(--safe-top) + 6px);
     right: calc(64px + var(--safe-right));
+    width: var(--sos-width);
+    justify-content: center;
     z-index: 600;
     height: 48px;
     display: inline-flex;
@@ -548,6 +551,8 @@ button.net-status { background: none; border: 0; padding: 0; min-height: 32px; c
 }
 .sos-face {
     position: relative;
+    width: 100%;
+    justify-content: center;
     height: 40px;
     padding: 0 var(--space-3);
     display: inline-flex;
@@ -669,7 +674,14 @@ button.net-status { background: none; border: 0; padding: 0; min-height: 32px; c
 .sos-modal.is-neutral .sos-close { color: var(--color-text); }
 .sos-modal.is-neutral :focus-visible { outline-color: var(--color-focus); }
 .app-header .header-icon-btn { width: 48px; height: 48px; }
-.app-header .wordmark { max-width: calc(100% - 84px - max(96px, calc(52px + 2rem))); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-header .wordmark { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* El estado de conexión ocupa lo que queda entre la marca y el SOS, y se recorta con «…» antes de llegar a él. */
+.app-header [data-network-status] { flex: 1 1 auto; min-width: 0; display: flex; overflow: hidden; container-type: inline-size; }
+/* Si el texto no cabe entero, solo el ícono de color (el texto sigue en aria-label y al tocarlo se ve el detalle):
+   «Reconectando» o «Sin conexión» necesitan ~125 px; «En línea», ~80 px. */
+@container (max-width: 124px) { .net-status:not([data-state="online"]) > span:last-child { display: none; } }
+@container (max-width: 84px) { .net-status > span:last-child { display: none; } }
+.app-header .net-status { max-width: 100%; min-width: 32px; }
 .sos-modal:focus { outline: none; }
 body.sos-open .toaster { display: none; }
 .sos-modal :focus-visible { outline: 2px solid #FFFFFF; outline-offset: 3px; }
@@ -948,7 +960,9 @@ body[data-mode="public-tracking"] .phone-frame { max-width: 100%; border-radius:
 .nav-logo { width: 40px; }
 
 .wordmark { font-size: var(--text-body); font-weight: var(--weight-bold); letter-spacing: -0.01em; color: var(--color-text); flex: none; }
-.app-header-spacer { flex: 1; min-width: max(96px, calc(52px + 2rem)); }
+/* Hueco exacto para el SOS, que flota encima de la cabecera (driverActions lo monta aparte para no perder el «mantener
+   presionado» cuando la pantalla se redibuja): su ancho más un margen de separación a cada lado. */
+.app-header-spacer { flex: none; width: calc(var(--sos-width) + var(--space-3)); }
 .header-icon-btn {
     width: var(--touch-min); height: var(--touch-min); flex: none;
     display: grid; place-items: center; border-radius: var(--radius-md);
@@ -1630,3 +1644,19 @@ select.field-input { appearance: none; -webkit-appearance: none; }
 }
 #phone-mockup-frame:has(.nav-screen:not(.is-landscape)) .copilot-fab .copilot-fab-label { display: none; }
 #phone-mockup-frame:has(.trip-sheet[data-expanded="true"]) .copilot-fab { visibility: hidden; }
+
+/* ── Cabecera y pestañas del conductor en teléfonos angostos ────────────────────────────────────────────────────── */
+:root { --sos-width: 84px; }
+/* Menos de 380 px (la mayoría de Android de gama media y el iPhone SE): la cabecera y las pestañas se compactan. */
+@media (max-width: 379px) {
+    .app-header { gap: var(--space-2); padding-left: calc(var(--space-3) + var(--safe-left)); }
+    .driver-tabbar { padding-left: calc(var(--space-1, 4px) + var(--safe-left)); padding-right: calc(var(--space-1, 4px) + var(--safe-right)); }
+    .driver-tab { font-size: 0.6875rem; }
+    .driver-tab.is-active::before { width: min(52px, calc(100% - 4px)); margin-left: 0; transform: translateX(-50%); }
+}
+@media (max-width: 339px) {
+    :root { --sos-width: 76px; }
+    .app-header .wordmark { font-size: var(--text-footnote); }
+    .sos-face { padding: 0 var(--space-2); gap: 4px; }
+    .driver-tab { font-size: 0.625rem; }
+}
