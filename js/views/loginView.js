@@ -1,4 +1,24 @@
 window.LoginView = {
+    /**
+     * Panel de marca: solo se ve en pantallas anchas (computador y tableta horizontal, css/main.css), a la izquierda del
+     * formulario. En el celular queda oculto y el formulario ocupa toda la pantalla, como antes.
+     */
+    brandPanel() {
+        const point = (icon, title, text) => `<li><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#${icon}"></use></svg>
+            <span><strong>${title}</strong>${text}</span></li>`;
+        return `
+            <aside class="login-aside" aria-label="Qué es TruckCar">
+                <img src="assets/brand/truckcar-logo-blanco.png" alt="TruckCar" class="login-aside-logo" width="854" height="831">
+                <p class="login-aside-title">Transporte de carga pesada, conectado de la bodega a la entrega.</p>
+                <ul class="login-aside-points">
+                    ${point('path', 'Rutas para su camión', 'Calculadas con su altura, peso y ejes, con peajes y restricciones de la vía.')}
+                    ${point('microphone', 'Copiloto por voz', 'Reportes, paradas y alertas sin soltar el volante.')}
+                    ${point('cloud-arrow-down', 'Funciona sin señal', 'Guarda la ruta y las entregas, y sincroniza cuando vuelve la conexión.')}
+                    ${point('truck', 'Torre de control', 'La flota, las cargas y los SOS en vivo para la transportadora.')}
+                </ul>
+            </aside>`;
+    },
+
     render(state) {
         if (state.authMode === '2fa' && state.twoFactor) return this.renderTwoFactor(state);
         if (state.authMode === 'forgot' && state.passwordReset) return this.renderPasswordReset(state);
@@ -10,7 +30,7 @@ window.LoginView = {
         const field = (label, input, hint = '') => `<label class="field"><span class="field-label">${label}</span>${input}${hint}</label>`;
 
         return `
-            <div data-screen class="login-screen">
+            <div data-screen class="login-screen">${this.brandPanel()}
                 <form onsubmit="window.app.${isRegister ? 'submitRegister' : 'submitLogin'}(event)" class="login-form" novalidate>
                     <span class="brand-logo login-mark">
                         <img src="assets/brand/truckcar-logo.png" alt="TruckCar" class="brand-logo-light" width="854" height="831">
@@ -104,7 +124,7 @@ window.LoginView = {
             ? '<input id="two-factor-code" name="code" type="text" required maxlength="9" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="ABCD-2345" class="field-input two-factor-input" aria-describedby="two-factor-help">'
             : '<input id="two-factor-code" name="code" type="text" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" enterkeyhint="go" placeholder="123456" class="field-input two-factor-input" aria-describedby="two-factor-help">';
         return `
-            <div data-screen class="login-screen">
+            <div data-screen class="login-screen">${this.brandPanel()}
                 <form onsubmit="window.app.submitTwoFactor(event)" class="login-form" novalidate data-two-factor>
                     <span class="brand-logo login-mark">
                         <img src="assets/brand/truckcar-logo.png" alt="TruckCar" class="brand-logo-light" width="854" height="831">
@@ -206,7 +226,7 @@ window.LoginView = {
                 </form>`;
         }
         return `
-            <div data-screen class="login-screen">
+            <div data-screen class="login-screen">${this.brandPanel()}
                 <div class="login-form" data-password-reset="${esc(reset.step)}">
                     <span class="brand-logo login-mark">
                         <img src="assets/brand/truckcar-logo.png" alt="TruckCar" class="brand-logo-light" width="854" height="831">
