@@ -112,13 +112,13 @@ test("si la IA tampoco entiende, dice su aclaración; sin servicio, las opciones
 
   for (const interpret of [() => null, () => { throw new Error("sin red"); }, () => ({ intent: "UNKNOWN" })]) {
     const { ctrl, said } = controller({ interpret });
-    const result = await ctrl.handle("necesito un café");
+    const result = await ctrl.handle("cuéntame un chiste");
     assert.equal(result.status, "unknown");
     assert.match(said.at(-1), /^No entendí\. Puede decir, por ejemplo:/);
   }
 
   const without = controller();
-  await without.ctrl.handle("necesito un café");
+  await without.ctrl.handle("cuéntame un chiste");
   assert.match(without.said.at(-1), /^No entendí\./);
 });
 

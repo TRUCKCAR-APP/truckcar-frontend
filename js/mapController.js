@@ -547,6 +547,20 @@ class MapController {
         }
     }
 
+    /** Parada elegida por el conductor (restaurante, estación…): un pin con su nombre; null la quita. */
+    showStopMarker(stop) {
+        if (this.stopMarker) {
+            try { this.stopMarker.remove(); } catch (e) { }
+            this.stopMarker = null;
+        }
+        if (!stop || !this.map || !Array.isArray(stop.coords)) return;
+        const icon = L.divIcon({ html: '<span class="map-pin-parada" aria-hidden="true"></span>', className: 'map-pin',
+            iconSize: [22, 22], iconAnchor: [11, 11] });
+        this.stopMarker = L.marker(stop.coords, { icon, title: 'Parada: ' + stop.title, keyboard: false, zIndexOffset: 500 })
+            .bindTooltip('Parada: ' + stop.title, { direction: 'top', offset: [0, -10] })
+            .addTo(this.map);
+    }
+
     useGuidedRoute(guided) {
         if (!guided || !guided.geometry || guided.geometry.length < 2) return;
         this.cachedOptimalRoadGeometry = guided.geometry;

@@ -910,10 +910,26 @@ window.app = {
         window.DestinationSearch.open();
     },
 
-    /** Lleva la guía al lugar elegido (desde la búsqueda o por voz) y abre la pantalla Navegar. */
+    /**
+     * Lleva la guía al lugar elegido (desde la búsqueda o por voz) y abre la pantalla Navegar. Con una carga en curso
+     * el lugar queda como parada antes del destino de la carga: nunca se abandona la carga por elegir un lugar.
+     */
     async goToPlace(place, { silent = false } = {}) {
         this.tripSheetExpanded = false;
         window.store.setState({ driverScreen: 'navigation' });
+        const guidance = window.RouteGuidance;
+        if (guidance.route && !guidance.freeDestination) {
+            const stop = await guidance.addStop(place);
+            if (!silent) {
+                if (stop.ok) {
+                    window.voiceEngine.speak('Parada en ' + stop.title + ' agregada. Después sigo hacia ' + window.DriverApp.destinationLabel() + '.', true);
+                } else {
+                    window.ui.toast('No se pudo agregar la parada', 'warning', { description: 'Sin conexión con el servicio de rutas. Intente de nuevo.' });
+                }
+            }
+            window.store.setState({});
+            return stop;
+        }
         const result = await window.RouteGuidance.navigateTo(place);
         if (!result.ok && !silent) {
             if (result.reason === 'no-position') {
