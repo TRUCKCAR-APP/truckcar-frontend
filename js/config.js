@@ -26,7 +26,8 @@
     const mapApiKey = window.TRUCKCAR_MAP_API_KEY || (mapKeyTag && mapKeyTag.content) || '';
     // Stadia sin clave solo sirve teselas a localhost (en otro dominio responde 401) y CARTO ya exige clave en todas sus
     // URL (devuelve una tesela con «API KEY REQUIRED»). Fuera de localhost y sin clave se usa el mapa gris de Esri, que no
-    // la pide: la base y, encima, la capa de nombres de calles. Con TRUCKCAR_MAP_API_KEY se usa Stadia en todo dominio.
+    // la pide: la base y, encima, la capa de nombres de calles. Con TRUCKCAR_MAP_API_KEY se usa Stadia en todo dominio y,
+    // si Stadia deja de responder, layer() pasa solo a Esri.
     const onLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
     const MAP_PROVIDER = mapApiKey || onLocalhost ? 'stadia' : 'esri';
     const MAP_PROVIDERS = {
@@ -72,17 +73,45 @@
              * setTheme(tema) cambia las dos sin recrear el mapa.
              */
             layer(theme) {
+                let current = provider;
+                let currentTheme = theme;
+                const urlFor = (p, isLight) => (p === provider ? withKey(isLight ? p.lightUrl : p.url) : (isLight ? p.lightUrl : p.url));
+                const labelsFor = (p, isLight) => (isLight ? p.lightLabelsUrl : p.labelsUrl) || null;
+                const optionsFor = (p) => ({ maxZoom: p.maxZoom, maxNativeZoom: p.maxNativeZoom || p.maxZoom, crossOrigin: true });
                 const light = theme === 'light';
-                const options = { maxZoom: provider.maxZoom, maxNativeZoom: provider.maxNativeZoom || provider.maxZoom, crossOrigin: true };
-                const base = window.L.tileLayer(light ? withKey(provider.lightUrl) : tileUrl, { ...options, attribution: provider.attribution });
-                const labelsFor = (dark) => (dark ? provider.labelsUrl : provider.lightLabelsUrl) || null;
-                const labels = labelsFor(!light) ? window.L.tileLayer(labelsFor(!light), { ...options, zIndex: 2 }) : null;
+                const base = window.L.tileLayer(urlFor(current, light), { ...optionsFor(current), attribution: current.attribution });
+                let labels = labelsFor(current, light) ? window.L.tileLayer(labelsFor(current, light), { ...optionsFor(current), zIndex: 2 }) : null;
                 const group = window.L.layerGroup(labels ? [base, labels] : [base]);
+                group.provider = () => (current === provider ? MAP_PROVIDER : 'esri');
                 group.setTheme = (next) => {
+                    currentTheme = next;
                     const isLight = next === 'light';
-                    base.setUrl(isLight ? withKey(provider.lightUrl) : tileUrl);
-                    if (labels && labelsFor(!isLight)) labels.setUrl(labelsFor(!isLight));
+                    base.setUrl(urlFor(current, isLight));
+                    if (labels && labelsFor(current, isLight)) labels.setUrl(labelsFor(current, isLight));
                 };
+                // Respaldo: si Stadia deja de servir (clave vencida, cupo agotado, 401/429), el mapa pasa solo a Esri, que
+                // no pide clave. Solo con conexión: sin señal las teselas fallan por la red, no por el proveedor.
+                if (MAP_PROVIDER === 'stadia') {
+                    let failures = 0;
+                    let loaded = 0;
+                    base.on('tileload', () => { loaded++; failures = 0; });
+                    base.on('tileerror', () => {
+                        if (current !== provider || window.navigator.onLine === false) return;
+                        failures++;
+                        if (failures < (loaded ? 6 : 3)) return;
+                        const map = group._map;
+                        const fallback = MAP_PROVIDERS.esri;
+                        if (map && map.attributionControl) map.attributionControl.removeAttribution(current.attribution).addAttribution(fallback.attribution);
+                        current = fallback;
+                        const isLight = currentTheme === 'light';
+                        base.options.attribution = fallback.attribution;
+                        base.options.maxNativeZoom = fallback.maxNativeZoom;
+                        base.setUrl(urlFor(fallback, isLight));
+                        labels = window.L.tileLayer(labelsFor(fallback, isLight), { ...optionsFor(fallback), zIndex: 2 });
+                        group.addLayer(labels);
+                        if (window.console) window.console.warn('Mapa: Stadia no responde; se usa Esri como respaldo.');
+                    });
+                }
                 return group;
             }
         }),

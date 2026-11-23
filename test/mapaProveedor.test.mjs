@@ -61,3 +61,32 @@ test("la compilación inyecta la clave de Stadia desde TRUCKCAR_MAP_API_KEY y re
   assert.match(readFileSync("Dockerfile", "utf8"), /ARG TRUCKCAR_MAP_API_KEY/);
   assert.match(readFileSync("scripts/stage-android.mjs", "utf8"), /injectMapApiKey\(/);
 });
+
+test("respaldo: si Stadia falla con conexión, el mapa pasa solo a Esri con nombres de calles; sin señal no cambia", () => {
+  const keyed = () => load("https://app.truckcar.co/", (w) => { w.TRUCKCAR_MAP_API_KEY = "clave-de-prueba"; });
+  const w = keyed();
+  const layer = w.TruckCarConfig.map.layer("dark");
+  const [base] = layer.getLayers();
+  assert.equal(layer.provider(), "stadia");
+  for (let i = 0; i < 3; i++) base.fire("tileerror", {});
+  assert.equal(layer.provider(), "esri");
+  const urls = layer.getLayers().map((l) => l._url);
+  assert.match(urls[0], /World_Dark_Gray_Base/);
+  assert.doesNotMatch(urls[0], /api_key/, "Esri no recibe la clave de Stadia");
+  assert.match(urls[1], /World_Dark_Gray_Reference/);
+  layer.setTheme("light");
+  assert.match(layer.getLayers()[0]._url, /World_Light_Gray_Base/);
+  assert.match(layer.getLayers()[1]._url, /World_Light_Gray_Reference/);
+
+  const offline = keyed();
+  Object.defineProperty(offline.navigator, "onLine", { value: false, configurable: true });
+  const still = offline.TruckCarConfig.map.layer("dark");
+  for (let i = 0; i < 10; i++) still.getLayers()[0].fire("tileerror", {});
+  assert.equal(still.provider(), "stadia", "sin señal es la red, no Stadia");
+
+  const flaky = keyed().TruckCarConfig.map.layer("dark");
+  const fb = flaky.getLayers()[0];
+  fb.fire("tileload", {});
+  for (let i = 0; i < 4; i++) fb.fire("tileerror", {});
+  assert.equal(flaky.provider(), "stadia", "unas pocas teselas fallidas tras cargar no cambian el mapa");
+});
