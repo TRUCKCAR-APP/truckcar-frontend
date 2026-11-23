@@ -215,8 +215,10 @@ window.Sheet = (function () {
 
     function explainError(error, context = 'la operación') {
         const status = error && error.status;
-        const trace = error && error.correlationId ? `Referencia de soporte: ${String(error.correlationId).slice(0, 8)}` : '';
-        const detail = (error && error.message) || '';
+        // Sin códigos de rastreo en pantalla (van a la consola desde ui.errorMessage); el detalle solo si se entiende.
+        const trace = '';
+        const raw = error ? String(error.detail || error.message || '') : '';
+        const detail = window.ui && typeof window.ui.isHumanText === 'function' && window.ui.isHumanText(raw) ? raw : '';
         if (status === 409) {
             open({
                 title: 'Alguien llegó primero',
