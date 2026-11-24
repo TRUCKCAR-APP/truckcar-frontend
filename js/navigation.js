@@ -794,8 +794,20 @@ window.RouteGuidance = (function () {
 
     // ── Parada elegida por el conductor ─────────────────────────────────────────────────────────────────────────
 
+    /** Recogida registrada: en Load-Allocation (pickedUpAt) o en este teléfono (también sin señal). */
     function pickupDone(id) {
+        if (currentLoad && currentLoad.backendId === id && currentLoad.pickedUpAt) return true;
         try { return localStorage.getItem(PICKUP_KEY + id) === '1'; } catch (e) { return false; }
+    }
+
+    /** Llegada o recogida en Load-Allocation (la cola offline la guarda sin señal). Repinta al terminar. */
+    function recordPickup(step) {
+        const service = window.TruckCarService;
+        const call = service && (step === 'arrive' ? service.arriveAtPickup : service.completePickup);
+        if (!call) return;
+        Promise.resolve(call.call(service))
+            .then(() => { if (window.store) window.store.setState({}); })
+            .catch(() => { });
     }
 
     function markPickupDone(id) {
@@ -817,19 +829,26 @@ window.RouteGuidance = (function () {
         if (stop && stop.kind === 'pickup') return false;
         const origin = currentLoad.origin && currentLoad.origin.coords;
         if (!origin || !Number.isFinite(origin[0]) || !Number.isFinite(origin[1])) return false;
-        if (distanceM(position, origin) <= PICKUP_FAR_M) {
-            markPickupDone(loadId);
-            return false;
-        }
         const label = originLabel(currentLoad);
         stop = { kind: 'pickup', title: 'Punto de cargue en ' + label, address: currentLoad.origin.address || null, phone: null,
-            coords: origin, destination: finalDestination(), alongM: null, addedAt: 0, reached: false, skipped: false,
-            arrivedAt: null };
+            coords: origin, destination: finalDestination(), alongM: null, addedAt: 0, reached: !!currentLoad.arrivedAtPickupAt,
+            skipped: false, arrivedAt: currentLoad.arrivedAtPickupAt ? Date.now() : null };
         showStopMarker();
+        // Cerca del origen la ruta ya empieza ahí: solo se vigila la llegada. Lejos, se recalcula pasando por el cargue.
+        if (stop.reached || distanceM(position, origin) <= PICKUP_FAR_M) return false;
         speak('Primero vamos al punto de cargue en ' + label + ' a recoger la carga. Después sigo hacia el destino.');
         lastReroute = 0;
         reroute(position);
         return true;
+    }
+
+    /** La recogida se registró (botón «Carga recogida» o voz): se quita la parada del cargue. */
+    function pickupCompleted(id) {
+        markPickupDone(id);
+        if (id === loadId && stop && stop.kind === 'pickup') {
+            clearStop();
+            notify();
+        }
     }
 
     /** Destino final de la ruta guiada (con parada, la ruta termina en el destino guardado en la parada). */
@@ -879,9 +898,18 @@ window.RouteGuidance = (function () {
             if (away > PICKUP_ARRIVED_M) return false;
             stop.reached = true;
             stop.arrivedAt = Date.now();
-            markPickupDone(loadId);
             showStopMarker();
-            speak('Llegó al punto de cargue en ' + originLabel(currentLoad) + '. Recoja la carga; cuando arranque, la ruta sigue al destino.');
+            recordPickup('arrive');
+            speak('Llegó al punto de cargue en ' + originLabel(currentLoad) + '. Cuando termine de cargar, toque «Carga recogida» o diga «seguimos».');
+            return true;
+        }
+        // Salir del punto de cargue después de llegar es salir con la carga: se registra la recogida.
+        if (stop.reached && stop.kind === 'pickup') {
+            if (away <= STOP_LEFT_M) return false;
+            clearStop();
+            markPickupDone(loadId);
+            recordPickup('complete');
+            speak('Salió del punto de cargue: registré la recogida. Vamos hacia el destino.');
             return true;
         }
         if (!stop.reached) {
@@ -1049,11 +1077,11 @@ window.RouteGuidance = (function () {
         if (!stop.reached) {
             stop.reached = true;
             stop.arrivedAt = Date.now();
-            if (stop.kind === 'pickup') markPickupDone(loadId);
+            if (stop.kind === 'pickup') recordPickup('arrive');
             showStopMarker();
             notify();
         }
-        return { ok: true, title: stop.title };
+        return { ok: true, kind: stop.kind || 'stop', title: stop.title };
     }
 
     /** «Seguimos» después de parar: termina la parada; la ruta ya continúa al destino. */
@@ -1064,6 +1092,11 @@ window.RouteGuidance = (function () {
             return { ok: false, reason: 'not-there', title: stop.title, toStopM: ahead ? ahead.meters : null };
         }
         const title = stop.title;
+        // «Seguimos» en el punto de cargue: la carga ya está arriba.
+        if (stop.kind === 'pickup') {
+            markPickupDone(loadId);
+            recordPickup('complete');
+        }
         clearStop();
         notify();
         const left = remaining();
@@ -1506,7 +1539,7 @@ window.RouteGuidance = (function () {
         tollsAhead,
         prepare, prefetch, update, reset, forget, snapshot, hudText, renderHud, durationText, handleBlockage, layoutAlerts, toggleAlerts,
         recalculate, planReroute, applyReroute, remaining, navigateTo, endFreeNavigation, minutesText, arrivalText,
-        searchStops, addStop, removeStop, markStopReached, resumeAfterStop, stopInfo,
+        searchStops, addStop, removeStop, markStopReached, resumeAfterStop, stopInfo, pickupCompleted,
         get stop() { return stop; },
         get freeDestination() { return freeDestination; },
         onUpdate(listener) { listeners.add(listener); return () => listeners.delete(listener); },

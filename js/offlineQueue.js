@@ -8,6 +8,8 @@
     const ENDPOINTS = {
         'position': '/fleets-drivers/sync/batch',
         'trip.started': '/loads/sync/batch',
+        'trip.pickup_arrived': '/loads/sync/batch',
+        'trip.picked_up': '/loads/sync/batch',
         'trip.delivered': '/loads/sync/batch',
         'alert.reported': '/alerts/sync/batch',
         'alert.confirmed': '/alerts/sync/batch',

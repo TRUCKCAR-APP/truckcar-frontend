@@ -98,7 +98,9 @@ window.PublicTracking = (function () {
             <ol class="list track-steps">
                 ${step(true, 'package', 'Envío publicado', v.publishedAt)}
                 ${step(!!v.assignedAt, 'user', 'Conductor asignado', v.assignedAt)}
-                ${step(!!v.tripStartedAt, 'truck', 'En ruta', v.tripStartedAt)}
+                ${step(!!v.tripStartedAt, 'truck', 'Camino al punto de cargue', v.tripStartedAt)}
+                ${step(!!v.arrivedAtPickupAt, 'crosshair', 'En el punto de cargue', v.arrivedAtPickupAt)}
+                ${step(!!v.pickedUpAt, 'package', 'Carga recogida · en ruta al destino', v.pickedUpAt)}
                 ${step(v.status === 'DELIVERED', 'flag-checkered', 'Entregado', v.deliveredAt)}
             </ol>
 

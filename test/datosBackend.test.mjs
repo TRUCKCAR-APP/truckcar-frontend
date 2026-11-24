@@ -297,7 +297,10 @@ test("las acciones de una carga se deciden en un solo lugar según status y assi
   assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "NOTIFIED" }), ["cancel", "respond", "shareTracking"]);
   assert.deepEqual(on({ status: "AVAILABLE", assignmentStatus: "UNASSIGNED_NO_DRIVERS" }), ["assignManually", "cancel", "requestMatching", "shareTracking"]);
   assert.deepEqual(on({ status: "ASSIGNED", assignmentStatus: "ACCEPTED" }), ["cancel", "navigate", "shareTracking", "startTrip", "trackTruck"]);
-  assert.deepEqual(on({ status: "IN_TRANSIT", assignmentStatus: "ACCEPTED" }), ["deliver", "navigate", "shareTracking", "trackTruck", "transmitPosition"]);
+  // En ruta: primero llegar al cargue y recoger; solo con la carga recogida se entrega.
+  assert.deepEqual(on({ status: "IN_TRANSIT", assignmentStatus: "ACCEPTED" }), ["arrivePickup", "completePickup", "navigate", "shareTracking", "trackTruck", "transmitPosition"]);
+  assert.deepEqual(on({ status: "IN_TRANSIT", assignmentStatus: "ACCEPTED", arrivedAtPickupAt: "2026-11-24T08:00:00" }), ["completePickup", "navigate", "shareTracking", "trackTruck", "transmitPosition"]);
+  assert.deepEqual(on({ status: "IN_TRANSIT", assignmentStatus: "ACCEPTED", arrivedAtPickupAt: "2026-11-24T08:00:00", pickedUpAt: "2026-11-24T08:40:00" }), ["deliver", "navigate", "shareTracking", "trackTruck", "transmitPosition"]);
   assert.deepEqual(on({ status: "DELIVERED", assignmentStatus: "ACCEPTED" }), ["shareTracking", "viewProofOfDelivery"]);
   assert.deepEqual(on({ status: "CANCELLED", assignmentStatus: "ACCEPTED" }), []);
 });

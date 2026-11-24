@@ -380,7 +380,9 @@ window.GeneratorPanel = (function () {
                         ? timelineItem(true, 'fa-ban', 'Cancelada', load.cancelledAt, load.cancellationReason, pulse === 'cancelled')
                         : matchingStep(load, pulse === 'matching')
                             + timelineItem(assigned, 'fa-handshake', 'Aceptada por el conductor', load.assignedAt, '', pulse === 'accepted')
-                            + timelineItem(!!load.tripStartedAt, 'fa-truck-moving', 'En ruta', load.tripStartedAt, '', pulse === 'in_transit')
+                            + timelineItem(!!load.tripStartedAt, 'fa-truck-moving', 'Camino al punto de cargue', load.tripStartedAt, '', pulse === 'in_transit')
+                            + timelineItem(!!load.raw && !!load.raw.arrivedAtPickupAt, 'fa-warehouse', 'Llegó al punto de cargue', load.raw && load.raw.arrivedAtPickupAt, '', pulse === 'pickup_arrived')
+                            + timelineItem(!!load.raw && !!load.raw.pickedUpAt, 'fa-box', 'Carga recogida · en ruta al destino', load.raw && load.raw.pickedUpAt, '', pulse === 'picked_up')
                             + timelineItem(load.status === 'DELIVERED', 'fa-flag-checkered', 'Entregada', load.deliveredAt,
                                 load.podReceiverName ? 'recibió ' + load.podReceiverName : '', pulse === 'delivered')}
                 </ol>
@@ -512,6 +514,8 @@ window.generatorCtrl = (function () {
         'assignment.unassigned': { step: 'matching' },
         'assignment.accepted': { step: 'accepted', stamp: 'assignedAt' },
         'trip.started': { step: 'in_transit', stamp: 'tripStartedAt' },
+        'trip.pickup_arrived': { step: 'pickup_arrived', stamp: 'arrivedAtPickupAt' },
+        'trip.picked_up': { step: 'picked_up', stamp: 'pickedUpAt' },
         'trip.delivered': { step: 'delivered', stamp: 'deliveredAt' },
         'load.cancelled': { step: 'cancelled', stamp: 'cancelledAt' }
     };
@@ -533,7 +537,11 @@ window.generatorCtrl = (function () {
                 return window.ui.toast(name + ': sin conductores disponibles por ahora.', 'warning',
                     { description: 'El motor de asignación vuelve a intentarlo solo.' });
             case 'trip.started':
-                return window.ui.toast(name + ' salió en ruta.', 'info');
+                return window.ui.toast(driver + ' va camino al punto de cargue de ' + name + '.', 'info');
+            case 'trip.pickup_arrived':
+                return window.ui.toast(driver + ' llegó al punto de cargue de ' + name + '.', 'info');
+            case 'trip.picked_up':
+                return window.ui.toast(name + ' fue recogida y va en ruta al destino.', 'success');
             case 'trip.delivered':
                 return window.ui.toast(name + ' fue entregada.', 'success');
             case 'load.cancelled':
@@ -607,8 +615,11 @@ window.generatorCtrl = (function () {
             if (msg.assignedVehiclePlate) load.assignedVehiclePlate = raw.assignedVehiclePlate = msg.assignedVehiclePlate;
             if (msg.assignmentAttempts != null) raw.assignmentAttempts = msg.assignmentAttempts;
             if (String(msg.eventType || '').startsWith('assignment.')) raw.assignmentStatusChangedAt = at;
+            const stamped = !!event.stamp && !raw[event.stamp];
             if (event.stamp && !load[event.stamp]) load[event.stamp] = raw[event.stamp] = at;
-            if (before === load.status + '/' + load.assignmentStatus) return;
+            if (stamped && !raw[event.stamp]) raw[event.stamp] = at;
+            // La llegada al cargue y la recogida no cambian el status (sigue IN_TRANSIT), pero sí la línea de tiempo.
+            if (before === load.status + '/' + load.assignmentStatus && !stamped) return;
 
             if (event.step) {
                 highlight = { loadId: load.backendId, step: event.step, until: Date.now() + 1500 };

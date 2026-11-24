@@ -83,7 +83,10 @@
             respond: proposal && load.assignmentStatus === 'NOTIFIED',
             startTrip: load.status === 'ASSIGNED',
             navigate: underway,
-            deliver: load.status === 'IN_TRANSIT',
+            // En ruta: primero al punto de cargue (llegar y recoger) y solo con la carga recogida se puede entregar.
+            arrivePickup: load.status === 'IN_TRANSIT' && !load.pickedUpAt && !load.arrivedAtPickupAt,
+            completePickup: load.status === 'IN_TRANSIT' && !load.pickedUpAt,
+            deliver: load.status === 'IN_TRANSIT' && !!load.pickedUpAt,
             transmitPosition: load.status === 'IN_TRANSIT',
             trackTruck: underway,
             cancel: load.status === 'AVAILABLE' || load.status === 'ASSIGNED',
@@ -412,6 +415,39 @@
         }
     }
 
+    const pickupInFlight = new Map();
+
+    /** Un hito de la recogida en Load-Allocation; sin señal queda en la cola offline y se aplica al volver. */
+    function pickupStep(step) {
+        const load = data.activeLoadOrder;
+        const done = !load || load.status !== 'IN_TRANSIT' || load.pickedUpAt || (step === 'arrive' && load.arrivedAtPickupAt);
+        if (done) return Promise.resolve(load);
+        const key = step + ':' + load.backendId;
+        if (pickupInFlight.has(key)) return pickupInFlight.get(key);
+        const now = new Date().toISOString();
+        const kind = step === 'arrive' ? 'trip.pickup_arrived' : 'trip.picked_up';
+        const local = step === 'arrive' ? { arrivedAtPickupAt: now }
+            : { arrivedAtPickupAt: load.arrivedAtPickupAt || now, pickedUpAt: now };
+        const promise = offlineCapable(
+            () => step === 'arrive' ? api.loads.arriveAtPickup(load.backendId) : api.loads.completePickup(load.backendId),
+            async () => {
+                await window.OfflineQueue.enqueue(kind, { loadId: load.backendId }, { tripId: load.backendId });
+                return { ...load.raw, status: 'IN_TRANSIT', ...local, pendingSync: true };
+            })
+            .then((updated) => {
+                if (data.activeLoadOrder && data.activeLoadOrder.backendId === load.backendId) {
+                    data.activeLoadOrder = mapLoad(updated);
+                }
+                if (step === 'complete' && window.RouteGuidance && window.RouteGuidance.pickupCompleted) {
+                    window.RouteGuidance.pickupCompleted(load.backendId);
+                }
+                return data.activeLoadOrder;
+            })
+            .finally(() => pickupInFlight.delete(key));
+        pickupInFlight.set(key, promise);
+        return promise;
+    }
+
     function mapLoad(load) {
         return {
             raw: load,
@@ -447,6 +483,8 @@
             assignedAt: load.assignedAt,
             assignmentStatusChangedAt: given(load, 'assignmentStatusChangedAt'),
             tripStartedAt: load.tripStartedAt,
+            arrivedAtPickupAt: load.arrivedAtPickupAt || null,
+            pickedUpAt: load.pickedUpAt || null,
             deliveredAt: load.deliveredAt,
             podReceiverName: load.podReceiverName,
             podReceiverDocument: load.podReceiverDocument,
@@ -883,6 +921,16 @@
             data.activeLoadOrder = mapLoad(updated);
             syncDriverTelemetry();
             return data.activeLoadOrder;
+        },
+
+        /** Llegó al punto de cargue (también automático al entrar a 150 m del origen). Idempotente. */
+        arriveAtPickup() {
+            return pickupStep('arrive');
+        },
+
+        /** Cargó y sale hacia el destino (botón, «seguimos» por voz o al salir del punto de cargue). Idempotente. */
+        completePickup() {
+            return pickupStep('complete');
         },
 
         async deliverLoad(pod) {

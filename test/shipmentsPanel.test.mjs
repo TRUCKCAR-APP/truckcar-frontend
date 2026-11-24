@@ -244,3 +244,24 @@ test("telemetry.js suscribe /topic/trip.{id}.status y suelta las que ya no hacen
   w.LiveTracking.stopAll();
   assert.ok(released.includes("/topic/trip.22.status"));
 });
+
+test("estado en vivo: la llegada al cargue y la recogida entran a la línea de tiempo aunque el status siga en ruta", () => {
+  const l = load({ backendId: 22, status: "IN_TRANSIT", assignmentStatus: "ACCEPTED", assignedDriverName: "Andrés",
+    tripStartedAt: "2026-11-24T07:00:00", raw: { tripStartedAt: "2026-11-24T07:00:00" } });
+  const { w, ctrl, panel, toasts } = setup({ loads: [l] });
+  ctrl.applyLiveStatus({ loadId: 22, eventType: "trip.pickup_arrived", loadStatus: "IN_TRANSIT", assignmentStatus: "ACCEPTED",
+    assignedDriverName: "Andrés", occurredAt: "2026-11-24T08:00:00Z" });
+  assert.equal(toasts.at(-1).message, "Andrés llegó al punto de cargue de CARGA-22.");
+  ctrl.applyLiveStatus({ loadId: 22, eventType: "trip.picked_up", loadStatus: "IN_TRANSIT", assignmentStatus: "ACCEPTED",
+    occurredAt: "2026-11-24T08:40:00Z" });
+  assert.equal(toasts.at(-1).message, "CARGA-22 fue recogida y va en ruta al destino.");
+  ctrl.applyLiveStatus({ loadId: 22, eventType: "trip.picked_up", loadStatus: "IN_TRANSIT", assignmentStatus: "ACCEPTED" });
+  assert.equal(toasts.length, 2, "un reenvío no repite el aviso");
+
+  w.store.state.selectedShipmentId = 22;
+  w.store.state.currentUser = { firstName: "G", lastName: "H" };
+  w.CoordinatorPanel = { renderTabs: () => "" };
+  w.document.body.innerHTML = panel.render(w.store.state);
+  const timeline = w.document.querySelector('ol[aria-label="Seguimiento del envío"]').textContent.replace(/\s+/g, " ");
+  assert.match(timeline, /Camino al punto de cargue.*Llegó al punto de cargue.*Carga recogida · en ruta al destino/);
+});

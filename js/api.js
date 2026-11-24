@@ -419,6 +419,8 @@
             notifyAssignment: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/notify'),
             mine: () => http.get('/loads/mine'),
             startTrip: (loadId) => http.patch('/loads/' + enc(loadId) + '/trip/start'),
+            arriveAtPickup: (loadId) => http.patch('/loads/' + enc(loadId) + '/pickup/arrive'),
+            completePickup: (loadId) => http.patch('/loads/' + enc(loadId) + '/pickup/complete'),
             deliver: (loadId, pod) => http.patch('/loads/' + enc(loadId) + '/trip/deliver', pod),
             podUploadUrls: (loadId, files) =>
                 http.post('/loads/' + enc(loadId) + '/proof-of-delivery/upload-urls', { files }),
