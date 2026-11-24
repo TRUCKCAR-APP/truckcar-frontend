@@ -1142,6 +1142,28 @@ body[data-view="driver"].sos-open .copilot-fab { visibility: hidden; }
 .notice { margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-surface); }
 .notice p { margin: var(--space-1) 0 0 28px; color: var(--color-text-secondary); font-size: var(--text-footnote); }
 
+/* SOS abiertos de los conductores en «Mi flota» de la transportadora. */
+.fleet-sos { margin-bottom: var(--space-4); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-sos-soft); border: 1px solid var(--color-sos); }
+.fleet-sos h2 { margin: 0; display: flex; align-items: center; gap: var(--space-2); color: var(--color-sos-text); font-size: var(--text-headline); font-weight: var(--weight-bold); }
+.fleet-sos h2 .dot { background: var(--color-sos); }
+.fleet-sos > p { margin: var(--space-1) 0 var(--space-3); color: var(--color-text-secondary); font-size: var(--text-footnote); }
+.fleet-sos ul { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.fleet-sos li { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); min-width: 0; padding: var(--space-3); border-radius: var(--radius-md); background: var(--color-surface); }
+.fleet-sos-body { min-width: 0; }
+.fleet-sos-row { border-color: var(--color-sos); }
+.fleet-sos-body h3 { margin: 0; color: var(--color-text); font-size: var(--text-footnote); font-weight: var(--weight-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-sos-body p { margin: 2px 0 0; color: var(--color-text); font-size: var(--text-caption); }
+.fleet-sos-body .fleet-sos-meta { color: var(--color-text-secondary); }
+.fleet-sos-side { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); flex: none; }
+.fleet-sos-state { color: var(--color-sos-text); font-size: var(--text-caption); font-weight: var(--weight-bold); white-space: nowrap; }
+.fleet-sos-state.is-attended { color: var(--color-text-secondary); }
+.fleet-sos-locate { min-height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--color-sos); background: transparent; color: var(--color-sos-text); font-size: var(--text-caption); font-weight: var(--weight-semibold); touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.fleet-sos-locate:active { background: var(--color-sos-soft); transform: scale(var(--press-scale)); }
+@media (max-width: 479px) {
+    .fleet-sos li { flex-direction: column; }
+    .fleet-sos-side { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
+}
+
 .status-line {
     margin: 0;
     display: flex;
