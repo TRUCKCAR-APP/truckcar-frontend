@@ -16,12 +16,12 @@ function browser() {
       { id: "luis", firstName: "Luis", lastName: "Gil", email: "luis@x.co", affiliationStatus: "ACTIVA", status: "ACTIVE" },
       { id: "sara", firstName: "Sara", lastName: "Paz", email: "sara@x.co", affiliationStatus: "ACTIVA", status: "ACTIVE" }],
     companyFleet: [
-      { driverId: "ana", driverName: "Ana Ruiz", plate: "DEM-410", vehicleType: "TRACTOMULA_3S3", status: "EN_TRANSITO",
+      { driverId: "ana", driverName: "Ana Ruiz", plate: "DEM-410", vehicleType: "TRACTOMULA_3S3", model: "Kenworth T800", rawType: "TRACTOMULA_3S3", status: "EN_TRANSITO",
         coords: [4.7, -74.1], lastCheckin: "Hace 1 min", speed: 62, hoursActive: "3.5 h", remainingDrivingHours: 4.5, currentLoadId: 12 },
       { driverId: "luis", driverName: "Luis Gil", plate: "DEM-238", vehicleType: "TRACTOMULA_3S3", status: "DESCANSO",
         coords: [6.2, -75.5], lastCheckin: "Hace 5 min", speed: 0, hoursActive: "8 h", remainingDrivingHours: 0 }]
   };
-  w.TruckCarService = { roleAccess: () => ({}) };
+  w.TruckCarService = { roleAccess: () => ({}), truckTypeLabel: (c) => (c === "TRACTOMULA_3S3" ? "Tractomula 3S3" : null) };
   w.TwoFactorUI = {};
   for (const file of ["js/views/companyPanel.js", "js/views/companyFleet.js"]) w.eval(readFileSync(file, "utf8"));
   return w;
@@ -41,7 +41,7 @@ test("Mi flota es la pestaña por defecto: resumen por estado, sus conductores y
   assert.match(summary, /Disponibles 0/);
   const rows = [...doc.querySelectorAll("[data-company-fleet-driver]")].map((li) => li.textContent.replace(/\s+/g, " ").trim());
   assert.equal(rows.length, 2);
-  assert.match(rows[0], /Ana Ruiz DEM-410 · TRACTOMULA_3S3 En ruta Carga #12 · 3\.5 h hoy · le quedan 4,5 h Última señal hace 1 min · 62 km\/h/);
+  assert.match(rows[0], /Ana Ruiz DEM-410 · Kenworth T800 · Tractomula 3S3 En ruta Carga #12 · 3\.5 h hoy · le quedan 4,5 h Última señal hace 1 min · 62 km\/h/);
   assert.match(rows[1], /Luis Gil .*Descanso obligatorio/);
   assert.match(doc.body.textContent, /Sin camión registrado: Sara Paz\./);
   assert.ok(doc.querySelector("[data-company-fleet-map-slot]"), "hay lugar para el mapa");

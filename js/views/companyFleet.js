@@ -53,6 +53,13 @@ window.CompanyFleet = (function () {
         return v.hoursActive + ' hoy · le quedan ' + Number(v.remainingDrivingHours).toLocaleString('es-CO', { maximumFractionDigits: 1 }) + ' h';
     }
 
+    /** Modelo y tipo legible del camión («Kenworth T800 · Tractomula 3S3»), no el código interno. */
+    function vehicleText(v) {
+        const service = window.TruckCarService;
+        const type = v.rawType && service && service.truckTypeLabel ? service.truckTypeLabel(v.rawType) : null;
+        return [v.model, type].filter(Boolean).join(' · ') || v.vehicleType;
+    }
+
     function row(v) {
         const t = tone(v);
         return `
@@ -61,7 +68,7 @@ window.CompanyFleet = (function () {
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
                             <h3 class="font-bold text-sm text-white truncate">${esc(v.driverName)}</h3>
-                            <p class="text-xs text-slate-400 truncate">${esc(v.plate || 'Sin placa')} · ${esc(v.vehicleType)}</p>
+                            <p class="text-xs text-slate-400 truncate">${esc(v.plate || 'Sin placa')} · ${esc(vehicleText(v))}</p>
                         </div>
                         <span class="text-xs text-slate-200 whitespace-nowrap flex items-center gap-1.5"><span class="dot" style="background:${t.color}"></span>${esc(t.label)}</span>
                     </div>
