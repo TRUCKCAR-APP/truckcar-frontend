@@ -109,14 +109,17 @@ test("el enlace de seguimiento muestra la URL firmada que devuelve el backend y 
   assert.match(w.document.querySelector(".sheet").textContent, /Vence el/);
 });
 
-test("la torre ve cada SOS activo, recibe un aviso al llegar uno nuevo y lo marca como atendido", async () => {
+test("la torre ve cada SOS activo, recibe un aviso, lo atiende y después lo resuelve con una nota", async () => {
   let active = [{ id: 41, driverId: "driver-ana", driverName: "Ana Ruiz", vehiclePlate: "TDK-410", loadId: 30,
     latitude: 4.6097, longitude: -74.0817, status: "ACTIVE", triggeredAt: new Date().toISOString() }];
   const acknowledged = [];
+  const resolved = [];
   const { w, toasts } = browser({ state: { activeRole: "coordinator", sessionRole: "COORDINADOR" }, service: {
     loadActiveSos: async () => active,
-    acknowledgeSos: async (id) => { acknowledged.push(id); active = active.filter((s) => s.id !== id); }
+    acknowledgeSos: async (id) => { acknowledged.push(id); active = active.map((s) => (s.id === id ? { ...s, status: "ACKNOWLEDGED" } : s)); },
+    resolveSos: async (id, notes) => { resolved.push([id, notes]); active = active.filter((s) => s.id !== id); }
   } });
+  w.Sheet = { prompt: async () => "Grúa enviada " };
 
   w.SosMonitor.sync(w.store.state);
   await sleep(20);
@@ -130,9 +133,18 @@ test("la torre ve cada SOS activo, recibe un aviso al llegar uno nuevo y lo marc
   await w.SosMonitor.poll();
   assert.equal(toasts.filter((t) => /SOS ·/.test(t.title)).length, 1);
 
-  w.document.querySelector("[data-sos-ack='41']").click();
+  w.document.querySelector("[data-sos-target='41'][data-sos-action='ack']").click();
   await sleep(20);
   assert.deepEqual(acknowledged, [41]);
+  const attended = w.document.querySelector(".sos-alert");
+  assert.ok(attended.classList.contains("is-acknowledged"), "el atendido sigue a la vista hasta resolverlo");
+  assert.match(attended.textContent, /Atendido/);
+  await w.SosMonitor.poll();
+  assert.equal(toasts.filter((t) => /SOS ·/.test(t.title)).length, 1, "atenderlo no vuelve a avisar");
+
+  w.document.querySelector("[data-sos-target='41'][data-sos-action='resolve']").click();
+  await sleep(20);
+  assert.deepEqual(resolved, [[41, "Grúa enviada"]]);
   assert.equal(w.document.querySelector(".sos-alert"), null);
   w.SosMonitor.stop();
 });

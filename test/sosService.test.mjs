@@ -72,13 +72,14 @@ test("sin conexión el SOS va directo a la cola; un duplicado del servidor cuent
   assert.equal(duplicate.queued.length, 0);
 });
 
-test("la torre solo ve los SOS sin atender: excluye atendidos y resueltos", async () => {
+test("la torre ve los SOS activos y los atendidos hasta resolverlos; excluye resueltos y anulados", async () => {
   const mixed = service({ active: async () => [
-    { id: 1, status: "ACTIVE" }, { id: 2, status: "ACKNOWLEDGED" }, { id: 3, status: "RESOLVED" }, { id: 4, status: "ACTIVE" }
+    { id: 1, status: "ACTIVE" }, { id: 2, status: "ACKNOWLEDGED" }, { id: 3, status: "RESOLVED" }, { id: 4, status: "ACTIVE" },
+    { id: 8, status: "CANCELLED" }
   ] });
   const list = await mixed.svc.loadActiveSos();
-  assert.deepEqual(list.map((s) => s.id), [1, 4]);
-  assert.deepEqual(mixed.data.activeSos.map((s) => s.id), [1, 4]);
+  assert.deepEqual(list.map((s) => s.id), [1, 2, 4]);
+  assert.deepEqual(mixed.data.activeSos.map((s) => s.id), [1, 2, 4]);
 });
 
 test("un SOS sin estado o con un estado desconocido se sigue mostrando", async () => {
