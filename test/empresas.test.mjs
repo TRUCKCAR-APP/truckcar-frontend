@@ -117,7 +117,11 @@ test("el conductor sabe por qué no recibe cargas según su afiliación", () => 
   assert.match(reason({ driverType: "EMPRESA", companyName: "Andinos", affiliationStatus: "PENDIENTE" }), /Andinos aún no aprueba/);
   assert.match(reason({ driverType: "EMPRESA", companyName: "Andinos", affiliationStatus: "RECHAZADA" }), /rechazó/);
   assert.equal(reason({ driverType: "EMPRESA", affiliationStatus: "ACTIVA" }), null);
-  assert.equal(reason({}), null, "cuenta anterior a la afiliación: sin aviso");
+  assert.match(reason({}), /no recibirá cargas hasta que lo elija/, "una cuenta sin tipo no recibe cargas");
+  assert.equal(w.DriverAffiliation.receivesLoads({ role: "CONDUCTOR", driverType: "EMPRESA", affiliationStatus: "ACTIVA" }), true);
+  for (const u of [{}, { driverType: "INDEPENDIENTE" }, { driverType: "EMPRESA", affiliationStatus: "PENDIENTE" }]) {
+    assert.equal(w.DriverAffiliation.receivesLoads({ role: "CONDUCTOR", ...u }), false);
+  }
   const untyped = w.DriverAffiliation.noticeHtml({ role: "CONDUCTOR" });
   assert.match(untyped, /Tipo de conductor sin definir/, "una cuenta sin tipo puede elegirlo desde la app");
   assert.match(untyped, /Elegir tipo de conductor/);

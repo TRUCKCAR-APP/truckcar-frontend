@@ -38,6 +38,7 @@
         clearInterval(app.countdownTimer);
         clearInterval(app.inboxTimer);
         window.DriverTelemetry.stop();
+        window.DriverTelemetry.stopIdle();
         window.RouteGuidance.forget(null);
         window.DeviceLocation.forget();
     });

@@ -63,6 +63,31 @@ test("la flota se pide a la ruta de la empresa (el servidor filtra por afiliaci�
   const data = readFileSync("js/dataService.js", "utf8");
   assert.match(data, /async loadCompanyFleet\(\) \{\s*try \{\s*const states = await api\.fleet\.companyFleet\(\);/);
   const surface = readFileSync("js/surfaces/company.js", "utf8");
-  assert.match(surface, /registerLoader\('company', \(\) => Promise\.all\(\[service\.loadCompany\(\), service\.loadCompanyFleet\(\)\]\)\)/);
+  assert.match(surface, /registerLoader\('company', \(\) => Promise\.all\(\[service\.loadCompany\(\), service\.loadCompanyFleet\(\), service\.loadCompanySos\(\)\]\)\)/);
+  assert.match(api, /companySos: \(\) => http\.get\('\/alerts\/sos\/company'\)/, "los SOS se piden a la ruta de la empresa");
   assert.doesNotMatch(readFileSync("js/views/companyFleet.js", "utf8"), /listActive/);
+});
+
+test("un SOS abierto de un conductor de la empresa aparece arriba, marca su fila y la pone primero", () => {
+  const w = browser();
+  w.TruckCarData.companySos = [
+    { id: 7, driverId: "luis", driverName: "Luis Gil", vehiclePlate: "DEM-238", message: "Falla de frenos", status: "ACTIVE",
+      latitude: 6.2, longitude: -75.5, locationSource: "DEVICE_GPS", triggeredAt: new Date(Date.now() - 5 * 60000).toISOString() },
+    { id: 8, driverId: "ana", status: "RESOLVED", message: "ya resuelto" }];
+  w.document.body.innerHTML = w.CompanyPanel.render(STATE);
+  const panel = w.document.querySelector("[data-company-sos-panel]");
+  assert.ok(panel, "hay panel de SOS");
+  const text = panel.textContent.replace(/\s+/g, " ");
+  assert.match(text, /SOS activo en su flota/);
+  assert.match(text, /Luis Gil · DEM-238 Falla de frenos hace 5 min · Ubicación del teléfono Sin atender/);
+  assert.doesNotMatch(text, /ya resuelto/, "un SOS resuelto no se muestra");
+  assert.match(text, /La torre de control atiende la emergencia/);
+  const rows = [...w.document.querySelectorAll("[data-company-fleet-driver]")];
+  assert.equal(rows[0].dataset.companyFleetDriver, "luis", "el conductor con SOS va primero");
+  assert.ok(rows[0].hasAttribute("data-sos"));
+  assert.ok(!rows[1].hasAttribute("data-sos"));
+
+  w.TruckCarData.companySos = [];
+  w.document.body.innerHTML = w.CompanyPanel.render(STATE);
+  assert.equal(w.document.querySelector("[data-company-sos-panel]"), null, "sin SOS no hay panel");
 });

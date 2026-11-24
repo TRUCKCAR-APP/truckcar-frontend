@@ -23,6 +23,10 @@ window.RouteGuidance = (function () {
     const STOP_GRACE_MS = 15000;
     const STOP_AHEAD_M = 60000;
     const STOP_MAX_DETOUR_M = 5000;
+    // Recogida: si el conductor arranca lejos del origen, la guía lo lleva primero al punto de cargue.
+    const PICKUP_FAR_M = 1000;
+    const PICKUP_ARRIVED_M = 150;
+    const PICKUP_KEY = 'truckcar.pickup.';
 
     let route = null;
     let status = 'idle';
@@ -518,6 +522,10 @@ window.RouteGuidance = (function () {
             position: point
         };
         progress.alongM = alongM;
+        if (ensurePickup(point.coords)) {
+            notify();
+            return;
+        }
         // Un aviso de la parada (llegó, la pasó, seguimos) no lo corta la maniobra de ese momento, que va con prioridad.
         if (trackStop(point.coords, alongM, offM)) {
             announced.add(progress.nextIndex + ':near');
@@ -786,6 +794,44 @@ window.RouteGuidance = (function () {
 
     // ── Parada elegida por el conductor ─────────────────────────────────────────────────────────────────────────
 
+    function pickupDone(id) {
+        try { return localStorage.getItem(PICKUP_KEY + id) === '1'; } catch (e) { return false; }
+    }
+
+    function markPickupDone(id) {
+        try { localStorage.setItem(PICKUP_KEY + id, '1'); } catch (e) { }
+    }
+
+    function originLabel(load) {
+        const origin = load && load.origin;
+        return (origin && (origin.city || origin.name || origin.address)) || 'el origen';
+    }
+
+    /**
+     * La carga se recoge en el origen: si el conductor está a más de 1 km y aún no pasó por ahí, el origen queda como
+     * parada obligatoria (kind 'pickup') y la ruta va de su posición al origen y luego al destino. Sin esto, al salir
+     * lejos del origen el recálculo iba directo al destino y dejaba la carga atrás. true si creó la parada.
+     */
+    function ensurePickup(position) {
+        if (!route || !currentLoad || loadId == null || freeDestination || pickupDone(loadId)) return false;
+        if (stop && stop.kind === 'pickup') return false;
+        const origin = currentLoad.origin && currentLoad.origin.coords;
+        if (!origin || !Number.isFinite(origin[0]) || !Number.isFinite(origin[1])) return false;
+        if (distanceM(position, origin) <= PICKUP_FAR_M) {
+            markPickupDone(loadId);
+            return false;
+        }
+        const label = originLabel(currentLoad);
+        stop = { kind: 'pickup', title: 'Punto de cargue en ' + label, address: currentLoad.origin.address || null, phone: null,
+            coords: origin, destination: finalDestination(), alongM: null, addedAt: 0, reached: false, skipped: false,
+            arrivedAt: null };
+        showStopMarker();
+        speak('Primero vamos al punto de cargue en ' + label + ' a recoger la carga. Después sigo hacia el destino.');
+        lastReroute = 0;
+        reroute(position);
+        return true;
+    }
+
     /** Destino final de la ruta guiada (con parada, la ruta termina en el destino guardado en la parada). */
     function finalDestination() {
         return stop ? stop.destination : route.geometry[route.geometry.length - 1];
@@ -794,7 +840,8 @@ window.RouteGuidance = (function () {
     /** [coords] de la parada si todavía está adelante; si el camión ya la pasó, la marca como pasada y no la incluye. */
     function pendingVia(position) {
         if (!stop || stop.reached) return [];
-        if (position && route && stop.alongM != null) {
+        // La recogida nunca se da por pasada por proyección: una ruta que vuelve cerca del inicio la marcaría.
+        if (position && route && stop.alongM != null && stop.kind !== 'pickup') {
             const at = project(route.geometry, route.cumulative, position);
             if (at.offM <= OFF_ROUTE_M && at.alongM > stop.alongM + STOP_PASSED_M) {
                 stop.reached = true;
@@ -828,6 +875,15 @@ window.RouteGuidance = (function () {
     function trackStop(position, alongM, offM) {
         if (!stop) return false;
         const away = distanceM(position, stop.coords);
+        if (!stop.reached && stop.kind === 'pickup') {
+            if (away > PICKUP_ARRIVED_M) return false;
+            stop.reached = true;
+            stop.arrivedAt = Date.now();
+            markPickupDone(loadId);
+            showStopMarker();
+            speak('Llegó al punto de cargue en ' + originLabel(currentLoad) + '. Recoja la carga; cuando arranque, la ruta sigue al destino.');
+            return true;
+        }
         if (!stop.reached) {
             if (away <= STOP_ARRIVED_M && Date.now() - stop.addedAt > STOP_GRACE_MS) {
                 stop.reached = true;
@@ -907,6 +963,7 @@ window.RouteGuidance = (function () {
      */
     async function addStop(place) {
         if (!route) return { ok: false, reason: 'no-route' };
+        if (stop && stop.kind === 'pickup' && !stop.reached) return { ok: false, reason: 'pickup', title: stop.title };
         if (!place || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) return { ok: false, reason: 'no-place' };
         const key = route.key;
         const position = currentPosition();
@@ -954,6 +1011,7 @@ window.RouteGuidance = (function () {
      */
     async function removeStop() {
         if (!stop) return { ok: false, reason: 'no-stop' };
+        if (stop.kind === 'pickup' && !stop.reached) return { ok: false, reason: 'pickup', title: stop.title };
         const title = stop.title;
         if (stop.reached || !route) {
             clearStop();
@@ -991,6 +1049,7 @@ window.RouteGuidance = (function () {
         if (!stop.reached) {
             stop.reached = true;
             stop.arrivedAt = Date.now();
+            if (stop.kind === 'pickup') markPickupDone(loadId);
             showStopMarker();
             notify();
         }
@@ -1015,7 +1074,7 @@ window.RouteGuidance = (function () {
     function stopInfo() {
         if (!stop) return null;
         const ahead = toStop();
-        return { title: stop.title, address: stop.address, phone: stop.phone, reached: stop.reached,
+        return { kind: stop.kind || 'stop', title: stop.title, address: stop.address, phone: stop.phone, reached: stop.reached,
             toStopM: ahead ? ahead.meters : null, toStopS: ahead ? ahead.seconds : null };
     }
 

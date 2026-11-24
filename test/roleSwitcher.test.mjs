@@ -241,7 +241,7 @@ test("la superficie del conductor registra su vista, sus ganchos y su carga de d
   registered.end.forEach((hook) => hook());
   await registered.loaders.driver();
   assert.deepEqual(calls, ["DriverApp.render", "app.handleDriverMapMount", "DriverTelemetry.renderBadge", "DriverActions.syncSos",
-    "VoiceAssistant.sync", "DeviceLocation.sync", "DriverTelemetry.renderSimulationToggle", "DriverTelemetry.stop", "RouteGuidance.forget",
+    "VoiceAssistant.sync", "DeviceLocation.sync", "DriverTelemetry.renderSimulationToggle", "DriverTelemetry.stop", "DriverTelemetry.stopIdle", "RouteGuidance.forget",
     "DeviceLocation.forget", "service.loadDriverProfile", "service.loadDriverAssignment", "service.loadAlerts", "service.loadRoutePlan"]);
 
   calls.length = 0;

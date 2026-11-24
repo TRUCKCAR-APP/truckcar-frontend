@@ -126,6 +126,7 @@ test("sin respuesta de Routing-Restrictions o sin vehículo no se descarta ningu
 
 test("al recalcular por salirse de la ruta también se evitan las restricciones", async () => {
   const { w, fetches } = browser({ [key(PRINCIPAL)]: [BRIDGE(7)] });
+  w.localStorage.setItem("truckcar.pickup.30", "1"); // ya recogió la carga
   await w.RouteGuidance.prepare(LOAD);
   fetches.length = 0;
 

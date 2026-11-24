@@ -48,6 +48,59 @@ window.CompanyFleet = (function () {
         </div>`;
     }
 
+    function openSos() {
+        return (window.TruckCarData.companySos || []).filter(s => s.status === 'ACTIVE' || s.status === 'ACKNOWLEDGED');
+    }
+
+    function sosCoords(s) {
+        return Number.isFinite(s.latitude) && Number.isFinite(s.longitude) ? [s.latitude, s.longitude] : null;
+    }
+
+    function sinceText(iso) {
+        const at = Date.parse(iso);
+        if (!Number.isFinite(at)) return '';
+        const minutes = Math.max(0, Math.round((Date.now() - at) / 60000));
+        if (minutes < 1) return 'hace menos de un minuto';
+        if (minutes < 60) return 'hace ' + minutes + ' min';
+        return 'hace ' + Math.floor(minutes / 60) + ' h ' + (minutes % 60) + ' min';
+    }
+
+    /**
+     * SOS abiertos de sus conductores, arriba de todo. La torre de control los atiende; la empresa los ve para llamar a
+     * su conductor y saber dónde está.
+     */
+    function sosPanel() {
+        const list = openSos();
+        if (!list.length) return '';
+        const fleet = window.TruckCarData.companyFleet || [];
+        const item = (s) => {
+            const v = fleet.find(x => x.driverId === s.driverId);
+            const name = s.driverName || (v && v.driverName) || 'Conductor';
+            const plate = s.vehiclePlate || (v && v.plate);
+            const attended = s.status === 'ACKNOWLEDGED';
+            const coords = sosCoords(s);
+            const where = !coords ? 'Sin ubicación' : s.locationSource === 'LAST_KNOWN' ? 'Última posición conocida' : 'Ubicación del teléfono';
+            return `
+                <li class="bg-slate-950/60 border border-red-500/40 rounded-xl p-3 min-w-0" data-company-sos="${esc(s.id)}">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <h3 class="font-bold text-sm text-white truncate">${esc(name)}${plate ? ' · ' + esc(plate) : ''}</h3>
+                            <p class="text-xs text-slate-300 mt-0.5">${esc(s.message || 'Emergencia sin detalle')}</p>
+                            <p class="text-xs text-slate-400 mt-1">${esc(sinceText(s.triggeredAt || s.receivedAt))}${s.loadId ? ' · Carga #' + esc(s.loadId) : ''} · ${esc(where)}</p>
+                        </div>
+                        <span class="text-xs font-bold whitespace-nowrap ${attended ? 'text-amber-300' : 'text-red-300'}">${attended ? 'Atendido por la torre' : 'Sin atender'}</span>
+                    </div>
+                    ${coords ? `<button type="button" onclick="window.CompanyFleet.focusSos('${esc(s.id)}')" class="btn-quiet mt-2">Ver en el mapa</button>` : ''}
+                </li>`;
+        };
+        return `
+            <section class="bg-red-950/40 border border-red-500/60 rounded-2xl p-4 mb-4" role="alert" data-company-sos-panel>
+                <h2 class="font-bold text-red-200 flex items-center gap-2"><span class="dot" style="background:#e03131"></span>${list.length === 1 ? 'SOS activo en su flota' : list.length + ' SOS activos en su flota'}</h2>
+                <p class="text-xs text-slate-300 mt-1 mb-3">La torre de control atiende la emergencia. Comuníquese con su conductor si lo necesita.</p>
+                <ul class="grid gap-2">${list.map(item).join('')}</ul>
+            </section>`;
+    }
+
     function hours(v) {
         if (!Number.isFinite(Number(v.remainingDrivingHours))) return v.hoursActive;
         return v.hoursActive + ' hoy · le quedan ' + Number(v.remainingDrivingHours).toLocaleString('es-CO', { maximumFractionDigits: 1 }) + ' h';
@@ -60,17 +113,18 @@ window.CompanyFleet = (function () {
         return [v.model, type].filter(Boolean).join(' · ') || v.vehicleType;
     }
 
-    function row(v) {
+    function row(v, sosDrivers) {
         const t = tone(v);
+        const sos = sosDrivers.has(v.driverId);
         return `
-            <li class="bg-slate-900 border border-slate-800 rounded-2xl p-3 min-w-0" data-company-fleet-driver="${esc(v.driverId)}">
+            <li class="bg-slate-900 border ${sos ? 'border-red-500/70' : 'border-slate-800'} rounded-2xl p-3 min-w-0" data-company-fleet-driver="${esc(v.driverId)}"${sos ? ' data-sos' : ''}>
                 <button type="button" onclick="window.CompanyFleet.focus('${esc(v.driverId)}')" class="w-full text-left" ${v.coords ? '' : 'disabled'}>
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
                             <h3 class="font-bold text-sm text-white truncate">${esc(v.driverName)}</h3>
                             <p class="text-xs text-slate-400 truncate">${esc(v.plate || 'Sin placa')} · ${esc(vehicleText(v))}</p>
                         </div>
-                        <span class="text-xs text-slate-200 whitespace-nowrap flex items-center gap-1.5"><span class="dot" style="background:${t.color}"></span>${esc(t.label)}</span>
+                        <span class="text-xs text-slate-200 whitespace-nowrap flex items-center gap-1.5">${sos ? '<span class="text-red-300 font-bold">SOS</span>' : ''}<span class="dot" style="background:${t.color}"></span>${esc(t.label)}</span>
                     </div>
                     <p class="text-xs text-slate-400 mt-2">${v.currentLoadId ? 'Carga #' + esc(v.currentLoadId) + ' · ' : ''}${esc(hours(v))}</p>
                     <p class="text-xs text-slate-500 mt-0.5">${v.coords ? 'Última señal ' + esc(String(v.lastCheckin).toLowerCase()) + (Number.isFinite(v.speed) ? ' · ' + v.speed + ' km/h' : '') : 'Sin posición reportada'}</p>
@@ -91,15 +145,19 @@ window.CompanyFleet = (function () {
             return '<div class="text-center py-16 text-sm text-slate-400"><i class="fas fa-spinner fa-spin"></i> Cargando su flota…</div>';
         }
         const pending = withoutVehicle();
-        const sorted = [...fleet].sort((a, b) => a.driverName.localeCompare(b.driverName, 'es'));
+        const sosDrivers = new Set(openSos().map(s => s.driverId));
+        // Primero los que tienen un SOS abierto, después por nombre.
+        const sorted = [...fleet].sort((a, b) => (sosDrivers.has(b.driverId) - sosDrivers.has(a.driverId))
+            || a.driverName.localeCompare(b.driverName, 'es'));
         return `
+            ${sosPanel()}
             ${summary(fleet)}
             <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden h-[52vh] min-h-[320px]" data-company-fleet-map-slot></div>
                 <div class="min-w-0">
                     <h2 class="font-bold text-white mb-1">Sus conductores</h2>
                     <p class="text-xs text-slate-400 mb-3">Solo los afiliados a su empresa. Se actualiza cada 15 segundos.</p>
-                    ${sorted.length ? `<ul class="grid gap-2" aria-label="Conductores de la empresa">${sorted.map(row).join('')}</ul>`
+                    ${sorted.length ? `<ul class="grid gap-2" aria-label="Conductores de la empresa">${sorted.map(v => row(v, sosDrivers)).join('')}</ul>`
                         : '<p class="text-sm text-slate-400 bg-slate-900 border border-slate-800 rounded-2xl p-4">Ninguno de sus conductores ha registrado su camión todavía. Cuando lo hagan desde la app, aparecerán aquí con su posición.</p>'}
                     ${pending.length ? `<p class="text-xs text-slate-400 mt-3">Sin camión registrado: ${pending.map(d => esc([d.firstName, d.lastName].filter(Boolean).join(' ') || d.email)).join(', ')}.</p>` : ''}
                 </div>
@@ -128,6 +186,14 @@ window.CompanyFleet = (function () {
                 .addTo(layer);
             points.push(v.coords);
         }
+        for (const s of openSos()) {
+            const coords = sosCoords(s);
+            if (!coords) continue;
+            window.L.circleMarker(coords, { radius: 14, color: '#e03131', weight: 3, fillColor: '#e03131', fillOpacity: 0.35 })
+                .bindTooltip('SOS · ' + (s.driverName || 'Conductor') + (s.message ? ' · ' + s.message : ''), { direction: 'top' })
+                .addTo(layer);
+            points.push(coords);
+        }
         if (points.length && !fitted) {
             map.fitBounds(points, { padding: [40, 40], maxZoom: 12 });
             fitted = true;
@@ -149,8 +215,14 @@ window.CompanyFleet = (function () {
         if (v && v.coords && map) map.setView(v.coords, 13);
     }
 
+    function focusSos(id) {
+        const s = openSos().find(x => String(x.id) === String(id));
+        const coords = s && sosCoords(s);
+        if (coords && map) map.setView(coords, 14);
+    }
+
     async function refresh() {
-        await window.TruckCarService.loadCompanyFleet();
+        await Promise.all([window.TruckCarService.loadCompanyFleet(), window.TruckCarService.loadCompanySos()]);
         window.store.setState({});
     }
 
@@ -171,5 +243,5 @@ window.CompanyFleet = (function () {
         timer = null;
     }
 
-    return { render, mount, focus, refresh, startPolling, stopPolling, TONE };
+    return { render, mount, focus, focusSos, refresh, startPolling, stopPolling, TONE };
 })();

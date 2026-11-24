@@ -921,6 +921,8 @@ window.app = {
                 if (stop.ok) {
                     const destination = guidance.freeDestination ? guidance.freeDestination.title : window.DriverApp.destinationLabel();
                     window.voiceEngine.speak('Parada en ' + stop.title + ' agregada. Después sigo hacia ' + destination + '.', true);
+                } else if (stop.reason === 'pickup') {
+                    window.ui.toast('Primero recoja la carga', 'info', { description: 'La ruta va al ' + stop.title + '. Después podrá agregar la parada.' });
                 } else {
                     window.ui.toast('No se pudo agregar la parada', 'warning', { description: 'Sin conexión con el servicio de rutas. Intente de nuevo.' });
                 }
