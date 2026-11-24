@@ -164,7 +164,7 @@ window.ui = {
     SYNC_SECTIONS: {
         alerts: 'las alertas', routes: 'la ruta', fleet: 'la flota', user: 'su perfil', profile: 'el perfil',
         driver: 'el perfil', assignment: 'la carga', load: 'la carga', loads: 'las cargas', shipments: 'los envíos',
-        deliveries: 'las entregas', evaluation: 'la evaluación de despacho'
+        deliveries: 'las entregas', evaluation: 'la evaluación de despacho', companyFleet: 'la flota de su empresa'
     },
 
     syncBanner(state) {

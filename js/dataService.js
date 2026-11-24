@@ -583,6 +583,17 @@
             }
         },
 
+        /** Posición y estado de los conductores de la transportadora (Mi flota). */
+        async loadCompanyFleet() {
+            try {
+                const states = await api.fleet.companyFleet();
+                data.companyFleet = (Array.isArray(states) ? states : []).map(mapFleetVehicle);
+                clearError('companyFleet');
+            } catch (error) {
+                recordError('companyFleet', error);
+            }
+        },
+
         async registerCompanyDriver(driver) {
             const created = await api.companies.registerDriver(driver);
             await this.loadCompany();

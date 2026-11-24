@@ -7,7 +7,7 @@ import { JSDOM } from "jsdom";
 
 function env(state = {}) {
   const w = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only" }).window;
-  const store = { dataStatus: { loading: false, errors: {}, lastSync: null }, ...state };
+  const store = { dataStatus: { loading: false, errors: {}, lastSync: null }, companyTab: "drivers", ...state };
   w.store = { get state() { return store; }, getState: () => store, setState: (patch) => Object.assign(store, patch) };
   w.eval(readFileSync("js/ui.js", "utf8"));
   w.TruckCarData = {};
