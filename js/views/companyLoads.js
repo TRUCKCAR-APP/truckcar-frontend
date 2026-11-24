@@ -142,8 +142,8 @@ window.CompanyLoads = (function () {
             const active = loads.filter(l => l.status !== 'DELIVERED' && l.status !== 'CANCELLED');
             const done = loads.filter(l => l.status === 'DELIVERED' || l.status === 'CANCELLED');
             list = `
-                ${active.length ? `<h3 class="text-xs font-bold text-slate-300 mb-2">En curso (${active.length})</h3><ul class="grid gap-2 lg:grid-cols-2 mb-4">${active.map(l => card(l, state)).join('')}</ul>` : ''}
-                ${done.length ? `<h3 class="text-xs font-bold text-slate-300 mb-2">Terminadas (${done.length})</h3><ul class="grid gap-2 lg:grid-cols-2">${done.map(l => card(l, state)).join('')}</ul>` : ''}`;
+                ${active.length ? `<h3 class="text-xs font-bold text-slate-300 mb-2">En curso (${active.length})</h3><ul class="grid gap-2 lg:grid-cols-2 items-start mb-4">${active.map(l => card(l, state)).join('')}</ul>` : ''}
+                ${done.length ? `<h3 class="text-xs font-bold text-slate-300 mb-2">Terminadas (${done.length})</h3><ul class="grid gap-2 lg:grid-cols-2 items-start">${done.map(l => card(l, state)).join('')}</ul>` : ''}`;
         }
         return header + (formOpen ? formHtml(state) : '') + list;
     }

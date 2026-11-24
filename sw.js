@@ -1,6 +1,6 @@
 ﻿importScripts('js/tileStore.js');
 
-const VERSION = 'v60';
+const VERSION = 'v61';
 const SHELL_CACHE = `truckcar-shell-${VERSION}`;
 const RUNTIME_CACHE = `truckcar-runtime-${VERSION}`;
 const TILE_CACHE = 'truckcar-tiles-v2';
