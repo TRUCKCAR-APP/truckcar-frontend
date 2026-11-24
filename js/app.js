@@ -973,8 +973,41 @@ window.app = {
         }
     },
 
+    /** «Llegué al punto de cargue». */
+    async arrivePickup() {
+        window.store.setState({ busyAction: 'pickup' });
+        try {
+            await window.TruckCarService.arriveAtPickup();
+            window.ui.toast('Llegada al punto de cargue registrada.', 'success',
+                { description: 'Cuando termine de cargar, toque «Carga recogida».' });
+        } catch (error) {
+            window.ui.failure('No se pudo registrar la llegada al cargue', error, 'registrar la llegada al cargue');
+        } finally {
+            window.store.setState({ busyAction: null });
+        }
+    },
+
+    /** «Carga recogida»: sale del punto de cargue hacia el destino. */
+    async completePickup() {
+        window.store.setState({ busyAction: 'pickup' });
+        try {
+            await window.TruckCarService.completePickup();
+            window.voiceEngine.speak('Carga recogida. Vamos hacia el destino.', true);
+            window.ui.toast('Carga recogida: la ruta sigue al destino.', 'success');
+        } catch (error) {
+            window.ui.failure('No se pudo registrar la recogida', error, 'registrar la recogida');
+        } finally {
+            window.store.setState({ busyAction: null });
+        }
+    },
+
     async finishTrip() {
         const load = window.TruckCarData.activeLoadOrder;
+        if (load && window.TruckCarService.loadActions(load).completePickup) {
+            window.ui.toast('Primero registre la recogida', 'warning',
+                { description: 'La entrega se habilita cuando la carga sale del punto de cargue.' });
+            return;
+        }
         if (!load || !window.TruckCarService.loadActions(load).deliver) {
             window.ui.toast('No hay un viaje en tránsito para finalizar.', 'warning');
             return;

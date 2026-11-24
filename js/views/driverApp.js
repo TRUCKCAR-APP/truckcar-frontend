@@ -203,7 +203,7 @@ window.DriverApp = {
         }
         const v = driver.vehicle;
         const load = window.TruckCarData.activeLoadOrder;
-        const status = this.statusLabel(driver.status) + (load && window.TruckCarService.loadActions(load).deliver ? ' · ' + load.id : '');
+        const status = this.statusLabel(driver.status) + (load && window.TruckCarService.loadActions(load).transmitPosition ? ' · ' + load.id : '');
         const na = window.ui.NOT_AVAILABLE;
         const rating = typeof driver.rating === 'number' ? this.number(driver.rating, 1) + ' de 5' : na;
         const yes = (on, onText, offText) => on === null || on === undefined ? esc(na) : this.dotText(on ? onText : offText, on ? 'ok' : '');
@@ -412,9 +412,13 @@ window.DriverApp = {
         const raw = load.raw || {};
         const allowed = window.TruckCarService.loadActions(load);
         const pending = allowed.awaitNotification || allowed.respond;
-        const inTransit = allowed.deliver;
+        const inTransit = allowed.transmitPosition;
+        const toPickup = allowed.completePickup;
+        const atPickup = toPickup && !!load.arrivedAtPickupAt;
         const busy = state.busyAction;
         const statusCode = pending ? load.assignmentStatus : load.status;
+        const statusText = atPickup ? 'En el punto de cargue' : toPickup ? 'Camino al punto de cargue' : this.statusLabel(statusCode);
+        const pickupKm = (pending || allowed.startTrip || toPickup) ? this.distanceToPickupKm(load) : null;
         const clock = (iso) => new Date(iso).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
         const startedAt = inTransit && load.tripStartedAt ? ' · salió ' + clock(load.tripStartedAt)
             : !inTransit && load.assignmentStatusChangedAt ? ' · desde ' + clock(load.assignmentStatusChangedAt) : '';
@@ -429,6 +433,18 @@ window.DriverApp = {
                     <button onclick="window.app.handleAcceptTrip()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('accept', 'check-circle')}Aceptar carga y ver ruta</button>
                     <button onclick="window.app.handleRejectTrip()" ${busy ? 'disabled' : ''} class="btn-quiet">${busyIcon('reject', 'x-circle')}Rechazar</button>
                 </div>`
+            : atPickup ? `
+                <div class="notice" role="status">${this.warnLine('En el punto de cargue', '· cuando termine de cargar, registre la recogida: la ruta sigue al destino.')}</div>
+                <div class="screen-actions">
+                    <button onclick="window.app.completePickup()" ${busy ? 'disabled' : ''} class="btn-accent" data-pickup-complete>${busyIcon('pickup', 'package')}Carga recogida: salir al destino</button>
+                    <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-quiet">${this.icon('navigation-arrow-fill')}Ver navegación</button>
+                </div>`
+            : toPickup ? `
+                <div class="notice" role="status">${this.warnLine('Primero al punto de cargue', '· la guía lo lleva a ' + esc(load.origin.city || load.origin.name || 'el origen') + ' a recoger la carga y después al destino.')}</div>
+                <div class="screen-actions">
+                    <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${this.icon('navigation-arrow-fill')}Navegar al punto de cargue</button>
+                    <button onclick="window.app.arrivePickup()" ${busy ? 'disabled' : ''} class="btn-quiet" data-pickup-arrive>${busyIcon('pickup', 'crosshair')}Llegué al punto de cargue</button>
+                </div>`
             : inTransit ? `
                 <div class="screen-actions">
                     <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${this.icon('navigation-arrow-fill')}Continuar navegación</button>
@@ -436,14 +452,14 @@ window.DriverApp = {
                 </div>`
             : allowed.startTrip ? `
                 <div class="screen-actions">
-                    <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('start-trip', 'navigation-arrow-fill')}Iniciar viaje</button>
+                    <button onclick="window.app.startNavigation()" ${busy ? 'disabled' : ''} class="btn-accent">${busyIcon('start-trip', 'navigation-arrow-fill')}Salir hacia el punto de cargue</button>
                     <button onclick="window.store.setState({ driverScreen: 'route_overview' })" class="btn-quiet">${this.icon('path')}Ver ruta planeada</button>
                 </div>`
             : '';
 
         return `
             <div class="screen-scroll">
-                <p class="status-line">${this.dotText(allowed.awaitNotification ? 'Esperando aviso' : this.statusLabel(statusCode), inTransit ? 'ok' : '')}<span class="status-sub"> · ${esc(load.id)}${esc(startedAt)}</span></p>
+                <p class="status-line">${this.dotText(allowed.awaitNotification ? 'Esperando aviso' : statusText, inTransit ? 'ok' : '')}<span class="status-sub"> · ${esc(load.id)}${esc(startedAt)}</span></p>
                 ${this.isOpenProposal(load) ? this.renderCountdown(load) : ''}
 
                 <div class="trip">
@@ -451,7 +467,7 @@ window.DriverApp = {
                     <div class="trip-leg">
                         <div class="place-label">Origen</div>
                         <div class="place">${esc(load.origin.city || load.origin.name || 'Sin información')}</div>
-                        <div class="place-sub">${esc(raw.originDepartment || '')}</div>
+                        <div class="place-sub">${esc([raw.originDepartment, pickupKm != null ? 'a ' + pickupKm + ' km de usted' : '', load.pickedUpAt ? 'recogida ' + clock(load.pickedUpAt) : ''].filter(Boolean).join(' · '))}</div>
                     </div>
                     <div class="trip-rail"><span class="trip-stop is-end"></span></div>
                     <div class="trip-leg">
@@ -479,6 +495,21 @@ window.DriverApp = {
                 ${pending ? this.alertSoundSettingHtml(state) : ''}
             </div>
         `;
+    },
+
+    /** Distancia en línea recta del conductor al punto de cargue (GPS del teléfono o última posición registrada). */
+    distanceToPickupKm(load) {
+        const origin = load && load.origin && load.origin.coords;
+        const fix = window.DeviceLocation && window.DeviceLocation.last ? window.DeviceLocation.last(10 * 60 * 1000) : null;
+        const driver = window.TruckCarData.currentDriver;
+        const here = (fix && fix.coords) || (driver && driver.coords);
+        if (!origin || !here) return null;
+        const rad = (d) => d * Math.PI / 180;
+        const dLat = rad(origin[0] - here[0]);
+        const dLng = rad(origin[1] - here[1]);
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(here[0])) * Math.cos(rad(origin[0])) * Math.sin(dLng / 2) ** 2;
+        const km = 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+        return km < 1 ? '< 1' : Math.round(km).toLocaleString('es-CO');
     },
 
     lostLoadHtml() {
@@ -532,7 +563,7 @@ window.DriverApp = {
         const opt = routes.optimal;
         const rej = routes.rejectedAlternate;
         const title = load ? (load.origin.city || load.origin.name) + ' → ' + (load.destination.city || load.destination.name) : opt.title;
-        const inTransit = load && window.TruckCarService.loadActions(load).deliver;
+        const inTransit = load && window.TruckCarService.loadActions(load).transmitPosition;
 
         return `
             <div class="route-screen">

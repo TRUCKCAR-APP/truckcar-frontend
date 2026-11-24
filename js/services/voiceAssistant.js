@@ -388,10 +388,16 @@ window.VoiceAssistant = (function () {
                 const pendingStop = a.stopInfo ? a.stopInfo() : null;
                 if (intent.arrivedOnly && pendingStop && !pendingStop.reached) {
                     const marked = a.markStopReached();
-                    await say('Listo, está en su parada: ' + marked.title + '. Cuando quiera seguir, diga «seguimos»; la ruta continúa al destino.');
+                    await say(marked.kind === 'pickup'
+                        ? 'Registré su llegada al punto de cargue. Cuando termine de cargar, diga «seguimos» y registro la recogida.'
+                        : 'Listo, está en su parada: ' + marked.title + '. Cuando quiera seguir, diga «seguimos»; la ruta continúa al destino.');
                     return { status: 'done', intent, stop: marked.title };
                 }
                 const load = a.currentLoad();
+                if (load && a.loadActions(load).completePickup) {
+                    await say('Primero hay que recoger la carga en el punto de cargue. Cuando cargue, diga «seguimos».');
+                    return { status: 'unavailable', intent };
+                }
                 if (!load || !a.loadActions(load).deliver) {
                     await say('No hay un viaje en tránsito para entregar.');
                     return { status: 'unavailable', intent };

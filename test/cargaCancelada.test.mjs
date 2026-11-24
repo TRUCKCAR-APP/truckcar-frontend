@@ -68,12 +68,12 @@ test("una carga cancelada forzada en pantalla no muestra Iniciar viaje, Aceptar 
     data.activeLoadOrder = s.mapLoad(raw(12, status, assignment));
     const doc = screen(w, state);
     assert.doesNotMatch(doc.body.innerHTML, /startNavigation|handleAcceptTrip|handleRejectTrip/, status + "/" + assignment);
-    assert.doesNotMatch(doc.body.textContent, /Iniciar viaje|Aceptar carga|Rechazar|Cancelada/);
+    assert.doesNotMatch(doc.body.textContent, /Iniciar viaje|Salir hacia el punto de cargue|Aceptar carga|Rechazar|Cancelada/);
     assert.match(doc.body.textContent, /Sin carga asignada/);
   }
   const accepted = driver();
   accepted.data.activeLoadOrder = accepted.service.mapLoad(raw(12, "ASSIGNED", "ACCEPTED"));
-  assert.match(screen(accepted.w, accepted.state).body.textContent, /Iniciar viaje/, "la aceptada sí lo conserva");
+  assert.match(screen(accepted.w, accepted.state).body.textContent, /Salir hacia el punto de cargue/, "la aceptada sí lo conserva");
 });
 
 test("si la carga aceptada se cancela, el conductor recibe «La carga CARGA-N fue cancelada.» y vuelve a la vista sin carga", async () => {
@@ -213,4 +213,27 @@ test("el texto de la cancelación vive en un solo lugar y no incluye el motivo",
     assert.doesNotMatch(readFileSync(file, "utf8"), /fue cancelada|cancellationReason/, file);
   }
   assert.equal(readFileSync("js/dataService.js", "utf8").match(/fue cancelada/g).length, 1);
+});
+
+test("en ruta el conductor primero llega al cargue y registra la recogida; solo después puede entregar", () => {
+  const text = (over) => {
+    const d = driver();
+    d.data.activeLoadOrder = d.service.mapLoad(raw(12, "IN_TRANSIT", "ACCEPTED", { tripStartedAt: "2026-11-24T07:00:00", ...over }));
+    return screen(d.w, d.state).body.textContent.replace(/\s+/g, " ");
+  };
+  const going = text({});
+  assert.match(going, /Camino al punto de cargue/);
+  assert.match(going, /Navegar al punto de cargue/);
+  assert.match(going, /Llegué al punto de cargue/);
+  assert.doesNotMatch(going, /registrar entrega/);
+
+  const there = text({ arrivedAtPickupAt: "2026-11-24T08:00:00" });
+  assert.match(there, /En el punto de cargue/);
+  assert.match(there, /Carga recogida: salir al destino/);
+  assert.doesNotMatch(there, /registrar entrega|Llegué al punto de cargue/);
+
+  const loaded = text({ arrivedAtPickupAt: "2026-11-24T08:00:00", pickedUpAt: "2026-11-24T08:40:00" });
+  assert.match(loaded, /Llegué: registrar entrega/);
+  assert.match(loaded, /recogida/);
+  assert.doesNotMatch(loaded, /Carga recogida: salir al destino/);
 });

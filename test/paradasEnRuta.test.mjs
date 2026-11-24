@@ -259,7 +259,7 @@ const HERE_OPTION = { distanceMeters: 11220, durationSeconds: 920, geometry: LIN
   { action: "arrive", instruction: "Llegó a su parada", distanceMeters: 0, durationSeconds: 0, latitude: 4.65, longitude: -74.0 },
   { action: "depart", instruction: "Siga por Autopista Norte", distanceMeters: 5560, durationSeconds: 460, latitude: 4.65, longitude: -74.0 },
   { action: "arrive", instruction: "Llegó a su destino", distanceMeters: 0, durationSeconds: 0, latitude: 4.7, longitude: -74.0 }] };
-const LOAD = { backendId: 30, status: "IN_TRANSIT", origin: { coords: [4.6, -74.0] }, destination: { coords: [4.7, -74.0] } };
+const LOAD = { backendId: 30, status: "IN_TRANSIT", pickedUpAt: "2026-11-24T08:00:00", origin: { coords: [4.6, -74.0] }, destination: { coords: [4.7, -74.0] } };
 
 function guidance() {
   const w = new JSDOM(`<!doctype html><html><body><div data-nav-stop hidden><span data-nav-stop-text></span><span data-nav-stop-sub></span></div></body></html>`,

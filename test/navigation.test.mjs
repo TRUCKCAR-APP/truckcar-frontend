@@ -57,7 +57,7 @@ function browser({ gps = null } = {}) {
   return { w, fetches, spoken, queued, emit };
 }
 
-const LOAD = { backendId: 30, status: "IN_TRANSIT", origin: { coords: [4.6, -74.0] }, destination: { coords: [4.61, -73.99] } };
+const LOAD = { backendId: 30, status: "IN_TRANSIT", pickedUpAt: "2026-11-24T08:00:00", origin: { coords: [4.6, -74.0] }, destination: { coords: [4.61, -73.99] } };
 
 test("las maniobras de OSRM se traducen a instrucciones en español", () => {
   const { w } = browser();
@@ -186,9 +186,19 @@ test("sin vehículo registrado o sin respuesta de Routing-Restrictions no se inv
   assert.equal(JSON.stringify(sampled.at(-1)), JSON.stringify(long.at(-1)));
 });
 
+const PICKUP_LOAD = { ...LOAD, pickedUpAt: null, origin: { city: "Buenaventura", coords: [4.6, -74.0] } };
+
+function pickupCalls(w) {
+  const calls = [];
+  w.TruckCarService.arriveAtPickup = async () => { calls.push("arrive"); };
+  w.TruckCarService.completePickup = async () => { calls.push("complete"); };
+  return calls;
+}
+
 test("lejos del origen la guía va primero al punto de cargue y no permite quitar esa parada", async () => {
   const { w, fetches, spoken } = browser();
-  await w.RouteGuidance.prepare({ ...LOAD, origin: { city: "Buenaventura", coords: [4.6, -74.0] } });
+  const calls = pickupCalls(w);
+  await w.RouteGuidance.prepare(PICKUP_LOAD);
 
   w.RouteGuidance.update({ coords: [4.7, -74.1], speed: 50, source: "gps" });
   await sleep(10);
@@ -200,15 +210,40 @@ test("lejos del origen la guía va primero al punto de cargue y no permite quita
   assert.equal((await w.RouteGuidance.addStop({ title: "Parador", latitude: 4.65, longitude: -74.05 })).reason, "pickup");
 
   w.RouteGuidance.update({ coords: [4.6005, -74.0], speed: 5, source: "gps" });
+  await sleep(5);
   assert.ok(spoken.some((t) => /Llegó al punto de cargue en Buenaventura/.test(t)));
-  assert.equal(w.localStorage.getItem("truckcar.pickup.30"), "1", "la recogida queda registrada al recargar");
+  assert.deepEqual(calls, ["arrive"], "la llegada se registra en Load-Allocation");
+
+  // Salir del punto de cargue después de llegar registra la recogida y sigue al destino.
+  w.RouteGuidance.update({ coords: [4.606, -73.996], speed: 30, source: "gps" });
+  await sleep(5);
+  assert.deepEqual(calls, ["arrive", "complete"]);
+  assert.ok(spoken.some((t) => /registré la recogida/.test(t)));
+  assert.equal(w.RouteGuidance.stopInfo(), null);
+  assert.equal(w.localStorage.getItem("truckcar.pickup.30"), "1", "sin señal la recogida queda recordada en el teléfono");
 });
 
-test("si arranca en el origen no agrega la parada de recogida", async () => {
-  const { w, spoken } = browser();
-  await w.RouteGuidance.prepare(LOAD);
-  w.RouteGuidance.update({ coords: [4.6008, -74.0], speed: 10, source: "gps" });
+test("en el origen no recalcula: vigila la llegada; «seguimos» en el cargue registra la recogida", async () => {
+  const { w, spoken, fetches } = browser();
+  const calls = pickupCalls(w);
+  await w.RouteGuidance.prepare(PICKUP_LOAD);
+  const before = fetches.length;
+  w.RouteGuidance.update({ coords: [4.603, -74.0], speed: 10, source: "gps" });
+  await sleep(5);
+  assert.equal(w.RouteGuidance.stopInfo().kind, "pickup");
+  assert.equal(fetches.length, before, "la ruta ya empieza en el origen");
+  assert.ok(!spoken.some((t) => /Primero vamos/.test(t)));
+
+  assert.equal(w.RouteGuidance.markStopReached().kind, "pickup");
+  assert.equal(w.RouteGuidance.resumeAfterStop().ok, true);
+  await sleep(5);
+  assert.deepEqual(calls, ["arrive", "complete"]);
   assert.equal(w.RouteGuidance.stopInfo(), null);
-  assert.ok(!spoken.some((t) => /punto de cargue/.test(t)));
-  assert.equal(w.localStorage.getItem("truckcar.pickup.30"), "1");
+});
+
+test("con la recogida registrada en el servidor no hay parada de cargue", async () => {
+  const { w } = browser();
+  await w.RouteGuidance.prepare({ ...PICKUP_LOAD, pickedUpAt: "2026-11-24T08:00:00" });
+  w.RouteGuidance.update({ coords: [4.7, -74.1], speed: 50, source: "gps" });
+  assert.equal(w.RouteGuidance.stopInfo(), null);
 });
