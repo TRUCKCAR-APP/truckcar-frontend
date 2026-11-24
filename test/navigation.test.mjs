@@ -95,6 +95,7 @@ test("la guía usa los puntos del plan de Route-AI y avanza con la posición rea
 
 test("fuera de la ruta avisa y recalcula desde la posición actual hasta el destino", async () => {
   const { w, fetches } = browser();
+  w.localStorage.setItem("truckcar.pickup.30", "1"); // ya recogió la carga
   await w.RouteGuidance.prepare(LOAD);
 
   w.RouteGuidance.update({ coords: [4.65, -74.05], speed: 30, source: "gps" });
@@ -183,4 +184,31 @@ test("sin vehículo registrado o sin respuesta de Routing-Restrictions no se inv
   assert.equal(sampled.length, 400);
   assert.equal(JSON.stringify(sampled[0]), JSON.stringify(long[0]));
   assert.equal(JSON.stringify(sampled.at(-1)), JSON.stringify(long.at(-1)));
+});
+
+test("lejos del origen la guía va primero al punto de cargue y no permite quitar esa parada", async () => {
+  const { w, fetches, spoken } = browser();
+  await w.RouteGuidance.prepare({ ...LOAD, origin: { city: "Buenaventura", coords: [4.6, -74.0] } });
+
+  w.RouteGuidance.update({ coords: [4.7, -74.1], speed: 50, source: "gps" });
+  await sleep(10);
+
+  assert.ok(spoken.some((t) => /Primero vamos al punto de cargue en Buenaventura/.test(t)), spoken.join(" | "));
+  assert.match(fetches[fetches.length - 1], /-74\.1,4\.7;-74,4\.6;-73\.99,4\.61/, "su posición → origen → destino");
+  assert.equal(w.RouteGuidance.stopInfo().kind, "pickup");
+  assert.equal((await w.RouteGuidance.removeStop()).reason, "pickup");
+  assert.equal((await w.RouteGuidance.addStop({ title: "Parador", latitude: 4.65, longitude: -74.05 })).reason, "pickup");
+
+  w.RouteGuidance.update({ coords: [4.6005, -74.0], speed: 5, source: "gps" });
+  assert.ok(spoken.some((t) => /Llegó al punto de cargue en Buenaventura/.test(t)));
+  assert.equal(w.localStorage.getItem("truckcar.pickup.30"), "1", "la recogida queda registrada al recargar");
+});
+
+test("si arranca en el origen no agrega la parada de recogida", async () => {
+  const { w, spoken } = browser();
+  await w.RouteGuidance.prepare(LOAD);
+  w.RouteGuidance.update({ coords: [4.6008, -74.0], speed: 10, source: "gps" });
+  assert.equal(w.RouteGuidance.stopInfo(), null);
+  assert.ok(!spoken.some((t) => /punto de cargue/.test(t)));
+  assert.equal(w.localStorage.getItem("truckcar.pickup.30"), "1");
 });

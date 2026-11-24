@@ -271,3 +271,28 @@ test("con la ubicación del teléfono apagada el mensaje dice qué hacer", async
   w.DriverTelemetry.renderBadge();
   assert.match(w.document.getElementById("driver-telemetry-badge").textContent, /encienda la ubicación del teléfono/);
 });
+
+test("sin viaje, un conductor habilitado comparte su posición real sin carga; al iniciar el viaje manda la telemetría del viaje", async () => {
+  const { w, emit } = browser();
+  const sent = [];
+  w.TruckCarTelemetry.send = (destination, payload) => { sent.push({ destination, payload }); return true; };
+  w.DriverTelemetry.startIdle("andres");
+  assert.equal(w.DriverTelemetry.isIdleSharing, true);
+  assert.equal(sent.length, 0, "sin GPS no se inventa una posición");
+  emit(7.12, -73.11);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].destination, "/app/telemetry");
+  assert.deepEqual({ ...sent[0].payload }, { driverId: "andres", latitude: 7.12, longitude: -73.11, speedKmH: 54, heading: 0, loadId: null });
+  emit(7.13, -73.11);
+  assert.equal(sent.length, 1, "entre envíos espera el intervalo de 15 s");
+
+  await w.DriverTelemetry.start(LOAD, "andres");
+  assert.equal(w.DriverTelemetry.isIdleSharing, false, "el viaje reemplaza la posición sin carga");
+  w.DriverTelemetry.stop();
+  w.DriverTelemetry.startIdle("andres");
+  w.localStorage.setItem("truckcar.telemetryMode", "simulation");
+  sent.length = 0;
+  emit(7.14, -73.11);
+  w.DriverTelemetry.stopIdle();
+  assert.equal(sent.length, 0, "con la simulación activa no sale ninguna posición");
+});

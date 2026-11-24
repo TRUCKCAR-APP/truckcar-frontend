@@ -16,5 +16,5 @@
         }
     });
 
-    service.registerLoader('company', () => Promise.all([service.loadCompany(), service.loadCompanyFleet()]));
+    service.registerLoader('company', () => Promise.all([service.loadCompany(), service.loadCompanyFleet(), service.loadCompanySos()]));
 })();

@@ -465,6 +465,7 @@
             confirm: (alertId) => http.patch('/alerts/' + enc(alertId) + '/confirm'),
             sos: (sos) => http.post('/alerts/sos', sos, { timeoutMs: 8000 }),
             activeSos: () => http.get('/alerts/sos'),
+            companySos: () => http.get('/alerts/sos/company'),
             acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
         },
 

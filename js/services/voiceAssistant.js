@@ -563,7 +563,9 @@ window.VoiceAssistant = (function () {
                 if (!result || !result.ok) {
                     await say(result && result.reason === 'no-route'
                         ? 'No tiene una ruta activa. Le llevo directo a ' + place.title + ' si dice: llévame a ' + place.title + '.'
-                        : 'No pude agregar la parada en ' + place.title + '. Sigo con la ruta como estaba.');
+                        : result && result.reason === 'pickup'
+                            ? 'Primero hay que recoger la carga: voy al ' + result.title + '. Cuando la recoja puede pedirme la parada.'
+                            : 'No pude agregar la parada en ' + place.title + '. Sigo con la ruta como estaba.');
                     return { status: 'unavailable', intent };
                 }
                 const time = about(result.toStopS);
@@ -589,8 +591,9 @@ window.VoiceAssistant = (function () {
                 return { status: 'done', intent };
             }
             await say(result.reason === 'no-stop' ? 'No tiene ninguna parada en la ruta.'
+                : result.reason === 'pickup' ? 'El ' + result.title + ' no se puede quitar: ahí se recoge la carga.'
                 : 'No pude recalcular sin la parada. Sigo con la ruta actual; intente de nuevo en un momento.');
-            return { status: result.reason === 'no-stop' ? 'unavailable' : 'error', intent };
+            return { status: result.reason === 'no-stop' || result.reason === 'pickup' ? 'unavailable' : 'error', intent };
         }
 
         async function stopInfo(intent) {

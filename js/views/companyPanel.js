@@ -4,9 +4,12 @@
 window.DriverAffiliation = (function () {
     const esc = (value) => window.ui.escape(value);
 
-    /** Por qué la afiliación no le deja recibir cargas, o null si sí puede (o la cuenta no tiene tipo). */
+    /** Por qué la afiliación no le deja recibir cargas, o null si sí puede. */
     function loadsBlockedReason(user) {
-        if (!user || user.role !== 'CONDUCTOR' || !user.driverType) return null;
+        if (!user || user.role !== 'CONDUCTOR') return null;
+        if (!user.driverType) {
+            return 'Aún no ha indicado si es independiente o de una transportadora: no recibirá cargas hasta que lo elija.';
+        }
         if (user.driverType === 'INDEPENDIENTE') {
             return 'Es conductor independiente: tiene la navegación para camión y las alertas, pero no recibe cargas.';
         }
@@ -14,6 +17,11 @@ window.DriverAffiliation = (function () {
         if (user.affiliationStatus === 'PENDIENTE') return company + ' aún no aprueba su afiliación: recibirá cargas cuando la apruebe.';
         if (user.affiliationStatus === 'RECHAZADA') return company + ' rechazó su afiliación. Puede pedirla a otra transportadora o seguir como independiente.';
         return null;
+    }
+
+    /** Solo el conductor de una transportadora con la afiliación aprobada recibe cargas (y aparece en la torre). */
+    function receivesLoads(user) {
+        return !!(user && user.role === 'CONDUCTOR' && user.driverType === 'EMPRESA' && user.affiliationStatus === 'ACTIVA');
     }
 
     function summary(user) {
@@ -27,12 +35,12 @@ window.DriverAffiliation = (function () {
     function noticeHtml(user) {
         if (!user || user.role !== 'CONDUCTOR') return '';
         if (!user.driverType) {
-            // Cuentas anteriores a la afiliación (o creadas con una versión vieja de la app): reciben cargas como
-            // siempre, pero deben poder elegir su tipo desde aquí.
+            // Cuentas anteriores a la afiliación (o creadas con una versión vieja de la app): no reciben cargas hasta
+            // elegir su tipo, y lo pueden hacer desde aquí.
             return `
             <div class="notice" data-affiliation-notice>
                 <div class="warn-line"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#truck"></use></svg><span>Tipo de conductor sin definir</span></div>
-                <p>Indique si es independiente o si trabaja para una transportadora. Mientras tanto recibe cargas como hasta ahora.</p>
+                <p>Indique si es independiente o si trabaja para una transportadora. No recibirá cargas hasta que lo elija.</p>
                 <button type="button" onclick="window.DriverAffiliation.openChooser()" class="btn-quiet mt-2">Elegir tipo de conductor</button>
             </div>`;
         }
@@ -118,7 +126,7 @@ window.DriverAffiliation = (function () {
         });
     }
 
-    return { loadsBlockedReason, summary, noticeHtml, openChooser };
+    return { loadsBlockedReason, receivesLoads, summary, noticeHtml, openChooser };
 })();
 
 window.CompanyPanel = (function () {

@@ -340,6 +340,35 @@
 
     const REJECTION_VISIBLE_MS = 15000;
 
+    /**
+     * Sin viaje en curso: un conductor disponible que puede recibir cargas (de empresa, afiliación ACTIVA) envía su
+     * posición real cada 15 s sin carga (loadId null). Así la torre y «Mi flota» lo ven donde está y no en la última
+     * posición guardada. Nunca con la simulación: lo simulado no sale del dispositivo.
+     */
+    const IDLE_INTERVAL_MS = 15000;
+    const idle = { timer: null, driverId: null, lastSent: null, errorsUnsubscribe: null };
+
+    function idleTick() {
+        if (!idle.timer || driver.timer || simulating()) return;
+        const fix = window.DeviceLocation.last(GPS_STALE_MS);
+        if (!fix) {
+            refreshFix();
+            return;
+        }
+        if (Date.now() - fix.time > GPS_FRESH_MS) refreshFix();
+        if (window.OfflineQueue && window.OfflineQueue.isOffline()) return;
+        const sent = TruckCarTelemetry.send('/app/telemetry', {
+            driverId: idle.driverId,
+            latitude: Math.round(fix.coords[0] * 1e6) / 1e6,
+            longitude: Math.round(fix.coords[1] * 1e6) / 1e6,
+            speedKmH: fix.speedKmH != null && Date.now() - fix.time <= GPS_FRESH_MS ? fix.speedKmH : 0,
+            heading: fix.heading == null ? null : Math.round(fix.heading),
+            loadId: null
+        });
+        if (sent) idle.lastSent = Date.now();
+        renderDriverBadge();
+    }
+
     function onTelemetryRejected(payload) {
         const message = (payload && payload.message) || window.ui.NOT_AVAILABLE;
         const first = !driver.rejection || driver.rejection.message !== message;
@@ -378,9 +407,12 @@
         const fix = window.DeviceLocation.last(GPS_STALE_MS);
         const esc = window.ui.escape;
         if (fix) {
+            const sharing = idle.timer && !simulating() && status === 'online' && idle.lastSent
+                && Date.now() - idle.lastSent < IDLE_INTERVAL_MS * 2 + 5000;
             el.dataset.state = 'ok';
             el.innerHTML = `<span class="dot ok" aria-hidden="true"></span><span class="telemetry-main">GPS activo</span>
-                <span class="telemetry-sub">· ${fix.accuracy ? 'precisión ±' + Math.round(fix.accuracy) + ' m · ' : ''}sin viaje en curso: no se envía a la torre</span>`;
+                <span class="telemetry-sub">· ${fix.accuracy ? 'precisión ±' + Math.round(fix.accuracy) + ' m · ' : ''}${sharing
+                    ? 'disponible: la torre y su transportadora ven su ubicación' : 'sin viaje en curso: no se envía a la torre'}</span>`;
             return;
         }
         el.dataset.state = 'warn';
@@ -438,9 +470,35 @@
         get lastPoint() { return driver.lastPoint; },
         get simulating() { return simulating(); },
 
+        get isIdleSharing() { return idle.timer != null; },
+
+        /** Posición sin carga cada 15 s (conductor disponible y habilitado para cargas). Idempotente. */
+        startIdle(driverId) {
+            if (!driverId || driver.timer) return;
+            if (idle.timer && idle.driverId === driverId) return;
+            this.stopIdle();
+            idle.driverId = driverId;
+            idle.timer = setInterval(idleTick, IDLE_INTERVAL_MS);
+            idle.errorsUnsubscribe = TruckCarTelemetry.subscribe('/user/queue/errors', onTelemetryRejected);
+            TruckCarTelemetry.acquirePublisher();
+            window.DeviceLocation.watch();
+            idleTick();
+        },
+
+        stopIdle() {
+            if (idle.timer) {
+                clearInterval(idle.timer);
+                if (idle.errorsUnsubscribe) idle.errorsUnsubscribe();
+                TruckCarTelemetry.releasePublisher();
+            }
+            Object.assign(idle, { timer: null, driverId: null, lastSent: null, errorsUnsubscribe: null });
+            renderDriverBadge();
+        },
+
         async start(load, driverId) {
             if (!load || !window.TruckCarService.loadActions(load).transmitPosition || !driverId) return;
             if (driver.timer && driver.loadId === load.backendId) return;
+            this.stopIdle();
             this.stop();
             driver.loadId = load.backendId;
             driver.load = load;
@@ -492,6 +550,7 @@
     // Cada posición nueva del teléfono actualiza el indicador y, sin viaje en curso, el marcador del mapa (con viaje lo
     // hace la telemetría en cada envío).
     if (window.DeviceLocation && window.DeviceLocation.onFix) window.DeviceLocation.onFix((fix) => {
+        if (idle.timer && !idle.lastSent) idleTick();
         renderDriverBadge();
         if (!driver.timer && window.mapCtrl && window.mapCtrl.showDevicePosition) window.mapCtrl.showDevicePosition(fix.coords);
         if (!driver.timer && window.RouteGuidance && window.RouteGuidance.freeDestination) {

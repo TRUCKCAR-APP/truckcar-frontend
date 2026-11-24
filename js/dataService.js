@@ -243,6 +243,23 @@
             window.DriverTelemetry.stop();
             window.RouteGuidance.reset();
         }
+        syncIdleTelemetry();
+    }
+
+    /**
+     * Sin viaje transmitiendo, el conductor disponible que puede recibir cargas comparte su posición real con la torre
+     * y su transportadora (cada 15 s). Un independiente, uno sin tipo o con la afiliación sin aprobar no aparece en la
+     * torre, así que no transmite.
+     */
+    function syncIdleTelemetry() {
+        const telemetry = window.DriverTelemetry;
+        if (!telemetry || !telemetry.startIdle) return;
+        const driver = data.currentDriver;
+        const user = window.store && window.store.state.currentUser;
+        const eligible = !!(driver && driver.id && driver.state && !driver.restoredOffline && driverAvailable(driver)
+            && window.DriverAffiliation && window.DriverAffiliation.receivesLoads(user));
+        if (eligible && !telemetry.isRunning) telemetry.startIdle(driver.id);
+        else if (!eligible || telemetry.isRunning) telemetry.stopIdle();
     }
 
     async function savedTrip(driverId) {
@@ -594,6 +611,19 @@
             }
         },
 
+        /** SOS abiertos de los conductores de la transportadora (Community-Alerts /alerts/sos/company). */
+        async loadCompanySos() {
+            try {
+                const list = (await api.alerts.companySos()) || [];
+                data.companySos = (Array.isArray(list) ? list : [])
+                    .filter(s => s.status === 'ACTIVE' || s.status === 'ACKNOWLEDGED');
+                clearError('companySos');
+            } catch (error) {
+                recordError('companySos', error);
+            }
+            return data.companySos;
+        },
+
         async registerCompanyDriver(driver) {
             const created = await api.companies.registerDriver(driver);
             await this.loadCompany();
@@ -636,6 +666,7 @@
                     recordError('driver', error);
                 }
             }
+            syncIdleTelemetry();
         },
 
         async loadDriverAssignment() {
@@ -1130,6 +1161,7 @@
             data.activeSos = [];
             data.company = null;
             data.companyDrivers = [];
+            data.companySos = [];
             data.currentDriver = null;
             data.activeLoadOrder = null;
             data.lostLoad = null;
