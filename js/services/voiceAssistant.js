@@ -580,7 +580,7 @@ window.VoiceAssistant = (function () {
                 if (Number.isFinite(result.extraS)) {
                     text += result.extraS < 90 ? ' Casi no le suma tiempo al viaje.' : ' Le suma ' + spokenDuration(result.extraS) + ' al viaje.';
                 }
-                text += ' Después de la parada sigo hacia ' + (a.destinationLabel ? a.destinationLabel() : 'el destino') + '.';
+                text += ' Después de la parada sigo hacia ' + (result.then || (a.destinationLabel ? a.destinationLabel() : 'el destino')) + '.';
                 if (result.restricted) text += ' Atención: la ruta tiene restricciones de gálibo o peso para su vehículo.';
                 await say(text);
                 return { status: 'done', intent, place };
@@ -592,7 +592,7 @@ window.VoiceAssistant = (function () {
             if (!a.removeStop) return notUnderstood({ ...intent, type: 'UNKNOWN' });
             const result = await a.removeStop();
             if (result.ok) {
-                await say(result.rerouted ? 'Listo, quité la parada en ' + result.title + '. Sigo directo al destino.'
+                await say(result.rerouted ? 'Listo, quité la parada en ' + result.title + (result.then && result.then !== 'el destino' ? '. Sigo directo hacia ' + result.then + '.' : '. Sigo directo al destino.')
                     : 'Listo, sin parada. Sigo hacia el destino.');
                 return { status: 'done', intent };
             }
@@ -624,7 +624,9 @@ window.VoiceAssistant = (function () {
             const result = a.resumeAfterStop ? a.resumeAfterStop() : { ok: false, reason: 'no-stop' };
             if (result.ok) {
                 const time = about(result.durationS);
-                await say('Seguimos hacia ' + (a.destinationLabel ? a.destinationLabel() : 'el destino')
+                const toward = result.then && result.then !== 'el destino' ? result.then
+                    : (a.destinationLabel ? a.destinationLabel() : 'el destino');
+                await say((result.kind === 'pickup' ? 'Carga recogida. ' : '') + 'Seguimos hacia ' + toward
                     + (Number.isFinite(result.remainingM) ? ': faltan ' + spokenDistance(result.remainingM) + (time ? ', ' + time : '') : '') + '.');
                 return { status: 'done', intent };
             }

@@ -195,7 +195,7 @@ function pickupCalls(w) {
   return calls;
 }
 
-test("lejos del origen la guía va primero al punto de cargue y no permite quitar esa parada", async () => {
+test("lejos del origen la guía va primero al punto de cargue; esa parada no se puede quitar", async () => {
   const { w, fetches, spoken } = browser();
   const calls = pickupCalls(w);
   await w.RouteGuidance.prepare(PICKUP_LOAD);
@@ -207,7 +207,6 @@ test("lejos del origen la guía va primero al punto de cargue y no permite quita
   assert.match(fetches[fetches.length - 1], /-74\.1,4\.7;-74,4\.6;-73\.99,4\.61/, "su posición → origen → destino");
   assert.equal(w.RouteGuidance.stopInfo().kind, "pickup");
   assert.equal((await w.RouteGuidance.removeStop()).reason, "pickup");
-  assert.equal((await w.RouteGuidance.addStop({ title: "Parador", latitude: 4.65, longitude: -74.05 })).reason, "pickup");
 
   w.RouteGuidance.update({ coords: [4.6005, -74.0], speed: 5, source: "gps" });
   await sleep(5);
@@ -246,4 +245,44 @@ test("con la recogida registrada en el servidor no hay parada de cargue", async 
   await w.RouteGuidance.prepare({ ...PICKUP_LOAD, pickedUpAt: "2026-11-24T08:00:00" });
   w.RouteGuidance.update({ coords: [4.7, -74.1], speed: 50, source: "gps" });
   assert.equal(w.RouteGuidance.stopInfo(), null);
+});
+
+test("camino al cargue puede parar a comer: la ruta pasa primero por el restaurante y después por el cargue", async () => {
+  const { w, fetches, spoken } = browser();
+  pickupCalls(w);
+  // Ruta que pasa por los puntos pedidos (como OSRM/HERE), para que el orden sobre la ruta sea el real.
+  w.fetch = async (url) => {
+    fetches.push(String(url));
+    const points = String(url).split("/driving/")[1].split("?")[0].split(";").map((p) => p.split(",").map(Number));
+    return { ok: true, json: async () => ({ routes: [{ duration: 3600, distance: 50000, geometry: { coordinates: points },
+      legs: [{ steps: [{ distance: 50000, name: "Vía", ref: "", maneuver: { type: "depart", location: points[0] } },
+        { distance: 0, name: "", ref: "", maneuver: { type: "arrive", location: points[points.length - 1] } }] }] }] }) };
+  };
+  await w.RouteGuidance.prepare(PICKUP_LOAD);
+  w.RouteGuidance.update({ coords: [4.7, -74.1], speed: 50, source: "gps" });
+  await sleep(10);
+
+  const result = await w.RouteGuidance.addStop({ title: "San Juan Crepes", latitude: 4.69, longitude: -74.09 });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.then, "el punto de cargue en Buenaventura", "después de comer sigue al cargue, no al destino");
+  assert.match(fetches[fetches.length - 1], /-74\.1,4\.7;-74\.09,4\.69;-74,4\.6;-73\.99,4\.61/, "aquí → restaurante → cargue → destino");
+  const info = w.RouteGuidance.stopInfo();
+  assert.equal(info.kind, "stop");
+  assert.equal(info.pickupPending, true);
+
+  // En el restaurante: «seguimos» continúa hacia el cargue, que sigue pendiente.
+  w.RouteGuidance.update({ coords: [4.69, -74.09], speed: 0, source: "gps" });
+  w.RouteGuidance.markStopReached();
+  const resumed = w.RouteGuidance.resumeAfterStop();
+  assert.equal(resumed.ok, true);
+  assert.equal(resumed.then, "el punto de cargue en Buenaventura");
+  assert.equal(w.RouteGuidance.stopInfo().kind, "pickup");
+  assert.ok(!spoken.some((t) => /Primero recoja/.test(t)));
+
+  // Quitar la parada del conductor deja la del cargue; la del cargue no se quita.
+  await w.RouteGuidance.addStop({ title: "Parador", latitude: 4.65, longitude: -74.05 });
+  const removed = await w.RouteGuidance.removeStop();
+  assert.equal(removed.ok, true);
+  assert.match(fetches[fetches.length - 1], /;-74,4\.6;-73\.99,4\.61/, "el recálculo sigue pasando por el cargue");
+  assert.equal((await w.RouteGuidance.removeStop()).reason, "pickup");
 });

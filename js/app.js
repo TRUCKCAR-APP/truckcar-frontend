@@ -920,7 +920,7 @@ window.app = {
             if (!silent) {
                 if (stop.ok) {
                     const destination = guidance.freeDestination ? guidance.freeDestination.title : window.DriverApp.destinationLabel();
-                    window.voiceEngine.speak('Parada en ' + stop.title + ' agregada. Después sigo hacia ' + destination + '.', true);
+                    window.voiceEngine.speak('Parada en ' + stop.title + ' agregada. Después sigo hacia ' + (stop.then || destination) + '.', true);
                 } else if (stop.reason === 'pickup') {
                     window.ui.toast('Primero recoja la carga', 'info', { description: 'La ruta va al ' + stop.title + '. Después podrá agregar la parada.' });
                 } else {
