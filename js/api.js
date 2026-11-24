@@ -397,6 +397,8 @@
 
         fleet: {
             listActive: () => http.get('/fleets-drivers/active'),
+            // «Mi flota» de la transportadora: solo sus conductores con la afiliación ACTIVA (lo decide el servidor).
+            companyFleet: () => http.get('/fleets-drivers/company/fleet'),
             listAvailable: () => http.get('/fleets-drivers/available'),
             getDriver: (driverId) => http.get('/fleets-drivers/drivers/' + enc(driverId)),
             getVehicle: (plate) => http.get('/fleets-drivers/vehicles/' + enc(plate)),
