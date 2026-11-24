@@ -412,6 +412,10 @@
             listAvailable: (truckType) => http.get('/loads/available', { query: { truckType } }),
             listByCompany: (companyId) => http.get('/loads/company/' + enc(companyId)),
             published: () => http.get('/loads/published'),
+            // Transportadora: cargas de su flota, carga propia y su prueba de entrega (empresa confirmada en el servidor).
+            fleet: () => http.get('/loads/fleet'),
+            publishOwn: (load) => http.post('/loads/fleet', load),
+            fleetProofOfDelivery: (loadId) => http.get('/loads/fleet/' + enc(loadId) + '/proof-of-delivery'),
             publish: (load) => http.post('/loads', load),
             accept: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/accept'),
             reject: (loadId) => http.patch('/loads/' + enc(loadId) + '/assignment/reject'),
@@ -468,7 +472,8 @@
             sos: (sos) => http.post('/alerts/sos', sos, { timeoutMs: 8000 }),
             activeSos: () => http.get('/alerts/sos'),
             companySos: () => http.get('/alerts/sos/company'),
-            acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge')
+            acknowledgeSos: (sosId) => http.patch('/alerts/sos/' + enc(sosId) + '/acknowledge'),
+            resolveSos: (sosId, notes) => http.patch('/alerts/sos/' + enc(sosId) + '/resolve', null, { query: { notes: notes || undefined } })
         },
 
         templates: {

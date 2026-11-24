@@ -165,7 +165,8 @@ window.ui = {
         alerts: 'las alertas', routes: 'la ruta', fleet: 'la flota', user: 'su perfil', profile: 'el perfil',
         driver: 'el perfil', assignment: 'la carga', load: 'la carga', loads: 'las cargas', shipments: 'los envíos',
         deliveries: 'las entregas', evaluation: 'la evaluación de despacho', companyFleet: 'la flota de su empresa',
-        companySos: 'los SOS de su flota'
+        companySos: 'los SOS de su flota',
+        companyLoads: 'las cargas de su flota'
     },
 
     syncBanner(state) {

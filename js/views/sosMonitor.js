@@ -54,9 +54,10 @@ window.SosMonitor = (function () {
         cards.className = 'sos-alert-list';
         host.appendChild(cards);
         host.addEventListener('click', (event) => {
-            const ack = event.target.closest('[data-sos-ack]');
+            const action = event.target.closest('[data-sos-action]');
             const locate = event.target.closest('[data-sos-locate]');
-            if (ack) acknowledge(Number(ack.dataset.sosAck));
+            if (action && action.dataset.sosAction === 'resolve') resolve(Number(action.dataset.sosTarget));
+            else if (action) acknowledge(Number(action.dataset.sosTarget));
             if (locate) focusOnMap(Number(locate.dataset.sosLocate));
         });
         frame.appendChild(host);
@@ -65,17 +66,17 @@ window.SosMonitor = (function () {
 
     function cardHtml(sos) {
         return `
-            <div class="sos-alert" ${fresh.has(sos.id) ? 'role="alert"' : ''} data-sos-id="${esc(sos.id)}">
+            <div class="sos-alert${sos.status === 'ACKNOWLEDGED' ? ' is-acknowledged' : ''}" ${fresh.has(sos.id) ? 'role="alert"' : ''} data-sos-id="${esc(sos.id)}">
                 <span class="sos-alert-icon" aria-hidden="true"><i class="fas fa-life-ring"></i></span>
                 <div class="min-w-0 flex-1">
                     <b class="block text-[13px] leading-tight truncate">SOS · ${esc(who(sos))}${sos.vehiclePlate ? ' · <span class="font-mono">' + esc(sos.vehiclePlate) + '</span>' : ''}</b>
                     <span class="block text-[11.5px] opacity-90 truncate">
-                        ${sos.loadId ? 'CARGA-' + esc(sos.loadId) + ' · ' : ''}<span data-sos-ago>${esc(ago(sos.triggeredAt))}</span> ·
+                        ${sos.status === 'ACKNOWLEDGED' ? '<b>Atendido</b> · ' : ''}${sos.loadId ? 'CARGA-' + esc(sos.loadId) + ' · ' : ''}<span data-sos-ago>${esc(ago(sos.triggeredAt))}</span> ·
                         <a href="${esc(mapsUrl(sos))}" target="_blank" rel="noopener noreferrer" class="underline font-mono">${Number(sos.latitude).toFixed(4)}, ${Number(sos.longitude).toFixed(4)}</a>
                     </span>
                 </div>
                 <button type="button" class="sos-alert-btn is-ghost" data-sos-locate="${esc(sos.id)}" aria-label="Ver en el mapa"><i class="fas fa-location-crosshairs"></i></button>
-                <button type="button" class="sos-alert-btn" data-sos-ack="${esc(sos.id)}"></button>
+                <button type="button" class="sos-alert-btn" data-sos-target="${esc(sos.id)}" data-sos-action="${sos.status === 'ACKNOWLEDGED' ? 'resolve' : 'ack'}"></button>
             </div>`;
     }
 
@@ -88,11 +89,12 @@ window.SosMonitor = (function () {
             const since = ago(sos.triggeredAt);
             const agoEl = card.querySelector('[data-sos-ago]');
             if (agoEl.textContent !== since) agoEl.textContent = since;
-            const button = card.querySelector('[data-sos-ack]');
+            const button = card.querySelector('[data-sos-action]');
             const isBusy = busy.has(sos.id);
+            const label = button.dataset.sosAction === 'resolve' ? 'Resolver' : 'Atender';
             if (button.disabled !== isBusy || !button.firstChild) {
                 button.disabled = isBusy;
-                button.innerHTML = isBusy ? '<i class="fas fa-circle-notch fa-spin"></i>' : 'Atender';
+                button.innerHTML = isBusy ? '<i class="fas fa-circle-notch fa-spin"></i>' : label;
             }
         });
     }
@@ -122,7 +124,7 @@ window.SosMonitor = (function () {
     function render() {
         if (!ensureHost()) return;
         renderBanner();
-        const key = list.map(sos => sos.id).join(',');
+        const key = list.map(sos => sos.id + ':' + sos.status).join(',');
         if (key !== renderedKey) {
             renderedKey = key;
             cards.innerHTML = list.map(cardHtml).join('');
@@ -177,7 +179,8 @@ window.SosMonitor = (function () {
         failures = 0;
         down = null;
         lastOkAt = Date.now();
-        const newOnes = list.filter(sos => !known.has(sos.id));
+        // Solo un SOS ACTIVE nuevo suena: uno ya atendido que aparece (otra sesión lo atendió) no es una emergencia nueva.
+        const newOnes = list.filter(sos => !known.has(sos.id) && sos.status !== 'ACKNOWLEDGED');
         list.forEach(sos => known.add(sos.id));
         fresh = new Set(newOnes.map(sos => sos.id));
         if (newOnes.length) announce(newOnes);
@@ -190,11 +193,37 @@ window.SosMonitor = (function () {
         render();
         try {
             await window.TruckCarService.acknowledgeSos(sosId);
-            list = list.filter(sos => sos.id !== sosId);
+            list = list.map(sos => sos.id === sosId ? { ...sos, status: 'ACKNOWLEDGED' } : sos);
             fresh = new Set();
-            window.ui.toast('SOS atendido', 'success', { description: 'Queda registrado a su nombre.' });
+            window.ui.toast('SOS atendido', 'success', { description: 'Queda registrado a su nombre. Cuando la emergencia termine, toque «Resolver».' });
         } catch (error) {
             window.ui.failure('No se pudo marcar el SOS como atendido', error, 'atender el SOS');
+        } finally {
+            busy.delete(sosId);
+            render();
+        }
+    }
+
+    /** Cierra la emergencia con una nota opcional: sale de la torre y de «Mi flota» de su transportadora. */
+    async function resolve(sosId) {
+        if (busy.has(sosId)) return;
+        const sos = list.find(s => s.id === sosId);
+        const notes = await window.Sheet.prompt({
+            title: 'Resolver el SOS de ' + (sos ? who(sos) : 'el conductor'),
+            message: 'La emergencia se cierra y sale de la torre y de la flota de su empresa. Puede dejar una nota de cómo se resolvió.',
+            label: 'Cómo se resolvió (opcional)', placeholder: 'Ej. Grúa enviada; el conductor está bien',
+            suggestions: ['El conductor está bien y sigue su ruta', 'Grúa enviada', 'Falsa alarma', 'Atendido por las autoridades'],
+            required: false, confirmLabel: 'Resolver', cancelLabel: 'Volver', icon: 'fa-circle-check'
+        });
+        if (notes === null) return;
+        busy.add(sosId);
+        render();
+        try {
+            await window.TruckCarService.resolveSos(sosId, notes.trim());
+            list = list.filter(s => s.id !== sosId);
+            window.ui.toast('SOS resuelto', 'success', { description: 'La emergencia quedó cerrada en el historial.' });
+        } catch (error) {
+            window.ui.failure('No se pudo resolver el SOS', error, 'resolver el SOS');
         } finally {
             busy.delete(sosId);
             render();
@@ -239,5 +268,5 @@ window.SosMonitor = (function () {
         else if (timer) stop();
     }
 
-    return { sync, stop, poll, acknowledge };
+    return { sync, stop, poll, acknowledge, resolve };
 })();

@@ -662,6 +662,28 @@
             return data.companySos;
         },
 
+        /** Cargas de la flota de la transportadora (las de sus conductores y las propias). */
+        async loadCompanyLoads() {
+            try {
+                const list = (await api.loads.fleet()) || [];
+                data.companyLoads = (Array.isArray(list) ? list : []).map(mapLoad);
+                clearError('companyLoads');
+            } catch (error) {
+                recordError('companyLoads', error);
+            }
+            return data.companyLoads;
+        },
+
+        async publishOwnLoad(request) {
+            const created = await api.loads.publishOwn(request);
+            await this.loadCompanyLoads();
+            return mapLoad(created);
+        },
+
+        getCompanyProofOfDelivery(loadId) {
+            return api.loads.fleetProofOfDelivery(loadId);
+        },
+
         async registerCompanyDriver(driver) {
             const created = await api.companies.registerDriver(driver);
             await this.loadCompany();
@@ -1072,13 +1094,24 @@
         },
 
         async loadActiveSos() {
-            data.activeSos = ((await api.alerts.activeSos()) || []).filter(s => s.status !== 'ACKNOWLEDGED' && s.status !== 'RESOLVED');
+            // Un SOS atendido sigue a la vista hasta que alguien lo resuelve; uno con estado desconocido también se
+            // muestra (mejor de más que ocultar una emergencia). Solo salen los resueltos y los anulados.
+            data.activeSos = ((await api.alerts.activeSos()) || []).filter(s => s.status !== 'RESOLVED' && s.status !== 'CANCELLED');
             return data.activeSos;
         },
 
         async acknowledgeSos(sosId) {
-            await api.alerts.acknowledgeSos(sosId);
+            const updated = await api.alerts.acknowledgeSos(sosId);
+            const mark = (list) => (list || []).map(s => s.id === sosId ? { ...s, ...(updated || {}), status: 'ACKNOWLEDGED' } : s);
+            data.activeSos = mark(data.activeSos);
+            data.companySos = mark(data.companySos);
+        },
+
+        /** Cierra la emergencia (torre o la transportadora del conductor): sale de las listas de SOS abiertos. */
+        async resolveSos(sosId, notes) {
+            await api.alerts.resolveSos(sosId, notes);
             data.activeSos = (data.activeSos || []).filter(s => s.id !== sosId);
+            data.companySos = (data.companySos || []).filter(s => s.id !== sosId);
         },
 
         async handleRoadBlockage(payload) {
@@ -1210,6 +1243,7 @@
             data.company = null;
             data.companyDrivers = [];
             data.companySos = [];
+            data.companyLoads = null;
             data.currentDriver = null;
             data.activeLoadOrder = null;
             data.lostLoad = null;

@@ -755,6 +755,14 @@ body[data-view="login"] #top-nav { display: none !important; }
     -webkit-user-select: none;
 }
 .sos-alert-btn.is-ghost { color: #fff; background: rgba(255, 255, 255, 0.16); padding: 0 10px; }
+/* Atendido: ya hay alguien a cargo; sigue a la vista, más calmado, hasta que se resuelve. */
+.sos-alert.is-acknowledged { background: var(--color-surface); color: var(--color-text); border-color: var(--color-sos); animation: none; }
+.sos-alert.is-acknowledged .sos-alert-icon { background: var(--color-sos-soft); color: var(--color-sos-text); }
+.sos-alert.is-acknowledged .sos-alert-icon i { animation: none; }
+.sos-alert.is-acknowledged .sos-alert-btn { color: #fff; background: var(--color-sos-solid); }
+.sos-alert.is-acknowledged .sos-alert-btn.is-ghost { color: var(--color-text); background: var(--color-sos-soft); }
+/* Botones compactos en las tarjetas de cargas de la transportadora. */
+.company-load-btn { width: auto; min-height: 40px; padding: 0 var(--space-3); font-size: var(--text-caption); }
 .sos-alert-btn:active { transform: scale(0.97); }
 .sos-alert-btn:disabled { opacity: 0.7; }
 @keyframes sos-in { from { opacity: 0; transform: translateY(-8px); } }
@@ -1159,6 +1167,9 @@ body[data-view="driver"].sos-open .copilot-fab { visibility: hidden; }
 .fleet-sos-state.is-attended { color: var(--color-text-secondary); }
 .fleet-sos-locate { min-height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--color-sos); background: transparent; color: var(--color-sos-text); font-size: var(--text-caption); font-weight: var(--weight-semibold); touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 .fleet-sos-locate:active { background: var(--color-sos-soft); transform: scale(var(--press-scale)); }
+.fleet-sos-locate.is-primary { background: var(--color-sos-solid); border-color: var(--color-sos-solid); color: #fff; }
+.fleet-sos-locate:disabled { opacity: 0.6; }
+.fleet-sos-actions { display: flex; gap: var(--space-2); }
 @media (max-width: 479px) {
     .fleet-sos li { flex-direction: column; }
     .fleet-sos-side { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }

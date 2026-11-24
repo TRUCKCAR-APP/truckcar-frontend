@@ -352,7 +352,8 @@ window.PodUI = (function () {
         `;
     }
 
-    async function showProofOfDelivery(loadId, load) {
+    /** fetchPod: de dónde se lee (la transportadora usa su propia ruta); por defecto la del generador y la torre. */
+    async function showProofOfDelivery(loadId, load, fetchPod = (id) => window.TruckCarService.getProofOfDelivery(id)) {
         const overlay = mountOverlay('pod-viewer-modal', `
             <div class="overflow-y-auto px-4 pt-1 space-y-3">
                 <div id="pod-viewer-body" class="bg-slate-900 border border-slate-700 rounded-2xl p-6 text-center text-slate-300 text-xs">
@@ -369,7 +370,7 @@ window.PodUI = (function () {
 
         const body = overlay.querySelector('#pod-viewer-body');
         try {
-            const pod = await window.TruckCarService.getProofOfDelivery(loadId);
+            const pod = await fetchPod(loadId);
             if (!document.body.contains(overlay)) return;
             body.outerHTML = receiptHtml(pod, load);
         } catch (error) {

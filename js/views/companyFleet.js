@@ -88,15 +88,19 @@ window.CompanyFleet = (function () {
                         <p class="fleet-sos-meta">${esc(sinceText(s.triggeredAt || s.receivedAt))}${s.loadId ? ' · Carga #' + esc(s.loadId) : ''} · ${esc(where)}</p>
                     </div>
                     <div class="fleet-sos-side">
-                        <span class="fleet-sos-state${attended ? ' is-attended' : ''}">${attended ? 'Atendido por la torre' : 'Sin atender'}</span>
-                        ${coords ? `<button type="button" onclick="window.CompanyFleet.focusSos('${esc(s.id)}')" class="fleet-sos-locate">Ver en el mapa</button>` : ''}
+                        <span class="fleet-sos-state${attended ? ' is-attended' : ''}">${attended ? 'Atendido' : 'Sin atender'}</span>
+                        <div class="fleet-sos-actions">
+                            ${coords ? `<button type="button" onclick="window.CompanyFleet.focusSos('${esc(s.id)}')" class="fleet-sos-locate">Ver en el mapa</button>` : ''}
+                            <button type="button" onclick="window.CompanyFleet.${attended ? 'resolveSos' : 'acknowledgeSos'}(${Number(s.id)})" ${sosBusy.has(Number(s.id)) ? 'disabled' : ''}
+                                class="fleet-sos-locate is-primary" data-company-sos-action="${attended ? 'resolve' : 'ack'}">${attended ? 'Resolver' : 'Atender'}</button>
+                        </div>
                     </div>
                 </li>`;
         };
         return `
             <section class="fleet-sos" role="alert" data-company-sos-panel>
                 <h2><span class="dot" aria-hidden="true"></span>${list.length === 1 ? 'SOS activo en su flota' : list.length + ' SOS activos en su flota'}</h2>
-                <p>La torre de control atiende la emergencia. Comuníquese con su conductor si lo necesita.</p>
+                <p>Llame a su conductor y atienda la emergencia junto con la torre de control. Cuando termine, resuélvala para cerrarla.</p>
                 <ul>${list.map(item).join('')}</ul>
             </section>`;
     }
@@ -215,6 +219,47 @@ window.CompanyFleet = (function () {
         if (v && v.coords && map) map.setView(v.coords, 13);
     }
 
+    const sosBusy = new Set();
+
+    /** La empresa atiende un SOS de su conductor (el servidor comprueba que sea suyo). */
+    async function acknowledgeSos(id) {
+        if (sosBusy.has(id)) return;
+        sosBusy.add(id);
+        window.store.setState({});
+        try {
+            await window.TruckCarService.acknowledgeSos(id);
+            window.ui.toast('SOS atendido', 'success', { description: 'Queda a su nombre. Cuando la emergencia termine, toque «Resolver».' });
+        } catch (error) {
+            window.ui.failure('No se pudo atender el SOS', error, 'atender el SOS');
+        } finally {
+            sosBusy.delete(id);
+            window.store.setState({});
+        }
+    }
+
+    /** Cierra la emergencia con una nota opcional: sale de Mi flota y de la torre. */
+    async function resolveSos(id) {
+        if (sosBusy.has(id)) return;
+        const notes = await window.Sheet.prompt({
+            title: 'Resolver el SOS', message: 'La emergencia se cierra para su empresa y para la torre. Puede dejar una nota.',
+            label: 'Cómo se resolvió (opcional)', placeholder: 'Ej. Hablé con el conductor; está bien',
+            suggestions: ['El conductor está bien y sigue su ruta', 'Grúa enviada', 'Falsa alarma'],
+            required: false, confirmLabel: 'Resolver', cancelLabel: 'Volver', icon: 'fa-circle-check'
+        });
+        if (notes === null) return;
+        sosBusy.add(id);
+        window.store.setState({});
+        try {
+            await window.TruckCarService.resolveSos(id, notes.trim());
+            window.ui.toast('SOS resuelto', 'success', { description: 'La emergencia quedó cerrada.' });
+        } catch (error) {
+            window.ui.failure('No se pudo resolver el SOS', error, 'resolver el SOS');
+        } finally {
+            sosBusy.delete(id);
+            window.store.setState({});
+        }
+    }
+
     function focusSos(id) {
         const s = openSos().find(x => String(x.id) === String(id));
         const coords = s && sosCoords(s);
@@ -243,5 +288,5 @@ window.CompanyFleet = (function () {
         timer = null;
     }
 
-    return { render, mount, focus, focusSos, refresh, startPolling, stopPolling, TONE };
+    return { render, mount, focus, focusSos, acknowledgeSos, resolveSos, refresh, startPolling, stopPolling, TONE };
 })();

@@ -203,6 +203,8 @@ window.CompanyPanel = (function () {
             body = `<div class="text-center py-16 text-sm text-slate-400"><i class="fas fa-spinner fa-spin"></i> Cargando su empresa…</div>`;
         } else if ((state.companyTab || 'fleet') === 'fleet') {
             body = window.CompanyFleet.render(state);
+        } else if (state.companyTab === 'loads') {
+            body = window.CompanyLoads.render(state);
         } else {
             body = `
                 <section class="mb-6">
@@ -233,7 +235,7 @@ window.CompanyPanel = (function () {
                     <div class="flex items-center gap-3 min-w-0">
                         <div class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-100"><i class="fas fa-truck-moving text-lg"></i></div>
                         <div class="min-w-0">
-                            <h1 class="text-[15px] lg:text-base font-bold text-white tracking-tight">${(state.companyTab || 'fleet') === 'fleet' ? 'Mi flota' : 'Mis conductores'}</h1>
+                            <h1 class="text-[15px] lg:text-base font-bold text-white tracking-tight">${({ fleet: 'Mi flota', loads: 'Cargas de su flota' })[state.companyTab || 'fleet'] || 'Mis conductores'}</h1>
                             <p class="text-xs text-slate-400 truncate">${company ? esc(company.name) + ' · NIT ' + esc(company.nit) : 'Empresa transportadora'}</p>
                         </div>
                     </div>
@@ -248,6 +250,7 @@ window.CompanyPanel = (function () {
                 ${window.ui.syncBanner(state)}
                 <nav class="px-3 lg:px-6 pt-3 flex gap-2 shrink-0" aria-label="Secciones de la empresa">
                     ${tab('fleet', 'fa-map-location-dot', 'Mi flota', state)}
+                    ${tab('loads', 'fa-boxes-stacked', 'Cargas', state)}
                     ${tab('drivers', 'fa-users', 'Conductores', state)}
                 </nav>
                 <div data-screen class="flex-1 overflow-y-auto p-3 lg:p-6" style="padding-bottom: calc(1rem + var(--safe-bottom))">
